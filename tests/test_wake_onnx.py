@@ -43,15 +43,37 @@ class ConstMelSession(FakeSession):
 
 
 def make_detector(score=0.0, **kw):
-    """ONNX 로드를 건너뛰고 가짜 세션을 꽂은 감지기."""
+    """ONNX 로드를 건너뛰고 가짜 세션을 꽂은 감지기.
+
+    `score` 는 상수(int/float) 이거나, 호출(=push)마다 하나씩 순서대로 돌려줄
+    점수 시퀀스(list 등 iterable)일 수 있다. 시퀀스가 소진되면 마지막 값을
+    계속 돌려준다(연속 hit 시나리오를 이어가기 쉽도록). 상수 방식은 기존
+    테스트들과 그대로 호환된다.
+    """
     d = OnnxWakeDetector.__new__(OnnxWakeDetector)
     d._mel_sess = FakeSession("x", (1, 1, 8, 32))
     d._emb_sess = FakeSession("x", (1, 1, 1, 96))
 
+    if isinstance(score, (int, float)):
+        score_seq = None
+        const_score = float(score)
+    else:
+        score_seq = list(score)
+        const_score = None
+
     class ScoreSession(FakeSession):
+        def __init__(self, in_name, out_shape):
+            super().__init__(in_name, out_shape)
+            self._idx = 0
+
         def run(self, _out, feed):
             self.calls.append(feed[self._in])
-            return [np.array([[score]], dtype=np.float32)]
+            if score_seq is not None:
+                s = score_seq[min(self._idx, len(score_seq) - 1)]
+                self._idx += 1
+            else:
+                s = const_score
+            return [np.array([[s]], dtype=np.float32)]
 
     d._cls_sess = ScoreSession("embeddings", (1, 1))
     d._init_state(threshold=kw.get("threshold", 0.5),
@@ -168,12 +190,45 @@ class ScriptedSource:
         self._ring = []
 
 
-def test_requires_trigger_frames_consecutive_hits():
-    """단발 점수 튐으로는 안 깨어난다."""
+def test_sustained_high_score_eventually_wakes():
+    """점수가 계속(상수로) 임계값 이상이면 결국 깨어난다.
+
+    주의: 이 테스트는 "연속" hit 요구를 검증하지 않는다(원래 이름/문서가
+    그렇게 주장했지만 실제로는 아니었다) — `ScoreSession` 이 매 프레임
+    똑같은 상수 점수만 돌려주므로, 점수가 임계값 아래로 떨어졌다가 다시
+    올라오는 시나리오 자체가 이 테스트엔 없다. 즉 `trigger_frames=1` 이어도,
+    `trigger_frames` 를 통째로 무시해도, `_hits` 를 리셋하지 않아도 이
+    테스트는 그대로 통과한다. "연속 hit 요구"의 실제 검증은
+    `test_non_consecutive_hits_do_not_wake_but_consecutive_hits_do` 가 맡는다.
+    """
     src = ScriptedSource([_frame()] * 200)
     d = make_detector(score=0.9, trigger_frames=2, source=src)
     r = d.wait_for_wake(max_frames=150)
-    assert r is not None, "연속 2프레임이면 깨어나야 함"
+    assert r is not None, "점수가 계속 임계값 이상이면 깨어나야 함"
+
+
+def test_non_consecutive_hits_do_not_wake_but_consecutive_hits_do():
+    """hit, miss, hit(연속 아님) 로는 안 깨고, 그 뒤 연속 hit 2회에서 깨어난다.
+
+    `trigger_frames=2` 인데 hit 사이에 miss 가 끼면 `_hits` 카운터가
+    리셋돼야 한다(`app/wake_onnx.py` 의 `self._hits = 0` 분기). 이 테스트는
+    점수 시퀀스를 워밍업(25프레임) 직후부터 [hit, miss, hit, hit] 순서로
+    고정해, 처음 세 프레임(hit-miss-hit)만으로는 절대 깨지 않는다는 것과
+    그 다음 hit 이 와서 비로소 연속 2회가 됐을 때 깨어난다는 것을 함께
+    검증한다.
+    """
+    src = ScriptedSource([_frame()] * 200)
+    scores = [0.9, 0.1, 0.9, 0.9]   # 워밍업 이후: hit, miss(리셋), hit, hit(트리거)
+    d = make_detector(score=scores, trigger_frames=2, threshold=0.5, source=src)
+
+    # 워밍업(25) + hit,miss,hit(3) = 28프레임까지만 허용. 이 구간엔 연속 2회가
+    # 없으므로(hit-miss-hit) 절대 깨면 안 된다.
+    r_early = d.wait_for_wake(max_frames=OnnxWakeDetector.WARMUP_FRAMES + 2)
+    assert r_early is None, "hit-miss-hit 은 연속이 아니므로 깨면 안 됨"
+
+    # 이어서 읽으면 다음 점수는 hit 이고, 방금 hit 뒤라 연속 2회가 되어 깨어나야 함
+    r = d.wait_for_wake(max_frames=10)
+    assert r is not None, "miss 이후라도 hit 이 연속 2회가 되면 깨어나야 함"
 
 
 def test_below_threshold_never_wakes():

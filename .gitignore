@@ -1,0 +1,19 @@
+.claude
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+# 모델 가중치 (용량 큼 — 별도 배포)
+models/*
+!models/.gitkeep
+*.gguf
+*.pt
+*.onnx
+# 런타임 산출물
+logs/*
+!logs/.gitkeep
+*.wav
+*.mp4
+# 원본 가이드(개인자료)
+가이드 라인.pdf

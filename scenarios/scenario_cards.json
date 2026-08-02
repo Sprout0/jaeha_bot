@@ -1,0 +1,54 @@
+{
+  "_comment": "교육 놀이 모드별 시나리오 카드 (가이드 4-1). 놀이 '내용'은 코드가 아니라 여기서 편집한다(app/education_modes.py 가 읽음).",
+  "sound_match": {
+    "title": "동물 소리 놀이(흉내내기)",
+    "intro": "동물 소리 놀이 하자!",
+    "cards": [
+      {"sound": "멍멍", "answer": "강아지"},
+      {"sound": "야옹", "answer": "고양이"},
+      {"sound": "음메", "answer": "소"},
+      {"sound": "꿀꿀", "answer": "돼지"},
+      {"sound": "꽥꽥", "answer": "오리"},
+      {"sound": "삐약삐약", "answer": "병아리"},
+      {"sound": "개굴개굴", "answer": "개구리"},
+      {"sound": "매애", "answer": "양"}
+    ]
+  },
+  "color_play": {
+    "title": "색칠 놀이 스무고개",
+    "intro": "어떤 색이 보이니?",
+    "cards": [
+      {"hint": "사과처럼 빨간색", "answer": "빨강"}
+    ]
+  },
+  "find_object": {
+    "title": "주변 사물 찾기",
+    "intro": "카메라로 같이 찾아볼까?",
+    "cards": [
+      {"target": "ball", "praise": "우와 공을 찾았네!"}
+    ]
+  },
+  "repeat_word": {
+    "title": "따라 말하기",
+    "intro": "따라 말하기 놀이 하자!",
+    "cards": [
+      {"word": "엄마"},
+      {"word": "사과"},
+      {"word": "바나나"},
+      {"word": "우유"},
+      {"word": "자동차"},
+      {"word": "멍멍이"},
+      {"word": "딸기"},
+      {"word": "공"},
+      {"word": "물"},
+      {"word": "꽃"}
+    ]
+  },
+  "emotion_talk": {
+    "title": "감정 인지 대화",
+    "intro": "지금 기분이 어때?",
+    "cards": [
+      {"emotion": "happy", "response": "기분이 좋구나, 같이 웃자!"}
+    ]
+  }
+}

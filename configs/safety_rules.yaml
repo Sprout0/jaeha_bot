@@ -1,0 +1,14 @@
+# 안전·윤리 규칙 (가이드 6). 필터링/후처리에 사용.
+blocklist_topics:
+  - 폭력
+  - 욕설
+  - 약물
+  - 신체 접촉 지시
+  - 외출/이동 지시
+  - 의료/심리 진단
+escalate_to_guardian:
+  - 울음/공포 감지
+  - 위험 상황 단어
+privacy:
+  store_locally_only: true        # 이름/얼굴/발음/대화는 로컬에만
+  briefing_share: summary_only    # 부모 브리핑은 요약만 전달

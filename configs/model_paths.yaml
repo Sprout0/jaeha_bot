@@ -1,0 +1,86 @@
+# 모델 경로 및 런타임 설정 (가이드 5: 8GB 안 안정 구동 우선)
+stt:
+  # [테스트중] SungBeom 한국어 파인튜닝 모델(CT2 int8)로 실기 A/B 중.
+  # 순정으로 되돌리려면 아래를 다시 small 로 바꾸면 됨.
+  model_size: models/whisper-small-ko-ct2
+  # model_size: small     # 순정 다국어(강건·안정) — 되돌릴 때 이 줄로
+  device: cpu             # Jetson GPU 사용 시 cuda
+  compute_type: int8      # 양자화로 메모리 절약
+  silence_duration: 1.2   # 말 끝난 뒤 이만큼 조용하면 종료(초).
+                          # 실아동 음성(AI-Hub 108, 9세 600개) VAD 분석(2026-07-23): 문장 내부
+                          # 멈칫이 1.0초면 9세도 3.7% 잘림, 1.2초면 2.2%. 3세는 더 오래 멈칫하니
+                          # 1.0->1.2 로 올림(잘림↓, 지연 +0.2s). 최종값은 실제 3세 녹음 때 확정.
+  # 오인식 사후 교정: 고유명사(봇/아이 이름)는 Whisper 학습에 없어 발음대로 적힘(재하봇->재하보사).
+  # keywords 와 자모 편집거리가 가까운 토큰을 그 단어로 교정(app/text_norm.py). 오탐 적음.
+  keywords: ["재하봇", "하연"]
+  aliases:                # 자주 나오는 확정 오인식만 정확 매핑(빠르고 100%). 실기서 새 오인식 나오면 추가.
+    제아부사: 재하봇
+    재아부사: 재하봇
+  # initial_prompt: "재하봇과 하연이의 대화."  # Whisper 원천 힌트. 환각 위험 있어 기본 off.
+  #                                          # 마이크 생기면 켜서 '재하봇' 인식 개선 vs 환각을 실측 후 결정.
+
+tts:
+  # Supertonic-3 (ONNX, 경량, OpenRAIL-M). 모델은 첫 실행 시 HF 자동 다운로드.
+  model: supertonic-3
+  voice: F1+F4         # F1·F4 균등 블렌딩(밝고 자연스러운 유아용 커스텀 보이스, 청취 비교로 채택).
+                       # '+' 로 이으면 tts_module._resolve_style 가 style 벡터를 평균냄. 단일은 F1~F5/M1~M5.
+  language: ko
+  speed: 1.05          # 모델 학습 sweet spot(=자연스러움 기본값). 1.0 은 살짝 처져 우울하게 들려 1.05 로.
+  total_steps: 12     # 확산 스텝↑ = 음색 다듬음. Jetson 속도 위해 16->12(살짝↓, 음질 미세차).
+                      # 더 빠르게 필요하면 8(품질 더↓), 음질 최우선이면 16.
+  threads: 4          # onnxruntime intra-op 스레드. 실측 최적(6/8은 경합으로 느려짐)
+  seed: 777           # diffusion 노이즈 시드 고정 -> 말투·속도 일정. F1/777 이 밝은 톤이라 채택(청취 비교).
+                      # 캐릭터 바꾸려면 다른 정수(1234/7/42/2024 등). null 이면 매번 랜덤.
+  gap: 0.2            # 문장 사이 무음(초). 앞뒤 pad 합쳐 총 간격≈0.3s(TTS 표준). 붙이려면 0.15, 띄우려면 0.3
+
+vision:
+  model_path: models/yolov8n.pt   # nano 모델로 시작
+
+audio:
+  # 마이크/스피커 장치(이름 부분일치). null 이면 시스템 기본.
+  # Jetson: 기본 'default'(pulse)가 HDMI로 새서 멈춤 → USB ReSpeaker 를 콕 집음.
+  # PC 는 보통 null(기본)로 충분. 실물 장치 바뀌면 이 이름만 수정.
+  device: ReSpeaker
+
+wake:
+  # 호출어(웨이크워드) 트리거 = '대기↔대화' 세션. false 면 항상 대화(옛 동작).
+  # 목적: 부르기 전엔 LLM·TTS 안 돌려 쓸모없는 답변·자원 절약(교수님 요청).
+  # 지금 감지기 = STT 텍스트를 '재하봇'과 자모 유사도 비교(명확발화용, app/wake.py).
+  # 유아 웅얼거림은 이 방식으론 못 잡음 → 나중 openWakeWord(ONNX 오디오 직접감지)로
+  # 이 감지기만 교체(세션 뼈대는 그대로). [[jaeha-bot-progress]]
+  # 현재 STT 감지기는 성능 한계(재하봇 인식 빡빡 + 받아쓰는 동안 호출 놓침)로 잠시 끔.
+  # openWakeWord(ONNX) 모델 준비되면 감지기 교체 후 다시 true 로. (뼈대·설정은 그대로 유지)
+  enabled: false
+  word: 재하봇
+  threshold: 0.68      # 자모거리 컷. 실측(2026-07-27): 또박또박 재하봇 0.25~0.57 / 무관어 0.71~1.0
+                       # → 0.68 이면 살짝 뭉갠 것도 잡으면서 오작동 0(무관어 0.71 미만). 0.70 이 안전상한.
+                       # 실기서 '[대기] 안 깨움' 로그의 거리 보고 조정. openWakeWord 붙이면 이 방식 대체.
+  aliases: ["개하복", "제하모", "재하모사", "재보소"]  # 자주 나온 확정 오인식 → 즉시 깨움
+  sleep_timeout: 30    # 대화 중 이만큼(초) 조용하면 다시 대기(잠듦)로
+  # sleep_words: ["잘자", "바이바이"]   # 이 말 하면 즉시 대기로. 생략 시 wake.py 기본값 사용
+
+metrics:
+  # STEP 7 계측: 턴마다 단계별 지연·메모리를 logs/metrics_YYYYMMDD.jsonl 에 기록.
+  # 젯슨 이식 '전' PC baseline 확보용(이식 후 같은 로깅으로 비교). 오버헤드 무시 수준.
+  enabled: true
+  tag: pc          # 환경 표시. 젯슨에선 jetson 으로 바꿔 같은 파일서 PC/젯슨 구분.
+
+llm:
+  # EXAONE-3.5-2.4B(한국어 특화, 반말 유리, 비상업 라이선스). llama-cpp 0.3.2 로드확인됨.
+  # 롤백: 아래를 models/llm-q4.gguf (Qwen2.5-1.5B) 로 되돌리면 됨.
+  model_path: models/exaone-3.5-2.4b-q4.gguf
+  # model_path: models/llm-q4.gguf  # (구) Qwen2.5-1.5B — 롤백용
+  fewshot_path: data/finetune_seed.jsonl  # few-shot 예시 소스(=QLoRA 데이터셋 씨앗과 동일 파일).
+                                          # few_shot=true 항목만 매 요청 system 다음에 주입해 반말·2문장 말투 고정.
+  n_ctx: 2048
+  n_threads: 4
+  # GPU 오프로드 레이어 수. -1=전체. Jetson(llama-cpp CUDA 소스빌드)에서 GPU 가속 켬.
+  # PC(CPU 전용 빌드)에선 무시되어 무해(값 그대로 둬도 CPU로 돎). [[jaeha-bot-progress]]
+  n_gpu_layers: -1
+  max_tokens: 80                  # 두 문장 완결 보장(64는 긴답서 중간 잘려 미완결→TTS 뚝끊김). 길이는 프롬프트로 억제.
+  temperature: 0.3                # 작은 모델 헛소리↓(0.7->0.3 로 더 또렷하게)
+  repeat_penalty: 1.1             # 1.3은 어미까지 억제+few-shot 문구 재사용 방해 → 1.1로 완화
+  top_p: 0.9                      # 상위 누적확률 컷(또렷한 답)
+  top_k: 40
+  min_p: 0.05                     # 저확률 토큰 컷
+  max_sentences: 2                # 완결문장 최대 개수(하드캡). 초과 시 사족 제거(agent._clamp_sentences)

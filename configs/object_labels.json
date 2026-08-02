@@ -1,0 +1,12 @@
+{
+  "_comment": "Vision Detector 가 인식할 객체 라벨 -> 한국어 매핑",
+  "labels": {
+    "ball": "공",
+    "red_ball": "빨간 공",
+    "cup": "컵",
+    "book": "책",
+    "doll": "인형",
+    "block": "블록",
+    "apple": "사과"
+  }
+}

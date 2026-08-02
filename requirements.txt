@@ -1,0 +1,36 @@
+# === 재하봇 1 의존성 ===
+# 주의: Jetson(L4T) 에서는 torch/torchvision 을 베이스 이미지(l4t-pytorch)가
+# 이미 제공하므로 여기 다시 설치하지 않습니다. PC 개발용은 아래 주석 참고.
+
+# --- 음성 STT/TTS ---
+faster-whisper>=1.0.0
+# TTS: Supertonic-3 (한국어, ONNX Runtime 구동, OpenRAIL-M). torch 불필요, 경량.
+#   pip install supertonic
+# 모델 가중치는 첫 실행 시 HF(Supertone/supertonic-3)에서 자동 다운로드(~수백MB).
+# (Piper 는 공식 한국어 없음 + 커뮤니티 KSS 발음 누락, MeloTTS 는 이 환경서 빌드 불가라 미채택)
+supertonic>=1.3.0
+sounddevice>=0.4.6
+soundfile>=0.12.1
+
+# --- 비전 ---
+ultralytics>=8.1.0        # YOLOv8
+mediapipe>=0.10.9
+opencv-python>=4.9.0
+
+# --- LLM (로컬, 양자화 GGUF) ---
+# 0.3.21+ 의 py3-none PC용 wheel 은 AVX-512 로 빌드돼 있어 AVX-512 미지원 CPU
+# (예: Intel Core Ultra / Lunar Lake)에서 로드 시 Illegal Instruction(0xc000001d)
+# 로 죽는다. 그래서 CPU 전용 wheel 이 따로 제공되는 0.3.2 로 고정.
+# PC 설치: pip install "llama-cpp-python==0.3.2" \
+#            --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+# (Jetson 은 별도 빌드/이미지를 쓰므로 이 핀은 PC 개발 기준)
+llama-cpp-python==0.3.2
+
+# --- 공통 ---
+numpy>=1.24
+pyyaml>=6.0
+pydantic>=2.5
+
+# --- PC 개발용에서만 (Jetson 베이스 이미지엔 이미 포함) ---
+# torch>=2.2
+# torchvision>=0.17

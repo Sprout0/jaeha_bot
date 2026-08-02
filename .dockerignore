@@ -1,0 +1,15 @@
+.claude
+__pycache__/
+*.pyc
+.git/
+.venv/
+venv/
+logs/*
+!logs/.gitkeep
+models/*
+!models/.gitkeep
+*.gguf
+*.pt
+*.wav
+*.mp4
+가이드 라인.pdf

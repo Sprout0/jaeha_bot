@@ -1,0 +1,17 @@
+# =====================================================================
+# 개발용(PC, x86_64 / Apple Silicon) 이미지 — 1~2주차 PC 데모용
+# Jetson GPU 없이 CPU로 STT->LLM->TTS 파이프라인을 먼저 검증.
+# =====================================================================
+FROM python:3.11-slim
+
+ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg libsndfile1 libportaudio2 portaudio19-dev libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+CMD ["python", "-m", "app.main"]

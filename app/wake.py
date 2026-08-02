@@ -11,7 +11,13 @@
 """
 from __future__ import annotations
 
+import logging
+
+import numpy as _np
+
 from .text_norm import jamo_ratio
+
+log = logging.getLogger("jaeha_bot.wake")
 
 _PUNCT = " .,!?~\"'…"
 
@@ -74,6 +80,74 @@ def is_sleep_command(text: str, words: list[str] | None = None) -> bool:
     words = words or ["잘자", "잘 자", "코자자", "코 자자", "바이바이", "안녕히"]
     t = text.strip(_PUNCT)
     return any(w in t for w in words)
+
+
+# ── 감지기 인터페이스 ─────────────────────────────────────────────────────────
+# 두 감지기는 입력이 다르다(STT=텍스트, ONNX=오디오). 그래서 is_wake_word(text)
+# 수준에선 교체가 안 되고, '깨어날 때까지 기다린다' 수준으로 경계를 올린다.
+
+class SttWakeDetector:
+    """기존 STT 자모 판정을 감지기 인터페이스에 맞춘 래퍼.
+
+    오디오를 다루지 않으므로 프리롤은 항상 비어 있고 continued=False 다
+    (= 늘 '부르고 기다리기' 경로 = 이 방식의 기존 동작과 같다).
+    """
+
+    def __init__(self, stt, word: str = "재하봇", threshold: float = 0.68,
+                 aliases: list | None = None) -> None:
+        self.stt = stt
+        self.word = word
+        self.threshold = threshold
+        self.aliases = aliases or []
+
+    def wait_for_wake(self, max_turns: int | None = None):
+        from .wake_onnx import WakeResult
+
+        turns = 0
+        while max_turns is None or turns < max_turns:
+            turns += 1
+            text, _ = self.stt.listen()
+            if not text:
+                continue
+            if is_wake_word(text, self.word, self.threshold, self.aliases):
+                log.info("[호출] %s → 깨어남", text)
+                return WakeResult(preroll=_np.zeros(0, dtype=_np.float32),
+                                  continued=False, score=1.0)
+            log.info("[대기] 안 깨움: %r (거리 %.2f / 임계 %.2f)",
+                     text, best_wake_ratio(text, self.word), self.threshold)
+        return None
+
+    def reset(self) -> None:
+        """ONNX 감지기와 인터페이스를 맞추기 위한 no-op."""
+
+
+def make_detector(wcfg: dict, stt, source):
+    """설정에 따라 감지기를 고른다. ONNX 로드 실패 시 STT 로 폴백한다.
+
+    폴백하는 이유: 모델을 아직 안 넣었거나 파일이 깨져도 봇이 죽으면 안 된다.
+    """
+    word = wcfg.get("word", "재하봇")
+    threshold = float(wcfg.get("threshold", 0.68))
+    aliases = wcfg.get("aliases", [])
+    fallback = SttWakeDetector(stt, word, threshold, aliases)
+
+    if wcfg.get("detector", "stt") != "onnx":
+        return fallback
+
+    ocfg = wcfg.get("onnx", {}) or {}
+    try:
+        from .wake_onnx import OnnxWakeDetector
+        return OnnxWakeDetector(
+            model_dir=ocfg.get("model_dir", "models/wake"),
+            classifier=ocfg.get("classifier", "jaehabot.onnx"),
+            threshold=float(ocfg.get("threshold", 0.5)),
+            trigger_frames=int(ocfg.get("trigger_frames", 2)),
+            providers=ocfg.get("providers"),
+            source=source,
+        )
+    except Exception as e:
+        log.warning("ONNX 호출어 감지기 로드 실패(%s) → STT 감지기로 폴백", e)
+        return fallback
 
 
 def _repl() -> None:

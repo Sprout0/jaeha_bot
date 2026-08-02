@@ -1,6 +1,5 @@
 """record_until_silence 의 공유 스트림·prefix 경로. 마이크·모델 불필요."""
 import numpy as np
-import pytest
 
 from app.audio_source import FRAME
 from app.stt_module import STTModule
@@ -33,7 +32,11 @@ def test_prefix_is_included_in_output():
     prefix = np.full(FRAME * 2, 0.4, dtype=np.float32)
     src = ScriptedSource(_loud(3) + _quiet(30))
     out = stt.record_until_silence(source=src, prefix=prefix)
-    assert out.size >= prefix.size, "prefix 가 결과에 포함되어야 함"
+    # quiet_needed = int(0.3*16000/1280) = 3. 3개 loud(변화 없음) + 무음판정까지의
+    # 3개 quiet 프레임 = 6프레임이 prefix 뒤에 더 붙는다. prefix 를 통째로 버려도
+    # 우연히 참이 되지 않도록 정확한 값으로 고정한다(느슨한 >= 는 대기루프가
+    # prefix 없이도 같은 크기를 모아 버려 통과해버림).
+    assert out.size == prefix.size + 6 * FRAME
 
 
 def test_prefix_path_skips_start_wait():
@@ -58,6 +61,53 @@ def test_source_returns_empty_when_frames_exhausted():
     src = ScriptedSource(_quiet(3))
     out = stt.record_until_silence(source=src)
     assert out.size == 0
+
+
+def test_counters_use_80ms_source_frames_not_30ms():
+    """카운터 단위 고정 회귀: quiet_needed 가 source 의 실제 프레임(80ms=1280)
+    이 아니라 own-stream 시절 30ms 단위로 새면 이 값이 크게 어긋나 실패한다.
+
+    silence_duration=0.8 -> quiet_needed = int(0.8*16000/1280) = 10 (정확히).
+    30ms 단위로 잘못 새면 int(0.8/0.03) = 26 이 되어 전혀 다른 프레임 수가 나온다.
+    """
+    stt = STTModule(silence_duration=0.8, max_duration=5.0)
+    src = ScriptedSource(_loud(1) + _quiet(20))
+    out = stt.record_until_silence(source=src)
+    # 시작을 알린 loud 1프레임 + quiet_needed(10)개의 조용한 프레임 = 11프레임.
+    assert out.size == 11 * FRAME
+
+
+def test_forgiving_grace_is_one_frame_not_three():
+    """Important-1 회귀(변이 검증용): quiet 감쇠가 own-stream 의 -3(30ms 단위,
+    =90ms) 이 아니라 -1(80ms 프레임 1개) 이어야 한다. 2 quiet + 1 loud 블립을
+    반복하는 '말끝을 흘리는 아이' 패턴에서:
+      - 감쇠 -1  : quiet 카운터가 사이클마다 순증가해 15프레임째 조기 종료.
+      - 감쇠 -3(버그): 사이클마다 quiet 가 0 으로 씻겨 내려가 절대 안 끊기고
+                      max_duration 캡(25프레임=32000샘플)까지 끌려간다.
+    이 테스트는 감쇠를 -3 으로 되돌리면(수동 변이) out.size 가 32000 이 되어
+    실패한다 — task-6-report.md 의 변이 검증 기록 참고.
+    """
+    stt = STTModule(silence_duration=0.5, max_duration=2.0)
+    frames = _loud(1)
+    for _ in range(10):
+        frames += _quiet(2) + _loud(1)
+    src = ScriptedSource(frames)
+    out = stt.record_until_silence(source=src)
+    assert out.size == 15 * FRAME
+
+
+def test_no_prefix_path_keeps_pre_roll_before_speech_onset():
+    """Important-2 회귀: prefix 없이 시작을 기다릴 때도 own-stream 처럼 최근
+    pre_roll 프레임을 링버퍼에 담아 두다가, 말이 시작되면 그 프레임들부터
+    결과에 포함해야 한다(첫 음절 잘림 방지). pre_roll=0.3s -> 1280 프레임
+    기준 3프레임.
+    """
+    stt = STTModule(silence_duration=0.3, max_duration=5.0, start_timeout=1.0)
+    src = ScriptedSource(_quiet(5) + _loud(1) + _quiet(30))
+    out = stt.record_until_silence(source=src)
+    # pre_roll 3프레임 + 시작을 알린 loud 1프레임 + 무음판정까지 quiet_needed(3)
+    # 개 프레임 = 7프레임. pre_roll 이 빠지면 4프레임(=5120)이 되어 이 값보다 작다.
+    assert out.size == 7 * FRAME
 
 
 def test_signature_still_accepts_no_arguments():

@@ -121,7 +121,15 @@ class STTModule:
         return self._record_from_source(source, verbose, prefix)
 
     def _record_from_source(self, source, verbose: bool, prefix) -> np.ndarray:
-        """공유 스트림에서 녹음. 소음 바닥은 source 가 이미 재 뒀다(재측정 안 함)."""
+        """공유 스트림에서 녹음. 소음 바닥은 source 가 이미 재 뒀다(재측정 안 함).
+
+        시간 계산은 source 가 실제로 공급하는 프레임 크기(``source.frame``, 없으면
+        모듈 기본 FRAME)를 기준으로 한다 — 비기본 프레임 크기의 소스가 조용히
+        시간 계산을 어긋내지 않도록.
+        """
+        from collections import deque
+
+        frame_size = getattr(source, "frame", FRAME)
         threshold = max(getattr(source, "noise_floor", 0.0) * self.silence_ratio,
                         self.min_start_rms)
 
@@ -132,36 +140,53 @@ class STTModule:
         else:
             started = False
 
-        # 1) 말 시작 대기(prefix 가 있으면 건너뜀)
+        # 1) 말 시작 대기(prefix 가 있으면 건너뜀). own-stream 과 동일하게 직전
+        #    pre_roll 초를 링버퍼에 담아 말 시작 직전 소리부터 포함한다(첫 음절 안 잘리게).
         if not started:
+            pre_roll_frames = max(1, int(self.pre_roll * SAMPLE_RATE / frame_size))
+            ring: deque = deque(maxlen=pre_roll_frames)
             waited = 0
-            max_wait = int(self.start_timeout * SAMPLE_RATE / FRAME)
+            max_wait = int(self.start_timeout * SAMPLE_RATE / frame_size)
+            max_seen = 0.0  # 대기 중 관측된 최대 RMS(입력없음 진단용)
             while waited < max_wait:
                 waited += 1
                 try:
                     block = source.read()
                 except StopIteration:
                     return np.zeros(0, dtype=np.float32)
-                if _rms(block) >= threshold:
+                r = _rms(block)
+                if r > max_seen:
+                    max_seen = r
+                if r >= threshold:
+                    collected = list(ring)  # 말 시작 직전 소리부터 포함
                     collected.append(block)
                     started = True
                     break
+                ring.append(block)
             if not started:
                 if verbose:
-                    print("  (입력 없음 — 종료)")
+                    print(f"  (입력 없음 — 종료. 최대 관측 RMS={max_seen:.4f}, 시작 임계값={threshold:.4f})")
                 return np.zeros(0, dtype=np.float32)
 
         # 2) 무음이 이어지면 종료. 임계는 절대값과 '직전 최고음량의 12%' 중 큰 값.
-        quiet_needed = max(1, int(self.silence_duration * SAMPLE_RATE / FRAME))
-        max_frames = int(self.max_duration * SAMPLE_RATE / FRAME)
+        #    quiet 감쇠는 own-stream 과 같은 시간폭(약 80ms 프레임 1개)이 되도록 -1
+        #    (own-stream 은 30ms 프레임이라 -3 = 90ms). -3 을 그대로 쓰면 블립 하나가
+        #    지우는 무음 예산이 2.67배로 뛰어, 말끝을 흘리는 아이의 녹음이 quiet
+        #    카운터로 못 끊기고 max_duration 캡까지 끌려간다(예전에 고쳤던 실패 재발).
+        quiet_needed = max(1, int(self.silence_duration * SAMPLE_RATE / frame_size))
+        # 샘플 수 기준 상한: prefix 가 여러 프레임을 하나의 배열로 합쳐 넘길 수 있어
+        # (예: AudioSource 의 preroll) 리스트 길이로 세면 캡이 밀린다.
+        max_samples = int(self.max_duration * SAMPLE_RATE)
+        total_samples = sum(int(np.asarray(b).size) for b in collected)
         quiet = 0
         speech_peak = threshold
-        while len(collected) < max_frames:
+        while total_samples < max_samples:
             try:
                 block = source.read()
             except StopIteration:
                 break
             collected.append(block)
+            total_samples += int(np.asarray(block).size)
             r = _rms(block)
             speech_peak = max(speech_peak, r)
             if r < max(threshold, speech_peak * 0.12):
@@ -169,7 +194,7 @@ class STTModule:
                 if quiet >= quiet_needed:
                     break
             else:
-                quiet = max(0, quiet - 3)
+                quiet = max(0, quiet - 1)
 
         if not collected:
             return np.zeros(0, dtype=np.float32)

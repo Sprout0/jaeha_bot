@@ -24,6 +24,24 @@ class FakeSession:
         return [np.zeros(self._out_shape, dtype=np.float32)]
 
 
+class ConstMelSession(FakeSession):
+    """멜 세션 대역 — 항상 지정된 0이 아닌 상수를 채운 배열을 돌려준다.
+
+    정규화(x/10+2)를 실제로 검증하려면 멜 출력이 0이면 안 된다(0/10+2=2 는
+    정규화를 통째로 지워도 우연히 값이 갈리지 않는 경우가 있어 스케일 오류를
+    못 잡는다). 30.0 을 쓰면 정규화 시 5.0, 정규화가 빠지면 30.0 으로
+    확실히 갈린다.
+    """
+
+    def __init__(self, in_name, out_shape, value):
+        super().__init__(in_name, out_shape)
+        self._value = value
+
+    def run(self, _out, feed):
+        self.calls.append(feed[self._in])
+        return [np.full(self._out_shape, self._value, dtype=np.float32)]
+
+
 def make_detector(score=0.0, **kw):
     """ONNX 로드를 건너뛰고 가짜 세션을 꽂은 감지기."""
     d = OnnxWakeDetector.__new__(OnnxWakeDetector)
@@ -81,6 +99,28 @@ def test_melspectrogram_gets_int16_scaled_float():
     assert fed.dtype == np.float32
     assert abs(float(np.max(np.abs(fed))) - 32767.0) < 1.0, \
         f"int16 범위로 스케일되지 않음: max={np.max(np.abs(fed))}"
+
+
+def test_mel_normalization_applied():
+    """멜 출력에 x/10+2 정규화가 실제로 적용되는지 확인(30.0 -> 5.0).
+
+    FakeSession 은 항상 0을 돌려주므로 다른 테스트들은 이 정규화 자체를
+    잡지 못한다(/10.0 + 2.0 을 지워도 통과함). 여기선 0이 아닌 알려진 값을
+    돌려주는 세션을 꽂고 링버퍼 d._mel 에 저장된 값을 직접 읽어 확인한다.
+    """
+    d = OnnxWakeDetector.__new__(OnnxWakeDetector)
+    d._mel_sess = ConstMelSession("x", (1, 1, 8, 32), 30.0)
+    d._emb_sess = FakeSession("x", (1, 1, 1, 96))
+    d._cls_sess = FakeSession("embeddings", (1, 1))
+    d._init_state(threshold=0.5, trigger_frames=2, continuation_window=0.5, source=None)
+
+    d.push(_frame())
+
+    assert len(d._mel) == 8, f"멜 프레임 8개가 링버퍼에 쌓여야 함: {len(d._mel)}"
+    for row in d._mel:
+        assert row.shape == (32,)
+        assert np.allclose(row, 5.0), \
+            f"멜 정규화(x/10+2) 값 불일치: {row[0]} (30.0 이 그대로면 정규화 누락)"
 
 
 def test_reset_clears_buffers():

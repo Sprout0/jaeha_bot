@@ -14,6 +14,7 @@ import time
 
 import numpy as np
 
+from .audio_source import FRAME
 from .text_norm import correct_stt, dedupe_repeats
 
 SAMPLE_RATE = 16000  # faster-whisper 표준 입력
@@ -104,11 +105,79 @@ class STTModule:
         return text, time.perf_counter() - t0
 
     # --------------------------------------------------------- 마이크 녹음(VAD)
-    def record_until_silence(self, verbose: bool = False) -> np.ndarray:
+    def record_until_silence(self, verbose: bool = False, *,
+                             source=None, prefix=None) -> np.ndarray:
         """말이 시작되면 녹음, silence_duration 만큼 조용해지면 종료.
+
+        source: AudioSource(공유 스트림). None 이면 예전처럼 자체 스트림을 연다.
+                호출어 감지기와 마이크를 나눠 쓸 때 넘긴다(장치가 하나뿐이라 필수).
+        prefix: 이미 확보한 앞부분 오디오(호출어 프리롤). 주면 '말 시작 대기'를
+                건너뛰고 바로 무음 판정으로 들어간다(한 숨에 말한 경우).
 
         반환: float32 numpy 오디오(모노, 16kHz). 말이 없으면 빈 배열.
         """
+        if source is None:
+            return self._record_own_stream(verbose)
+        return self._record_from_source(source, verbose, prefix)
+
+    def _record_from_source(self, source, verbose: bool, prefix) -> np.ndarray:
+        """공유 스트림에서 녹음. 소음 바닥은 source 가 이미 재 뒀다(재측정 안 함)."""
+        threshold = max(getattr(source, "noise_floor", 0.0) * self.silence_ratio,
+                        self.min_start_rms)
+
+        collected: list[np.ndarray] = []
+        if prefix is not None and np.asarray(prefix).size:
+            collected.append(np.asarray(prefix, dtype=np.float32).reshape(-1))
+            started = True
+        else:
+            started = False
+
+        # 1) 말 시작 대기(prefix 가 있으면 건너뜀)
+        if not started:
+            waited = 0
+            max_wait = int(self.start_timeout * SAMPLE_RATE / FRAME)
+            while waited < max_wait:
+                waited += 1
+                try:
+                    block = source.read()
+                except StopIteration:
+                    return np.zeros(0, dtype=np.float32)
+                if _rms(block) >= threshold:
+                    collected.append(block)
+                    started = True
+                    break
+            if not started:
+                if verbose:
+                    print("  (입력 없음 — 종료)")
+                return np.zeros(0, dtype=np.float32)
+
+        # 2) 무음이 이어지면 종료. 임계는 절대값과 '직전 최고음량의 12%' 중 큰 값.
+        quiet_needed = max(1, int(self.silence_duration * SAMPLE_RATE / FRAME))
+        max_frames = int(self.max_duration * SAMPLE_RATE / FRAME)
+        quiet = 0
+        speech_peak = threshold
+        while len(collected) < max_frames:
+            try:
+                block = source.read()
+            except StopIteration:
+                break
+            collected.append(block)
+            r = _rms(block)
+            speech_peak = max(speech_peak, r)
+            if r < max(threshold, speech_peak * 0.12):
+                quiet += 1
+                if quiet >= quiet_needed:
+                    break
+            else:
+                quiet = max(0, quiet - 3)
+
+        if not collected:
+            return np.zeros(0, dtype=np.float32)
+        audio = np.concatenate(collected).astype(np.float32).reshape(-1)
+        return _normalize(audio)
+
+    def _record_own_stream(self, verbose: bool = False) -> np.ndarray:
+        """자체 스트림을 열어 녹음한다(예전 동작)."""
         import sounddevice as sd
 
         from collections import deque
@@ -177,10 +246,10 @@ class STTModule:
         return _normalize(audio)
 
     # ------------------------------------------------- 녹음 + 인식 한 번에
-    def listen(self, verbose: bool = False) -> tuple[str, float]:
+    def listen(self, verbose: bool = False, *, source=None, prefix=None) -> tuple[str, float]:
         """마이크 -> (인식 텍스트, 인식 처리시간초). 말이 없으면 ('', 0.0)."""
         t0 = time.perf_counter()
-        audio = self.record_until_silence(verbose=verbose)
+        audio = self.record_until_silence(verbose=verbose, source=source, prefix=prefix)
         rec_dt = time.perf_counter() - t0
         if audio.size == 0:
             return "", 0.0

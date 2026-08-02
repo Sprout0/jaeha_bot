@@ -101,7 +101,17 @@ class SttWakeDetector:
         self.aliases = aliases or []
 
     def wait_for_wake(self, max_turns: int | None = None):
+        """호출어가 들릴 때까지 STT 로 듣는다.
+
+        감지기 교체 가능한 표면은 **인자 없는 호출**뿐이다(`wait_for_wake()`).
+        `max_turns` 는 테스트·진단 전용이며, `OnnxWakeDetector.wait_for_wake`의
+        `max_frames`와 단위가 다르다(턴 수 vs 프레임 수). 감지기 종류를 모르는
+        호출부(main.py)는 이 인자를 절대 넘기면 안 된다.
+        """
         from .wake_onnx import WakeResult
+
+        if self.stt is None:
+            raise RuntimeError("stt 가 없다 — STT 인스턴스를 넘겨야 한다")
 
         turns = 0
         while max_turns is None or turns < max_turns:
@@ -146,7 +156,8 @@ def make_detector(wcfg: dict, stt, source):
             source=source,
         )
     except Exception as e:
-        log.warning("ONNX 호출어 감지기 로드 실패(%s) → STT 감지기로 폴백", e)
+        log.warning("ONNX 호출어 감지기 로드 실패(%s: %s) → STT 감지기로 폴백",
+                     type(e).__name__, e, exc_info=True)
         return fallback
 
 

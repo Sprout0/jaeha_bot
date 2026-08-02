@@ -118,7 +118,10 @@ class OnnxWakeDetector:
     def wait_for_wake(self, max_frames: int | None = None) -> WakeResult | None:
         """호출어가 걸릴 때까지 프레임을 읽는다. 걸리면 WakeResult, 아니면 None.
 
-        max_frames 는 테스트·상위 타임아웃용. None 이면 걸릴 때까지 계속 듣는다.
+        감지기 교체 가능한 표면은 **인자 없는 호출**뿐이다(`wait_for_wake()`).
+        `max_frames` 는 테스트·진단 전용이며, `SttWakeDetector.wait_for_wake`의
+        `max_turns`와 단위가 다르다(프레임 수 vs 턴 수). 감지기 종류를 모르는
+        호출부(main.py)는 이 인자를 절대 넘기면 안 된다. None 이면 걸릴 때까지 계속 듣는다.
         """
         if self.source is None:
             raise RuntimeError("source 가 없다 — AudioSource 를 넘겨야 한다")

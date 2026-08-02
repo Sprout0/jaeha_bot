@@ -113,3 +113,66 @@ class OnnxWakeDetector:
         feats = np.stack(list(self._emb))[None, :, :].astype(np.float32)
         name = self._cls_sess.get_inputs()[0].name
         return float(np.squeeze(self._cls_sess.run(None, {name: feats})[0]))
+
+    # -------------------------------------------------------------- 대기 루프
+    def wait_for_wake(self, max_frames: int | None = None) -> WakeResult | None:
+        """호출어가 걸릴 때까지 프레임을 읽는다. 걸리면 WakeResult, 아니면 None.
+
+        max_frames 는 테스트·상위 타임아웃용. None 이면 걸릴 때까지 계속 듣는다.
+        """
+        if self.source is None:
+            raise RuntimeError("source 가 없다 — AudioSource 를 넘겨야 한다")
+
+        n = 0
+        best = 0.0
+        while max_frames is None or n < max_frames:
+            n += 1
+            score = self.push(self.source.read())
+            if score is None:      # 워밍업
+                continue
+            best = max(best, score)
+
+            if score < self.threshold:
+                self._hits = 0
+                # 진단: 임계값 튜닝 근거. 대기 중 주기적으로 최고 점수를 남긴다.
+                if n % 250 == 0:   # 250프레임 = 20초
+                    log.info("[대기] 최근 20초 최고 점수 %.3f (임계 %.2f)", best, self.threshold)
+                    best = 0.0
+                continue
+
+            self._hits += 1
+            if self._hits < self.trigger_frames:
+                continue
+
+            # ── 깨움 확정 ──
+            log.info("[호출] 점수 %.3f → 깨어남", score)
+            pre = self.source.preroll()          # 감지 직전 0.5초(호출어 포함)
+            tail, continued = self._observe_continuation()
+            self._hits = 0
+            if continued:
+                audio = np.concatenate([pre, tail]) if tail.size else pre
+            else:
+                # 부르고 기다리는 패턴 — 인사말을 하는 사이 낡으므로 버린다.
+                audio = np.zeros(0, dtype=np.float32)
+                self.source.clear_preroll()
+            return WakeResult(preroll=audio.astype(np.float32),
+                              continued=continued, score=score)
+        return None
+
+    def _observe_continuation(self) -> tuple[np.ndarray, bool]:
+        """감지 직후 잠깐 들어 말이 이어지는지 본다. (읽은 오디오, 이어짐 여부)."""
+        n = max(1, int(self.continuation_window * SAMPLE_RATE / FRAME))
+        frames = []
+        for _ in range(n):
+            try:
+                frames.append(self.source.read())
+            except StopIteration:
+                break
+        if not frames:
+            return np.zeros(0, dtype=np.float32), False
+        tail = np.concatenate(frames).astype(np.float32)
+        # 말소리 판정: STT VAD 와 같은 기준(소음 바닥의 2배, 하한 0.005)을 쓴다.
+        floor = getattr(self.source, "noise_floor", 0.0)
+        thr = max(floor * 2.0, 0.005)
+        loudest = max(float(np.sqrt(np.mean(np.square(f)))) for f in frames)
+        return tail, loudest >= thr

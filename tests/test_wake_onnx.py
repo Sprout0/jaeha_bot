@@ -136,3 +136,77 @@ def test_wake_result_fields():
     assert r.preroll.size == 4
     assert r.continued is True
     assert r.score == pytest.approx(0.8)
+
+
+# ── wait_for_wake / 인사말 분기 ────────────────────────────────────────────
+
+class ScriptedSource:
+    """AudioSource 흉내 — 정해진 프레임을 돌려주고 프리롤을 흉내낸다."""
+
+    def __init__(self, frames, preroll_frames=6):
+        self._frames = list(frames)
+        self._i = 0
+        self._ring = []
+        self.preroll_frames = preroll_frames
+        self.noise_floor = 0.001
+
+    def read(self):
+        if self._i >= len(self._frames):
+            raise StopIteration("프레임 소진")
+        f = self._frames[self._i]
+        self._i += 1
+        self._ring.append(f)
+        self._ring = self._ring[-self.preroll_frames:]
+        return f
+
+    def preroll(self):
+        if not self._ring:
+            return np.zeros(0, dtype=np.float32)
+        return np.concatenate(self._ring).astype(np.float32)
+
+    def clear_preroll(self):
+        self._ring = []
+
+
+def test_requires_trigger_frames_consecutive_hits():
+    """단발 점수 튐으로는 안 깨어난다."""
+    src = ScriptedSource([_frame()] * 200)
+    d = make_detector(score=0.9, trigger_frames=2, source=src)
+    r = d.wait_for_wake(max_frames=150)
+    assert r is not None, "연속 2프레임이면 깨어나야 함"
+
+
+def test_below_threshold_never_wakes():
+    src = ScriptedSource([_frame()] * 200)
+    d = make_detector(score=0.1, threshold=0.5, source=src)
+    assert d.wait_for_wake(max_frames=150) is None
+
+
+def test_continued_true_when_speech_follows():
+    """감지 직후 큰 소리가 이어지면 continued=True 이고 오디오가 실려온다."""
+    loud = np.full(FRAME, 0.5, dtype=np.float32)
+    src = ScriptedSource([loud] * 200)
+    d = make_detector(score=0.9, source=src)
+    r = d.wait_for_wake(max_frames=150)
+    assert r is not None
+    assert r.continued is True
+    assert r.preroll.size > 0, "한 숨 패턴이면 오디오를 넘겨야 함"
+
+
+def test_continued_false_when_silence_follows():
+    """부르고 멈추면 continued=False 이고 프리롤은 버린다(인사말 경로)."""
+    # 참고: 이 테스트의 가짜 분류기는 프레임 내용과 무관하게 항상 score=0.9 를
+    # 반환하므로, 워밍업(25프레임) + trigger_frames(2) 로 깨움은 항상 26번째
+    # read() 에서 확정되고, 이어서 continuation_window(기본 0.5초=6프레임)를
+    # 더 읽는다. "부르는 소리"가 그 32프레임을 넘어서까지 이어지면 이어짐
+    # 관찰 구간이 여전히 큰 소리를 보게 되어 의도한 시나리오(부르고 멈춤)를
+    # 검증하지 못한다. 그래서 큰 소리 구간을 트리거 지점(26프레임)보다
+    # 확실히 짧게(15프레임) 잡아, 이어짐 관찰 구간이 조용한 구간에 들어가게 한다.
+    loud = np.full(FRAME, 0.5, dtype=np.float32)
+    quiet = np.zeros(FRAME, dtype=np.float32)
+    src = ScriptedSource([loud] * 15 + [quiet] * 185)
+    d = make_detector(score=0.9, source=src)
+    r = d.wait_for_wake(max_frames=150)
+    assert r is not None
+    assert r.continued is False
+    assert r.preroll.size == 0, "인사말 경로에선 프리롤을 버려야 함"

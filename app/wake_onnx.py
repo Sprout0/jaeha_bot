@@ -6,8 +6,8 @@
 
 체인(openWakeWord 규격, livekit-wakeword 호환):
     80ms 프레임(1280샘플)
-      -> melspectrogram.onnx -> 멜 8프레임 -> [x/10+2] -> 멜 링버퍼(76)
-      -> embedding_model.onnx(창 76, 보폭 8) -> 임베딩(96) -> 임베딩 링버퍼(16)
+      -> melspectrogram.onnx -> 멜 5프레임 -> [x/10+2] -> 멜 링버퍼(76)
+      -> embedding_model.onnx(창 76, 보폭 5) -> 임베딩(96) -> 임베딩 링버퍼(16)
       -> <호출어>.onnx -> score
 
 조용한 실패 지점 2가지(예외가 안 나고 점수만 망가진다):
@@ -29,7 +29,10 @@ log = logging.getLogger("jaeha_bot.wake_onnx")
 
 MEL_WINDOW = 76     # 임베딩 하나가 보는 멜 프레임 수
 MEL_BANDS = 32
-MEL_PER_FRAME = 8   # 1280샘플이 만드는 멜 프레임 수 = 보폭과 같음
+MEL_PER_FRAME = 5   # 1280샘플이 만드는 멜 프레임 수 = 보폭과 같음.
+                    # 실측(2026-08-02, livekit-wakeword melspectrogram.onnx): 5행.
+                    # openWakeWord 규격 문서의 8이 아니다(hop 길이가 다름) — 실측값을 쓴다.
+                    # push() 는 나온 행 수만큼 넣으므로 동작엔 영향 없고, WARMUP_FRAMES 계산에만 쓰인다.
 EMB_WINDOW = 16     # 분류기가 보는 임베딩 개수
 EMB_DIM = 96
 INT16_SCALE = 32767.0

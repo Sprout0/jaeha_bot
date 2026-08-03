@@ -3,7 +3,11 @@ import numpy as np
 import pytest
 
 from app.audio_source import FRAME
-from app.wake_onnx import OnnxWakeDetector, WakeResult
+from app.wake_onnx import MEL_BANDS, MEL_PER_FRAME, OnnxWakeDetector, WakeResult
+
+# 가짜 멜 세션의 출력 shape. 실제 모델과 같은 행 수를 내야 워밍업 계산이 일치한다
+# (실측 2026-08-02: livekit-wakeword melspectrogram.onnx 는 push 당 5행).
+MEL_OUT = (1, 1, MEL_PER_FRAME, MEL_BANDS)
 
 
 class FakeSession:
@@ -51,7 +55,7 @@ def make_detector(score=0.0, **kw):
     테스트들과 그대로 호환된다.
     """
     d = OnnxWakeDetector.__new__(OnnxWakeDetector)
-    d._mel_sess = FakeSession("x", (1, 1, 8, 32))
+    d._mel_sess = FakeSession("x", MEL_OUT)
     d._emb_sess = FakeSession("x", (1, 1, 1, 96))
 
     if isinstance(score, (int, float)):
@@ -89,8 +93,8 @@ def _frame(v=0.1):
 
 def test_warmup_returns_none_until_buffers_fill():
     d = make_detector()
-    # 멜 76프레임 채우는 데 76/8 = 9.5 -> 10 프레임,
-    # 그 뒤 임베딩 16개 채우는 데 15 프레임 더 = 총 25 프레임째에 첫 점수.
+    # 멜 76프레임 채우는 데 ceil(76/MEL_PER_FRAME) 프레임, 그 뒤 임베딩 16개 채우는 데
+    # 15 프레임 더 = WARMUP_FRAMES 프레임째에 첫 점수(실측 5행 기준 16+15=31).
     scores = [d.push(_frame()) for _ in range(OnnxWakeDetector.WARMUP_FRAMES - 1)]
     assert all(s is None for s in scores), "워밍업 중엔 점수를 내면 안 됨"
 
@@ -131,16 +135,17 @@ def test_mel_normalization_applied():
     돌려주는 세션을 꽂고 링버퍼 d._mel 에 저장된 값을 직접 읽어 확인한다.
     """
     d = OnnxWakeDetector.__new__(OnnxWakeDetector)
-    d._mel_sess = ConstMelSession("x", (1, 1, 8, 32), 30.0)
+    d._mel_sess = ConstMelSession("x", MEL_OUT, 30.0)
     d._emb_sess = FakeSession("x", (1, 1, 1, 96))
     d._cls_sess = FakeSession("embeddings", (1, 1))
     d._init_state(threshold=0.5, trigger_frames=2, continuation_window=0.5, source=None)
 
     d.push(_frame())
 
-    assert len(d._mel) == 8, f"멜 프레임 8개가 링버퍼에 쌓여야 함: {len(d._mel)}"
+    assert len(d._mel) == MEL_PER_FRAME, \
+        f"멜 프레임 {MEL_PER_FRAME}개가 링버퍼에 쌓여야 함: {len(d._mel)}"
     for row in d._mel:
-        assert row.shape == (32,)
+        assert row.shape == (MEL_BANDS,)
         assert np.allclose(row, 5.0), \
             f"멜 정규화(x/10+2) 값 불일치: {row[0]} (30.0 이 그대로면 정규화 누락)"
 
@@ -221,7 +226,7 @@ def test_non_consecutive_hits_do_not_wake_but_consecutive_hits_do():
     scores = [0.9, 0.1, 0.9, 0.9]   # 워밍업 이후: hit, miss(리셋), hit, hit(트리거)
     d = make_detector(score=scores, trigger_frames=2, threshold=0.5, source=src)
 
-    # 워밍업(25) + hit,miss,hit(3) = 28프레임까지만 허용. 이 구간엔 연속 2회가
+    # 워밍업 + hit,miss,hit(3) 직전까지만 허용. 이 구간엔 연속 2회가
     # 없으므로(hit-miss-hit) 절대 깨면 안 된다.
     r_early = d.wait_for_wake(max_frames=OnnxWakeDetector.WARMUP_FRAMES + 2)
     assert r_early is None, "hit-miss-hit 은 연속이 아니므로 깨면 안 됨"

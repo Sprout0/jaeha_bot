@@ -15,7 +15,8 @@ from .vision_module import VisionDetector
 from .agent import LLMAgent
 from .education_modes import GameManager
 from .metrics import MetricsLogger
-from .wake import is_wake_word, is_sleep_command, best_wake_ratio
+from .wake import is_sleep_command, make_detector
+from .audio_source import AudioSource
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
@@ -74,6 +75,19 @@ def _setup_audio_device() -> None:
                     dev, "입력" if din is None else "출력")
 
 
+def _to_standby(detector, source) -> None:
+    """대화 → 대기로 돌아갈 때의 뒷정리.
+
+    감지기 링버퍼를 비우지 않으면 대화 중 쌓인 임베딩이 남아 대기 첫 순간에
+    엉뚱한 점수가 나온다. 입력 버퍼도 비워 방금 한 인사말(SLEEP_MSG)을
+    호출어로 오인하지 않게 한다.
+    """
+    if detector is not None:
+        detector.reset()
+    if source is not None:
+        source.drain()
+
+
 def build_pipeline():
     stt = STTModule(**settings.models.get("stt", {}))
     tts = TTSModule(**settings.models.get("tts", {}))
@@ -110,45 +124,68 @@ def main() -> None:
     wcfg = settings.models.get("wake", {}) or {}
     wake_enabled = wcfg.get("enabled", True)
     wake_word = wcfg.get("word", "재하봇")
-    wake_threshold = float(wcfg.get("threshold", 0.6))
-    wake_aliases = wcfg.get("aliases", [])
     sleep_timeout = float(wcfg.get("sleep_timeout", 30))
     sleep_words = wcfg.get("sleep_words")
 
+    # 감지기 준비. ONNX 감지기는 마이크 스트림을 직접 읽으므로 공유 AudioSource 가 필요하다.
+    # STT 감지기(폴백)는 stt.listen() 을 쓰므로 공유 스트림이 없어야 한다 — 둘 다 열면
+    # 젯슨 ReSpeaker 처럼 장치가 하나뿐인 환경에서 InputStream 충돌이 난다.
+    source = None
+    detector = None
+    if wake_enabled:
+        source = AudioSource(preroll=float(wcfg.get("preroll", 0.5))).open()
+        detector = make_detector(wcfg, stt, source)
+        # ONNX 감지기만 .source 를 갖는다. 폴백(STT)이면 공유 스트림을 닫아 충돌을 막는다.
+        if getattr(detector, "source", None) is None:
+            source.close()
+            source = None
+            log.info("STT 감지기 사용 — 공유 스트림 해제")
+
     # 시작: 트리거 모드면 '대기'(부를 때까지 조용), 아니면 바로 인사하고 '대화'.
     if wake_enabled:
-        log.info("트리거 모드: '%s' 라고 부르면 깨어납니다 (임계값 %.2f)", wake_word, wake_threshold)
+        log.info("트리거 모드: '%s' 라고 부르면 깨어납니다 (감지기 %s)",
+                 wake_word, type(detector).__name__)
         tts.speak(READY_ASLEEP)
         awake = False
     else:
         tts.speak(GREETING)
         awake = True
     time.sleep(ECHO_COOLDOWN)
+    if source is not None:
+        source.drain()      # 인사말이 마이크에 남은 것 버리기
     last_active = time.time()
+    pending_prefix = None   # 호출어 직후 이어진 발화(있으면 STT 에 그대로 넘긴다)
 
     try:
         while True:
-            # 듣기(항상): listen 전체시간 - 인식연산(tr_dt) = 녹음대기.
-            t_listen = time.perf_counter()
-            text, tr_dt = stt.listen()
-            stt_wait = max(0.0, (time.perf_counter() - t_listen) - tr_dt)
-
             # ── 대기 모드: 호출어만 기다린다(LLM·TTS·놀이 안 함 = 자원 절약). ──
-            # STT 는 사람이 말할 때만 도니(VAD), 조용하면 비용 없음. 비싼 LLM·TTS 를 막는 게 핵심.
-            if not awake:
-                if text and is_wake_word(text, wake_word, wake_threshold, wake_aliases):
-                    log.info("[호출] %s → 깨어남", text)
-                    awake = True
-                    last_active = time.time()
+            # 감지기가 깨어날 때까지 블로킹한다. 인자 없는 호출만 쓴다(감지기 종류에
+            # 따라 인자 단위가 달라서 — wake.py 의 인터페이스 주석 참고).
+            if wake_enabled and not awake:
+                result = detector.wait_for_wake()
+                if result is None:          # 감지기가 스스로 끝냄(테스트/진단 경로)
+                    continue
+                awake = True
+                last_active = time.time()
+                if result.continued and result.preroll.size:
+                    # '재하봇 이거 뭐야?' 처럼 부르고 바로 이어 말한 경우 —
+                    # 인사말을 하면 뒷말을 놓치므로 생략하고 그 오디오를 STT 로 넘긴다.
+                    log.info("호출 직후 발화 이어짐 → 인사말 생략")
+                    pending_prefix = result.preroll
+                else:
+                    # 부르고 기다리는 경우 — 인사하고 평소처럼 듣는다.
                     tts.speak(WAKE_GREETING)
                     time.sleep(ECHO_COOLDOWN)
-                elif text:
-                    # 안 깨움: 뭐라고 들렸고 얼마나 가까웠는지 남긴다(임계값·별칭 튜닝용).
-                    # 여기 자주 뜨는 문자열을 config wake.aliases 에 넣으면 그 발음도 깨운다.
-                    log.info("[대기] 안 깨움: %r (거리 %.2f / 임계 %.2f)",
-                             text, best_wake_ratio(text, wake_word), wake_threshold)
-                # 호출어가 아니면 조용히 무시하고 계속 듣는다.
-                continue
+                    if source is not None:
+                        source.drain()
+                    pending_prefix = None
+
+            # 듣기: listen 전체시간 - 인식연산(tr_dt) = 녹음대기.
+            # source 가 있으면 감지기와 같은 스트림을 쓴다(장치 하나만 열기 위해).
+            t_listen = time.perf_counter()
+            text, tr_dt = stt.listen(source=source, prefix=pending_prefix)
+            pending_prefix = None
+            stt_wait = max(0.0, (time.perf_counter() - t_listen) - tr_dt)
 
             # ── 대화 모드 ──
             # 무음이 이어지면 sleep_timeout 초 뒤 다시 대기로 잠든다.
@@ -158,6 +195,7 @@ def main() -> None:
                     awake = False
                     tts.speak(SLEEP_MSG)
                     time.sleep(ECHO_COOLDOWN)
+                    _to_standby(detector, source)
                 continue
             log.info("[아이] %s", text)
 
@@ -167,6 +205,7 @@ def main() -> None:
                 awake = False
                 tts.speak(SLEEP_MSG)
                 time.sleep(ECHO_COOLDOWN)
+                _to_standby(detector, source)
                 continue
 
             # 생각: (a)놀이 진행중이면 상태머신 처리 (b)아니면 놀이 시작 트리거 (c)둘 다 아니면 LLM.
@@ -190,10 +229,14 @@ def main() -> None:
                                 think_s=think_s, think_kind=kind,
                                 tts_s=tts_s, reply=reply)
             time.sleep(ECHO_COOLDOWN)
+            if source is not None:
+                source.drain()   # 답하는 동안 쌓인 자기 목소리 버리기
     except KeyboardInterrupt:
         log.info("종료 신호(Ctrl+C) 수신")
     finally:
         metrics.summary()  # 세션 요약(중앙값/p90/최대메모리) 출력·기록
+        if source is not None:
+            source.close()
 
     # 마무리 인사 후 깔끔하게 종료.
     try:

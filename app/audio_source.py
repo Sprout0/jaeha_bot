@@ -89,6 +89,28 @@ class AudioSource:
     def clear_preroll(self) -> None:
         self._ring.clear()
 
+    # ----------------------------------------------------------------- 비우기
+    def drain(self) -> int:
+        """지금까지 쌓인 입력 버퍼를 버린다. 버린 샘플 수를 돌려준다.
+
+        공유 스트림이라 봇이 말하거나(TTS) 생각하는(LLM) 동안에도 마이크는 계속
+        녹음돼 버퍼에 쌓인다. 그대로 두면 다음 읽기에서 **봇 자기 목소리**나 몇 초 전
+        잡음을 먼저 읽어 오인식한다(자체 스트림 방식일 땐 매번 새로 열어 없던 문제).
+        그래서 말한 직후 에코 쿨다운이 끝나면 이걸 불러 버퍼를 비운다.
+        프리롤도 같이 비운다 — 낡은 오디오를 호출어 프리롤로 쓰면 안 되기 때문.
+        """
+        if self._stream is None:
+            return 0
+        dropped = 0
+        # read_available 은 지금 당장 읽을 수 있는 프레임 수. 0 이 될 때까지 버린다.
+        while getattr(self._stream, "read_available", 0) >= self.frame:
+            self._stream.read(self.frame)
+            dropped += self.frame
+        self._ring.clear()
+        if dropped:
+            log.debug("입력 버퍼 %d샘플(%.2fs) 버림", dropped, dropped / self.samplerate)
+        return dropped
+
 
 def _rms(block: np.ndarray) -> float:
     return float(np.sqrt(np.mean(np.square(block))))

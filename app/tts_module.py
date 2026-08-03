@@ -16,6 +16,7 @@ REPL 테스트: python -m app.tts_module
 from __future__ import annotations
 
 import contextlib
+import logging
 import os
 import queue
 import re
@@ -23,6 +24,8 @@ import threading
 from pathlib import Path
 
 import numpy as np
+
+log = logging.getLogger("jaeha_bot.tts")
 
 # 문장 경계(마침표/물음표/느낌표 등). 문장 스트리밍용 분리에 사용.
 _SENT_SPLIT = re.compile(r"(?<=[.!?。！？…])\s+|\n+")
@@ -61,6 +64,8 @@ class TTSModule:
         speed: float = 1.0,         # 0.7~2.0. 유아용은 1.0 또는 약간 느리게(0.9)
         total_steps: int = 8,       # 높을수록 품질↑/느려짐
         threads: int = 4,           # onnxruntime intra-op 스레드. 실측 최적=4(6/8은 경합으로↓)
+        providers: list[str] | None = None,  # onnxruntime 실행 프로바이더(GPU 가속).
+                                    # None 이면 supertonic 기본값(CPU). 젯슨은 config 에서 지정.
         seed: int | None = 1234,    # diffusion 초기 노이즈 시드 고정 → 말투·속도 일정.
                                     # None 이면 매번 랜덤(말투 들쭉날쭉). 값 바꾸면 목소리 캐릭터가 달라짐.
         gap: float = 0.2,           # 문장 사이 삽입 무음(초). 앞뒤 pad 합쳐 총 간격≈0.3s
@@ -72,6 +77,7 @@ class TTSModule:
         self.speed = speed
         self.total_steps = total_steps
         self.threads = threads
+        self.providers = list(providers) if providers else None
         self.seed = seed
         self.gap = gap
         self._tts = None
@@ -85,13 +91,53 @@ class TTSModule:
             return
         from supertonic import TTS
 
+        self._apply_providers()
         self._tts = TTS(
             model=self.model,
             auto_download=True,
             intra_op_num_threads=self.threads,
         )
+        self._report_providers()
         self._style = self._resolve_style(self.voice)
         self.sample_rate = int(self._tts.sample_rate)
+
+    # ------------------------------------------------- 실행 프로바이더(GPU 가속)
+    def _apply_providers(self) -> None:
+        """onnxruntime 실행 프로바이더를 갈아끼운다. TTS 생성 '전에' 불러야 한다.
+
+        supertonic 은 providers 인자를 받지 않고 config.DEFAULT_ONNX_PROVIDERS
+        (=["CPUExecutionProvider"] 하나)를 쓴다.
+
+        🔴 함정: loader.py 가 `from .config import DEFAULT_ONNX_PROVIDERS` 로 이름을
+        **바인딩**해두기 때문에 supertonic.config 쪽을 고치면 조용히 무시된다.
+        반드시 supertonic.loader 의 이름을 덮어써야 한다.
+
+        loader 는 요청 목록을 ort.get_available_providers() 와 교집합하고 비면 CPU 로
+        조용히 폴백한다 — 예외가 없으므로 _report_providers() 로 결과를 확인한다.
+        """
+        if not self.providers:
+            return
+        from supertonic import loader
+
+        loader.DEFAULT_ONNX_PROVIDERS = list(self.providers)
+
+    def _report_providers(self) -> None:
+        """실제로 무엇이 붙었는지 확인해 남긴다(요청과 결과가 다를 수 있다)."""
+        if not self.providers:
+            return
+        try:
+            import onnxruntime as ort
+
+            got = self._tts.model.vocoder_ort.get_providers()
+        except Exception as e:  # 버전이 올라 내부 구조가 바뀌어도 합성은 계속돼야 한다
+            log.warning("프로바이더 확인 실패(%s: %s) — 합성은 계속", type(e).__name__, e)
+            return
+        log.info("onnxruntime 프로바이더: %s", got)
+        # 요청했고 이 기기에 있는데도 안 붙었다면 진짜 문제다(위 함정에 빠진 경우).
+        available = set(ort.get_available_providers())
+        missed = [p for p in self.providers if p in available and p not in got]
+        if missed:
+            log.warning("요청한 프로바이더가 붙지 않음: %s — CPU 로 동작 중", missed)
 
     # ---------------------------------------------------- 보이스 스타일 해석(+블렌딩)
     def _resolve_style(self, voice: str):

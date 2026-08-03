@@ -29,6 +29,10 @@ tts:
   total_steps: 12     # 확산 스텝↑ = 음색 다듬음. Jetson 속도 위해 16->12(살짝↓, 음질 미세차).
                       # 더 빠르게 필요하면 8(품질 더↓), 음질 최우선이면 16.
   threads: 4          # onnxruntime intra-op 스레드. 실측 최적(6/8은 경합으로 느려짐)
+  # onnxruntime 실행 프로바이더. supertonic 기본값은 CPU 하나뿐이라 젯슨 GPU 가 놀았다.
+  # 노트북엔 CUDA 가 없으므로 자동으로 CPU 로 내려간다(경고 없음) — 같은 파일을 공유해도 안전.
+  # TensorRT 는 첫 실행 때 엔진을 빌드하느라 콜드 스타트가 훨씬 길어져 일단 제외.
+  providers: ["CUDAExecutionProvider", "CPUExecutionProvider"]
   seed: 777           # diffusion 노이즈 시드 고정 -> 말투·속도 일정. F1/777 이 밝은 톤이라 채택(청취 비교).
                       # 캐릭터 바꾸려면 다른 정수(1234/7/42/2024 등). null 이면 매번 랜덤.
   gap: 0.2            # 문장 사이 무음(초). 앞뒤 pad 합쳐 총 간격≈0.3s(TTS 표준). 붙이려면 0.15, 띄우려면 0.3

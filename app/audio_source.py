@@ -6,7 +6,7 @@
      '귀 먹은 구간' 이 생겨 아이 말 첫머리가 잘린다. 상용 스피커(Alexa)도 스트림을
      닫지 않고 프리롤 버퍼를 둔다. [[jaeha-bot-progress]]
 
-마이크 접점은 _read_frame() 하나뿐이라, 테스트는 이것만 오버라이드하면 된다.
+마이크 접점은 _read_frame()·_available() 둘뿐이라, 테스트는 이것만 오버라이드하면 된다.
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ import numpy as np
 log = logging.getLogger("jaeha_bot.audio")
 
 SAMPLE_RATE = 16000  # faster-whisper·openWakeWord 공통
-FRAME = 1280         # 80ms @16kHz — openWakeWord 규격(멜 8프레임 = 보폭 1칸)
+FRAME = 1280         # 80ms @16kHz — openWakeWord 규격(멜 한 묶음 = 임베딩 보폭 1칸)
 
 
 class AudioSource:
@@ -69,9 +69,19 @@ class AudioSource:
 
     # ------------------------------------------------------------- 프레임 공급
     def _read_frame(self) -> np.ndarray:
-        """마이크와 닿는 유일한 지점. 테스트는 여기만 오버라이드한다."""
+        """마이크와 닿는 지점 1 — 프레임 하나를 읽는다. 테스트는 여기를 오버라이드한다."""
         block, _ = self._stream.read(self.frame)
         return np.asarray(block, dtype=np.float32).reshape(-1)
+
+    def _available(self) -> int:
+        """마이크와 닿는 지점 2 — 지금 당장 읽을 수 있는 샘플 수(스트림 없으면 0).
+
+        drain() 이 '버퍼가 빌 때까지' 를 판단하는 유일한 근거다. 이걸 심으로 빼둬야
+        drain() 도 _read_frame() 만 쓰게 되어(=마이크 직접 호출 없음) 테스트가 된다.
+        """
+        if self._stream is None:
+            return 0
+        return int(getattr(self._stream, "read_available", 0))
 
     def read(self) -> np.ndarray:
         """프레임 하나를 읽고 프리롤 링버퍼에도 넣는다."""
@@ -99,12 +109,10 @@ class AudioSource:
         그래서 말한 직후 에코 쿨다운이 끝나면 이걸 불러 버퍼를 비운다.
         프리롤도 같이 비운다 — 낡은 오디오를 호출어 프리롤로 쓰면 안 되기 때문.
         """
-        if self._stream is None:
-            return 0
         dropped = 0
-        # read_available 은 지금 당장 읽을 수 있는 프레임 수. 0 이 될 때까지 버린다.
-        while getattr(self._stream, "read_available", 0) >= self.frame:
-            self._stream.read(self.frame)
+        # 한 프레임도 못 채울 만큼 남을 때까지 읽어서 버린다(최대 79ms 는 남을 수 있다).
+        while self._available() >= self.frame:
+            self._read_frame()
             dropped += self.frame
         self._ring.clear()
         if dropped:

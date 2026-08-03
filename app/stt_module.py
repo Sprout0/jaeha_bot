@@ -27,6 +27,9 @@ class STTModule:
         device: str = "cpu",
         compute_type: str = "int8",
         *,
+        cpu_threads: int | None = None,  # ctranslate2 디코딩 스레드. None 이면 라이브러리 기본(4).
+                                         # 젯슨은 6코어인데 기본 4만 써서 놀았다 — 실측 4.56s -> 3.84s.
+                                         # 디코딩 방식이 아니라 병렬도만 바꾸므로 인식 품질은 불변.
         language: str = "ko",
         # --- VAD(에너지 기반) 파라미터 ---
         silence_ratio: float = 2.0,     # 소음 대비 몇 배 넘으면 '말'로 볼지
@@ -46,6 +49,7 @@ class STTModule:
         self.model_size = model_size
         self.device = device
         self.compute_type = compute_type
+        self.cpu_threads = cpu_threads
         self.language = language
         self.silence_ratio = silence_ratio
         self.min_start_rms = min_start_rms
@@ -62,8 +66,12 @@ class STTModule:
     def load(self):
         if self._model is None:
             from faster_whisper import WhisperModel
+            kw = {}
+            if self.cpu_threads:
+                kw["cpu_threads"] = self.cpu_threads
             self._model = WhisperModel(
-                self.model_size, device=self.device, compute_type=self.compute_type
+                self.model_size, device=self.device, compute_type=self.compute_type,
+                **kw,
             )
         return self._model
 

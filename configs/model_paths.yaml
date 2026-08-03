@@ -4,8 +4,12 @@ stt:
   # 순정으로 되돌리려면 아래를 다시 small 로 바꾸면 됨.
   model_size: models/whisper-small-ko-ct2
   # model_size: small     # 순정 다국어(강건·안정) — 되돌릴 때 이 줄로
-  device: cpu             # Jetson GPU 사용 시 cuda
+  device: cpu             # ⚠️ cuda 는 아직 못 씀 — 설치된 ctranslate2 4.8.0 이 CPU 전용 빌드다
+                          # (get_cuda_device_count()==0, 2026-08-03 젯슨 확인). 소스 빌드해야 GPU 가능.
   compute_type: int8      # 양자화로 메모리 절약
+  cpu_threads: 6          # 젯슨 6코어 전부 사용. 기본값(4)이면 2코어가 논다.
+                          # 실측(2026-08-03, 1.6초 오디오): 4.56s -> 3.84s. 인식 결과는 동일.
+                          # PC 코어가 적으면 줄일 것(초과 지정은 경합으로 오히려 느려짐).
   silence_duration: 1.2   # 말 끝난 뒤 이만큼 조용하면 종료(초).
                           # 실아동 음성(AI-Hub 108, 9세 600개) VAD 분석(2026-07-23): 문장 내부
                           # 멈칫이 1.0초면 9세도 3.7% 잘림, 1.2초면 2.2%. 3세는 더 오래 멈칫하니
@@ -106,4 +110,8 @@ llm:
   top_p: 0.9                      # 상위 누적확률 컷(또렷한 답)
   top_k: 40
   min_p: 0.05                     # 저확률 토큰 컷
-  max_sentences: 2                # 완결문장 최대 개수(하드캡). 초과 시 사족 제거(agent._clamp_sentences)
+  max_sentences: 1                # 완결문장 최대 개수(하드캡). 초과 시 사족 제거(agent._clamp_sentences)
+                                  # 2 였을 때 실기 답변이 47~57자 -> 재생에만 8~10초가 걸렸다(2026-08-03).
+                                  # 아이가 기다리는 시간이자 집중이 끊기는 지점이라 1문장으로 내림.
+                                  # ⚠️ max_tokens 는 80 유지 — 줄이면 첫 문장이 중간에 잘려 '뚝' 끊긴다
+                                  #    (_clamp_sentences 는 종결부호가 있어야 자르므로 잘린 문장은 못 거른다).

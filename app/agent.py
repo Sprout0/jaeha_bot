@@ -146,6 +146,10 @@ class LLMAgent:
         n_ctx: int = 2048,
         n_threads: int = 4,
         n_gpu_layers: int = 0,
+        seed: int | None = None,    # 샘플링 시드. None 이면 llama.cpp 가 매 실행 랜덤으로 잡는다
+                                    # → 같은 질문에 매번 다른 답, 설정 A/B 도 노이즈에 묻힌다.
+                                    # 고정하면 말투가 일정해지고 프롬프트 변경 효과를 비교할 수 있다
+                                    # (TTS 가 seed 를 고정한 것과 같은 이유).
         max_tokens: int = 128,
         temperature: float = 0.7,
         repeat_penalty: float = 1.1,
@@ -163,6 +167,7 @@ class LLMAgent:
         # 0=CPU 전용, -1=전체 레이어 GPU 오프로드. PC(llama-cpp CPU 빌드)에선 무시되어 무해,
         # Jetson(CUDA 빌드)에선 config 에서 -1 로 켜 GPU 가속. [[jaeha-bot-progress]]
         self.n_gpu_layers = n_gpu_layers
+        self.seed = seed
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.repeat_penalty = repeat_penalty
@@ -191,12 +196,14 @@ class LLMAgent:
                 )
             log.info("LLM 로딩 중: %s (n_ctx=%d, threads=%d, gpu_layers=%d)",
                      path, self.n_ctx, self.n_threads, self.n_gpu_layers)
+            kw = {} if self.seed is None else {"seed": self.seed}
             self._llm = Llama(
                 model_path=str(path),
                 n_ctx=self.n_ctx,
                 n_threads=self.n_threads,
                 n_gpu_layers=self.n_gpu_layers,
                 verbose=False,
+                **kw,
             )
             log.info("LLM 로딩 완료")
         return self._llm

@@ -1,5 +1,5 @@
 {
-  "_comment": "Vision Detector 가 인식할 객체 라벨 -> 한국어 매핑",
+  "_comment": "Vision Detector 가 인식할 객체 라벨 -> 한국어 매핑. 🚧 미사용 — 비전(STEP 9) 구현 전까지 어떤 코드도 읽지 않는다",
   "labels": {
     "ball": "공",
     "red_ball": "빨간 공",

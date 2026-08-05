@@ -22,10 +22,21 @@ echo "== 코드 밀어넣기 -> $JETSON:$REMOTE =="
 # 원격 폴더 없으면 만들어 둠(첫 전송 안전)
 ssh "$JETSON" "mkdir -p $REMOTE/app $REMOTE/configs $REMOTE/scenarios $REMOTE/data"
 
+# configs/local.yaml 은 '이 기계 전용' 덮어쓰기(노트북=cpu 등)라 절대 보내면 안 된다.
+# 보내는 순간 젯슨 STT 가 CPU 로 떨어져 GPU 화가 조용히 무효가 된다.
+SKIP="local.yaml"
+
 for d in $DIRS; do
   if [ -d "$d" ]; then
     echo "-- $d/ 전송..."
-    scp -r "$d"/* "$JETSON:$REMOTE/$d/"
+    for f in "$d"/*; do
+      [ -e "$f" ] || continue
+      if [ "$(basename "$f")" = "$SKIP" ]; then
+        echo "   (건너뜀: $f — 기계 전용 설정)"
+        continue
+      fi
+      scp -r "$f" "$JETSON:$REMOTE/$d/"
+    done
   fi
 done
 

@@ -7,7 +7,7 @@
 #
 # 사용법:
 #   bash push_model.sh models/exaone-3.5-2.4b-ft-v1.gguf   (파일)
-#   bash push_model.sh models/whisper-small-ko-ct2          (폴더도 가능)
+#   bash push_model.sh models/wake                          (폴더도 가능)
 #
 # 밀어넣은 뒤:
 #   1) configs/model_paths.yaml 의 경로를 이 새 모델로 교체(옛 경로는 주석으로 남겨 롤백)

@@ -1,4 +1,9 @@
 # 모델 경로 및 런타임 설정 (가이드 5: 8GB 안 안정 구동 우선)
+#
+# ⚠️ 이 파일은 **젯슨(운영) 기준값**이다. push_code.sh 가 configs/ 를 젯슨에 밀어넣어
+#    두 기계가 이 한 벌을 공유한다. 노트북처럼 값이 달라야 하는 기계는 이 파일을 고치지 말고
+#    `configs/local.yaml`(git 미추적·push 제외)에 바뀔 키만 적는다. 예시: configs/local.example.yaml
+#    여기를 직접 고치면 push 할 때 젯슨 설정이 함께 망가진다.
 stt:
   # 순정 다국어 whisper-small. 2026-08-04 ablation(AI-Hub #003, 9세 148발화)에서
   # 한국어 파인튜닝판(SungBeom/whisper-small-ko)보다 명백히 우수해 되돌림:
@@ -33,12 +38,14 @@ stt:
   model_size: large-v3-turbo
   # model_size: medium    # 3초 목표를 엄격히 지킬 때(2.97s). 그래도 CER 42% 감소
   # model_size: small     # 최속(0.61s). 지연이 최우선일 때
-  # model_size: models/whisper-small-ko-ct2   # (구) 한국어 파인튜닝 — 폭주 이력, 롤백용
+  # ⛔ 옛 한국어 파인튜닝판(models/whisper-small-ko-ct2)은 2026-08-05 에 삭제했다.
+  #    폭주의 원인이라 되돌릴 이유가 없다. 필요하면 HF 의 SungBeom/whisper-small-ko 를 다시 변환할 것.
   # ✅ 2026-08-05: ctranslate2 를 CUDA 로 소스빌드해 GPU 사용 가능해짐(cuda_device_count=1).
   #    젯슨 실측(같은 12발화): CPU 3.06s/발화 -> GPU 0.65s/발화 (RTF 0.686 -> 0.145, 4.7배).
   #    인식 결과는 CPU 와 글자 단위로 동일 — float16 로 인한 품질 손실 없음.
   #    빌드: ~/.local/ct2 에 설치, conda activate.d/zz_ld.sh 가 LD_LIBRARY_PATH 를 잡아준다.
-  #    ⚠️ 노트북(CPU 전용 휠)에서는 cuda 로 두면 죽는다. PC 에서 돌릴 땐 cpu 로 바꿀 것.
+  #    ⚠️ 노트북(CPU 전용 휠)에서는 cuda 로 두면 죽는다. → 이 줄을 고치지 말고
+  #       configs/local.yaml 에 `stt: {device: cpu}` 를 둘 것(기계별 오버레이).
   #    롤백: device 를 cpu 로. 휠 되돌리려면 ~/ct2_rollback/*.whl 을 force-reinstall.
   device: cuda
   compute_type: float16   # GPU 표준. int8 은 GPU 에서 이득이 적고 품질만 손해.
@@ -145,13 +152,15 @@ metrics:
   # STEP 7 계측: 턴마다 단계별 지연·메모리를 logs/metrics_YYYYMMDD.jsonl 에 기록.
   # 젯슨 이식 '전' PC baseline 확보용(이식 후 같은 로깅으로 비교). 오버헤드 무시 수준.
   enabled: true
-  tag: pc          # 환경 표시. 젯슨에선 jetson 으로 바꿔 같은 파일서 PC/젯슨 구분.
+  tag: jetson      # 환경 표시. 이 파일이 젯슨 기준이라 기본값도 jetson 이다.
+                   # 노트북은 configs/local.yaml 에서 pc 로 덮어쓴다.
+                   # (2026-08-05 이전에는 기본이 pc 라 젯슨 실기 로그가 전부 pc 로 찍혔다.)
 
 llm:
   # EXAONE-3.5-2.4B(한국어 특화, 반말 유리, 비상업 라이선스). llama-cpp 0.3.2 로드확인됨.
-  # 롤백: 아래를 models/llm-q4.gguf (Qwen2.5-1.5B) 로 되돌리면 됨.
   model_path: models/exaone-3.5-2.4b-q4.gguf
-  # model_path: models/llm-q4.gguf  # (구) Qwen2.5-1.5B — 롤백용
+  # ⛔ 옛 Qwen2.5-1.5B(models/llm-q4.gguf)는 2026-08-05 에 삭제했다(1.1GB).
+  #    존댓말 문제로 교체한 뒤 한 번도 되돌린 적이 없다. 필요하면 HF 에서 다시 받을 것.
   fewshot_path: data/finetune_seed.jsonl  # few-shot 예시 소스(=QLoRA 데이터셋 씨앗과 동일 파일).
                                           # few_shot=true 항목만 매 요청 system 다음에 주입해 반말·2문장 말투 고정.
   n_ctx: 2048

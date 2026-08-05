@@ -1,15 +1,16 @@
 """LLM Agent: 로컬 LLM(llama.cpp / GGUF)을 구동해 유아 대화 응답을 만든다.
 
 가이드 5: 작은 모델 + 짧은 프롬프트 + 양자화(INT4/8)로 8GB 안 안정 구동.
-STEP 3 목표는 '글자로 물어보면 글자로 답하기'. (STT/TTS 는 STEP 4~5 에서 연결)
+
+역할 분담: 이 파일은 **자유 대화**(respond)와 **놀이 대사 렌더링**(render)만 한다.
+놀이의 흐름·정답판정·트리거는 education_modes.py 의 상태머신이 갖는다 —
+2.4B 에 상태를 맡기면 깨지므로 **function-calling 스키마는 쓰지 않는다**(설계 확정).
 """
 from __future__ import annotations
 import json
 import logging
 import re
 from pathlib import Path
-
-from .agent_functions import FUNCTION_SCHEMAS
 
 log = logging.getLogger("jaeha_bot.agent")
 
@@ -161,7 +162,6 @@ class LLMAgent:
     ) -> None:
         self.model_path = model_path
         self.system_prompt = system_prompt
-        self.functions = FUNCTION_SCHEMAS
         self.n_ctx = n_ctx
         self.n_threads = n_threads
         # 0=CPU 전용, -1=전체 레이어 GPU 오프로드. PC(llama-cpp CPU 빌드)에선 무시되어 무해,

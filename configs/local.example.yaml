@@ -1,0 +1,31 @@
+# ============================================================================
+# configs/local.yaml 예시 — '이 기계에서만' 다른 값을 덮어쓴다.
+#
+# 왜 필요한가: model_paths.yaml 은 한 벌뿐인데(push_code.sh 가 configs/ 를 통째로
+# 젯슨에 밀어넣는다) 아래 항목들은 젯슨과 노트북이 **정반대**여야 한다.
+# 매번 손으로 고쳤다 되돌리면 실수로 cuda 인 채 push 하거나 pc 태그로 젯슨 로그를
+# 남기게 된다(실제로 겪었다).
+#
+# 사용법: 이 파일을 `configs/local.yaml` 로 복사하고 필요한 줄만 남긴다.
+#   - git 미추적(.gitignore)이고 push_code.sh 전송에서도 빠지므로 기계마다 다르게 둘 수 있다.
+#   - 섹션 단위가 아니라 '키 단위'로 덮어쓴다(deep merge) — 여기 안 적은 값은 운영값 그대로.
+#   - 젯슨에는 이 파일을 두지 않는다. model_paths.yaml 자체가 젯슨 기준값이다.
+# ============================================================================
+
+# ── 노트북(Windows, GPU 없음)에서 돌릴 때 ────────────────────────────────────
+stt:
+  # 노트북 ctranslate2 는 CPU 전용 휠이다. cuda 로 두면 import/로드 단계에서 죽는다.
+  device: cpu
+  compute_type: int8    # CPU 에선 float16 이 오히려 느리다
+  # model_size: small   # 노트북 CPU 로 turbo 를 돌리면 발화당 수십 초 — 필요하면 줄일 것
+
+metrics:
+  tag: pc               # 젯슨 기본값은 jetson. 안 바꾸면 노트북 실행이 젯슨 로그로 섞인다
+
+audio:
+  device: null          # ReSpeaker 는 젯슨에만 꽂혀 있다. null = 시스템 기본 장치
+
+tts:
+  # 노트북엔 CUDA 가 없어 자동으로 CPU 로 내려가므로 사실 안 적어도 된다.
+  # 경고 로그가 거슬릴 때만 켤 것.
+  providers: ["CPUExecutionProvider"]

@@ -1,0 +1,92 @@
+model_name: jaehabot
+target_phrases:
+- 재하봇
+- 재하봇아
+- 재하 봇
+- 재하보
+- 재하봇이
+tts_backend: voxcpm
+n_samples: 2000
+n_samples_val: 500
+n_background_samples: 2000
+n_background_samples_val: 500
+tts_batch_size: 256
+custom_negative_phrases:
+- 자동차
+- 해바라기
+- 지하철
+- 재밌다
+- 재미있어
+- 재현이
+- 로봇
+- 보트
+- 하마
+- 자전거
+- 엄마
+- 아빠
+- 이거 뭐야
+- 밥 먹자
+- 같이 놀자
+- 안녕
+- 싫어
+noise_scales:
+- 0.98
+noise_scale_ws:
+- 0.98
+length_scales:
+- 0.75
+- 1.0
+- 1.25
+slerp_weights:
+- 0.2
+- 0.35
+- 0.5
+- 0.65
+- 0.8
+piper_tts:
+  checkpoint_relpath: piper/en-us-libritts-high.pt
+voxcpm_tts:
+  model_id: openbmb/VoxCPM2
+  model_cache_relpath: voxcpm/VoxCPM2
+  local_model_path: null
+  load_denoiser: false
+  cfg_values:
+  - 1.5
+  - 2.0
+  - 2.5
+  - 3.0
+  inference_timesteps_list:
+  - 4
+  - 6
+  - 8
+  voice_design_prompts:
+  - 밝고 높은 목소리의 한국인 어린 여자아이
+  - 해맑게 말하는 한국인 남자아이
+  - 또렷하게 말하는 한국인 성인 여성
+  - 차분한 한국인 성인 남성
+  - 조금 웅얼거리며 말하는 어린아이
+  - 신나서 크게 부르는 어린아이
+data_dir: /content/jaeha_wake/data
+output_dir: /content/jaeha_wake/output
+augmentation:
+  clip_duration: 2.0
+  batch_size: 64
+  rounds: 3
+  background_paths:
+  - ./data/backgrounds
+  rir_paths:
+  - ./data/rirs
+model:
+  model_type: conv_attention
+  model_size: medium
+steps: 50000
+learning_rate: 0.0001
+weight_decay: 0.01
+label_smoothing: 0.05
+max_negative_weight: 3000
+target_fp_per_hour: 0.1
+batch_n_per_class:
+  positive: 50
+  adversarial_negative: 50
+  ACAV100M_sample: 1024
+  background_noise: 50

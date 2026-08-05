@@ -1,81 +1,144 @@
-# 재하봇 1 (jaeha_bot_1) — 교육용 AI
+# 재하봇 1 (jaeha_bot) — 2세 유아용 음성 놀이 AI
 
-Jetson Orin Nano(8GB)에서 **독립 구동**하는 2세 유아용 음성·비전 교육 놀이 AI.
-파이프라인: `카메라/마이크 → faster-whisper(STT) → LLM Agent(Function Calling) → Piper(TTS)`
-상세 사양은 [`가이드라인_요약.md`](./가이드라인_요약.md) 참조.
+Jetson Orin Nano(8GB)에서 **독립 구동**하는 한국어 음성 교육 놀이 로봇.
+
+```
+마이크 ─▶ 호출어 KWS(ONNX) ─▶ STT(faster-whisper) ─▶ 놀이 상태머신 ─▶ TTS(Supertonic)
+                                                    └▶ LLM(EXAONE 2.4B, GGUF)
+```
+
+부르기 전에는 **대기 모드**로 호출어만 듣는다(LLM·TTS 를 안 돌려 자원 절약).
+"재하봇" 이 들리면 대화 모드로 깨어나고, 30초 조용하면 다시 잠든다.
+
+## 지금 어디까지 됐나
+
+| 부분 | 상태 | 비고 |
+|---|---|---|
+| 호출어(KWS) | ✅ 동작 | ONNX, thr 0.15. **빠른 발화 미인식** 때문에 v2 재학습 예정 |
+| STT | ✅ 동작 | `large-v3-turbo`, 젯슨 GPU, 발화당 1.59s / CER 2.96%<sup>*</sup> |
+| LLM | ✅ 동작 | EXAONE-3.5-2.4B Q4, 젯슨 GPU 오프로드, 생각 1.65s |
+| TTS | ✅ 동작 | Supertonic ONNX, 젯슨 GPU, 25자 합성 0.26s |
+| 놀이 | 🔶 2개 | 동물소리·따라말하기. 색칠·사물찾기·감정대화는 카드만 있고 코드 없음 |
+| 비전 | 🚧 미구현 | STEP 9. `vision_module.py` 는 스텁 |
+| 부모 브리핑 | 🚧 미구현 | `daily_briefing.py` 는 스텁 |
+
+<sup>*</sup> 모든 STT 수치는 **9세 음성**(AI-Hub #003) 기준이다. 실제 대상인 2~3세 녹음으로는
+아직 검증하지 못했다 — 이 프로젝트에서 가장 큰 미검증 영역.
 
 ## 폴더 구조
+
 ```
-jaeha_bot_1/
-├── app/                  # 실행 코드
-│   ├── main.py           # 엔트리포인트 (파이프라인 루프)
-│   ├── config.py         # configs/*.yaml 로더
-│   ├── stt_module.py     # faster-whisper STT
-│   ├── tts_module.py     # Piper TTS
-│   ├── vision_module.py  # YOLOv8/MediaPipe 비전(상태값 압축)
-│   ├── agent.py          # 로컬 LLM 추론
-│   ├── agent_functions.py# Function Calling 정의
-│   ├── education_modes.py# 놀이 모드 진행
-│   └── daily_briefing.py # 부모 브리핑 생성
-├── configs/              # 모델 경로·프롬프트·안전 규칙
-├── scenarios/            # 교육 놀이 시나리오 카드
-├── logs/                 # 대화/지연/메모리 로그 (git 미추적)
-├── reports/              # 주차 보고서·브리핑 템플릿
-├── models/               # 모델 가중치 (git 미추적, 별도 배포)
-├── Dockerfile            # Jetson(L4T) 배포 이미지
-├── Dockerfile.dev        # PC 개발용 이미지
-├── docker-compose.yml    # Jetson 실행 (장치·볼륨 연결)
-├── requirements.txt
-└── run.sh                # 실행 스크립트
+jaeha_bot/
+├── app/
+│   ├── main.py            # 엔트리포인트 (대기↔대화 루프)
+│   ├── config.py          # configs/*.yaml 로더 (+ local.yaml 오버레이)
+│   ├── audio_source.py    # 마이크 단일 스트림 소유 (감지기·STT 가 공유)
+│   ├── wake.py            # 호출어 판정 + 감지기 선택(ONNX / STT 폴백)
+│   ├── wake_onnx.py       # ONNX KWS 감지기
+│   ├── stt_module.py      # faster-whisper STT + 에너지 VAD + 환각 가드
+│   ├── tts_module.py      # Supertonic TTS
+│   ├── agent.py           # 로컬 LLM 대화·놀이 대사 렌더
+│   ├── education_modes.py # 놀이 상태머신
+│   ├── text_norm.py       # 자모 거리, 오인식 교정, 반복 제거
+│   ├── metrics.py         # 턴별 지연·메모리 계측
+│   ├── vision_module.py   # 🚧 스텁
+│   └── daily_briefing.py  # 🚧 스텁
+├── configs/               # 런타임 설정 (아래 '설정' 참조)
+│   └── wake/              # 호출어 학습 설정 (Colab 용, 런타임 아님)
+├── scenarios/             # 놀이 카드(JSON)
+├── data/                  # few-shot 예시 = QLoRA 데이터셋 씨앗
+├── tests/                 # 75개. 마이크·모델·젯슨 없이 전부 돈다
+├── models/                # 가중치 (git 미추적, push_model.sh 로 별도 배포)
+├── logs/                  # 계측·녹음 (git 미추적)
+└── docs/superpowers/      # 호출어 감지기 설계·계획 문서
 ```
 
-## 빠른 시작
+## 실행
 
-### 방법 A. 네이티브 실행 (보드/PC)
+노트북·젯슨 모두 conda env `jaeha_bot` 을 쓴다.
+
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-# models/ 에 LLM(gguf)·YOLO(pt)·Piper 음성 모델을 넣은 뒤
-./run.sh local        # = python3 -m app.main
+conda activate jaeha_bot && python -m app.main
 ```
 
-### 방법 B. Docker (권장 — 환경 공유)
-PC 개발용:
+마이크·TTS 없이 대화와 놀이만 확인하려면:
+
 ```bash
-./run.sh dev          # Dockerfile.dev 빌드 후 실행
+python -m app.main --text
 ```
-Jetson 보드:
+
+모듈별 단독 테스트: `python -m app.stt_module` (마이크), `python -m app.agent` (LLM),
+`python -m app.wake` (문자열 판정, 마이크 불필요).
+
+## 설정 — ⚠️ 이 부분을 먼저 읽을 것
+
+`configs/model_paths.yaml` 은 **젯슨(운영) 기준값**이다. 값마다 그렇게 정한 실측 근거가
+주석으로 붙어 있으니, 숫자를 바꾸기 전에 그 줄을 읽는 편이 빠르다.
+
+`push_code.sh` 가 `configs/` 를 통째로 젯슨에 밀어넣기 때문에 **두 기계가 이 파일 한 벌을
+공유한다.** 그런데 `stt.device` 는 젯슨=`cuda` / 노트북=`cpu` 로 정반대여야 한다(노트북
+ctranslate2 는 CPU 전용 휠이라 `cuda` 면 죽는다). `metrics.tag` 도 마찬가지.
+
+→ **기계마다 다른 값은 `model_paths.yaml` 을 고치지 말고 `configs/local.yaml` 에 적는다.**
+git 미추적이고 push 전송에서도 빠진다. 키 단위 deep merge 라 거기 안 적은 값은 운영값 그대로.
+
 ```bash
-./run.sh docker       # = docker compose up --build
+cp configs/local.example.yaml configs/local.yaml   # 필요한 줄만 남기면 됨
 ```
 
-## Docker로 환경 공유하는 방법
+| 파일 | 내용 |
+|---|---|
+| `model_paths.yaml` | 모델 선택·디코딩·VAD·호출어 임계 등 전부 (젯슨 기준) |
+| `local.yaml` | 이 기계 전용 덮어쓰기 (git 미추적) |
+| `prompt_templates.yaml` | system 프롬프트. 말투·길이·안전 규칙 |
+| `safety_rules.yaml` | 안전·윤리 규칙. 🚧 아직 코드가 소비하지 않음 |
+| `object_labels.json` | 비전 라벨 매핑. 🚧 미사용 |
+| `wake/*.yaml` | 호출어 학습 설정(Colab). 런타임이 읽지 않음 |
 
-목표: "내 PC에서 되는데 보드에서 안 됨" 문제를 없애고, 팀원이 **동일한 환경을 한 줄로 재현**하게 만드는 것. 핵심은 Jetson이 **ARM64 + NVIDIA JetPack(L4T)** 라는 점이라, 일반 `python:slim` 이미지가 아니라 NVIDIA 공식 L4T 이미지를 베이스로 써야 GPU/CUDA가 잡힙니다.
+## 젯슨 배포
 
-**1) 두 개의 이미지로 분리**
-개발은 PC(x86)에서 빠르게, 배포는 Jetson에서. 그래서 `Dockerfile`(Jetson, `nvcr.io/nvidia/l4t-pytorch` 베이스)과 `Dockerfile.dev`(PC, `python:3.11-slim`)를 나눠 뒀습니다. 1~2주차 PC 데모는 `dev`로, 4주차 보드 통합부터 `Dockerfile`로 갑니다.
+Docker 가 아니라 **SSH 로 코드만 밀어넣는다**(젯슨은 실행 전용).
 
-**2) 코드·의존성은 이미지에, 모델·로그는 볼륨으로**
-모델 가중치(gguf/pt)는 수 GB라 이미지에 굽지 않고 `./models`를 컨테이너에 마운트합니다(`docker-compose.yml`의 `volumes`). 덕분에 이미지는 가볍게 공유하고, 모델만 따로 배포하면 됩니다. `logs/`도 마운트해 호스트에서 지연·메모리 측정 결과를 바로 봅니다.
+```bash
+bash push_code.sh                          # app/ configs/ scenarios/ data/
+bash push_model.sh models/새모델.gguf       # 모델은 새로 만들었을 때만
+```
 
-**3) 장치 연결**
-유아와 상호작용하려면 컨테이너가 마이크·스피커·카메라에 접근해야 합니다. compose의 `devices`에서 `/dev/snd`(오디오)와 `/dev/video0`(카메라)를 넘기고, Jetson GPU는 `runtime: nvidia`로 잡습니다.
+젯슨에서:
 
-**4) 버전 고정으로 재현성 확보**
-베이스 이미지 태그(`r36.2.0` 등)를 **보드의 JetPack 버전에 정확히 맞춰** 고정하고, `requirements.txt`도 하한 버전을 명시했습니다. 팀원은 같은 태그로 빌드하면 동일 환경을 얻습니다. `docker --version` / `dpkg-query --show nvidia-l4t-core`로 보드 버전을 먼저 확인하세요.
+```bash
+conda activate jaeha_bot && cd ~/jaeha_bot && python -m app.main
+```
 
-**5) 공유 방법 두 가지**
-- 소스 공유: 이 레포를 클론 → `./run.sh docker` (각자 빌드, 가장 단순)
-- 이미지 공유: `docker save jaeha_bot:jetson | gzip > jaeha_bot.tar.gz` 로 파일 전달하거나, 레지스트리(`docker push`)에 올려 `docker pull`. 오프라인 보드엔 `docker load` 가 편합니다.
+젯슨 환경은 노트북과 다르다 — py3.10, 전용 pip 인덱스, ctranslate2·llama-cpp 는 CUDA
+소스빌드다. `requirements.txt` 로 그냥 설치하면 GPU 가 안 잡힌다. 절차와 함정은
+`push_model.sh` 주석과 프로젝트 메모리를 참조.
 
-> 주의: Jetson 이미지는 **반드시 ARM64**여야 합니다. PC(x86)에서 빌드해 보드로 옮기려면 `docker buildx build --platform linux/arm64 ...` 가 필요하니, 가능하면 보드에서 직접 빌드하는 것을 권장합니다.
+> Dockerfile·docker-compose 는 **일상 배포용이 아니다.** 실제 운용은 위 SSH 경로다.
+> 남겨 두는 이유는 **환경 공유용** — 다른 사람(교수님·팀원)에게 "이 환경 그대로 돌려보세요"를
+> 한 줄로 전달해야 할 때 쓴다. 그때는 베이스 이미지 태그를 보드 JetPack 버전에 맞추고
+> (`dpkg-query --show nvidia-l4t-core`), Jetson 이미지는 **반드시 ARM64** 로 빌드해야 한다
+> (PC 에서 만들려면 `docker buildx build --platform linux/arm64`, 가급적 보드에서 직접 빌드).
+> ⚠️ 젯슨의 실제 구성(ctranslate2·llama-cpp CUDA 소스빌드)은 이 Dockerfile 에 반영돼 있지 않다 —
+> 공유 전에 갱신이 필요하다.
 
-## 개발 우선순위 (가이드 5)
-"가장 똑똑한 답변"보다 **8GB 안에서 안 멈추고 3초 내 반응하는 안정성**이 최우선.
-양자화(INT4/8) · 작은 모델 · 모듈 순차 로딩으로 OOM을 방지합니다.
+## 설계에서 알아둘 것
 
-## Known issues / TODO
-- 각 모듈은 현재 **스텁(인터페이스만)** 상태 — `NotImplementedError` 자리부터 구현 시작.
-- Piper 한국어 음성 모델, YOLOv8 가중치, 양자화 LLM(gguf)을 `models/`에 준비해야 실행됩니다.
-- Jetson 베이스 이미지 태그는 보드 JetPack 버전에 맞춰 수정 필요.
+- **놀이의 흐름·정답판정은 코드(상태머신)가 갖고, LLM 은 칭찬·질문 '문장'만 렌더한다.**
+  2.4B 에 상태를 맡기면 깨지므로 function-calling 은 쓰지 않는다. 렌더가 실패하거나
+  설명으로 새면 템플릿으로 폴백해 놀이가 멈추지 않는다.
+- **마이크 스트림을 닫지 않는다.** 닫고 STT 가 새로 열면 ALSA 재오픈 + 소음 재측정 +
+  에코 쿨다운으로 0.7초짜리 '귀 먹은 구간'이 아이가 말을 시작하는 순간에 생긴다.
+  `AudioSource` 하나가 스트림을 소유하고 감지기와 STT 가 나눠 쓴다.
+- **호출어 감지 실패는 봇을 죽이지 않는다.** ONNX 로드가 안 되면 옛 STT 자모 매칭으로
+  자동 폴백한다(`wake.detector: onnx | stt`).
+- **TTS 응답이 길면 그만큼 아이가 기다린다.** `speak()` 는 재생이 끝날 때까지 블로킹한다.
+  답변을 짧게 만드는 프롬프트·`max_sentences` 가 곧 지연 단축이다.
+
+## 남은 일
+
+1. 호출어 v2 재학습 — 학습 데이터에 빠른 발화가 없다 (`configs/wake/jaeha_v2.yaml`)
+2. LLM API 전환 테스트 — 지연 **편차**와 날조율을 볼 것. 이게 끝나야 STT 모델도 최종 확정
+3. **AI-Hub 3~6세 데이터 확보** — 지금까지의 모든 수치가 9세 프록시다
+4. 놀이 카드 확대 + 껍데기 놀이 3개 구현
+5. 비전(STEP 9)

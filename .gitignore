@@ -4,6 +4,8 @@ __pycache__/
 .venv/
 venv/
 .env
+# 기계별 설정 덮어쓰기(노트북 cpu / 젯슨 cuda 등). 예시는 configs/local.example.yaml
+configs/local.yaml
 # 모델 가중치 (용량 큼 — 별도 배포)
 models/*
 !models/.gitkeep

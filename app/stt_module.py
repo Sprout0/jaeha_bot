@@ -10,12 +10,15 @@ REPL 테스트: python -m app.stt_module
 """
 from __future__ import annotations
 
+import logging
 import time
 
 import numpy as np
 
 from .audio_source import FRAME
 from .text_norm import correct_stt, dedupe_repeats
+
+log = logging.getLogger("jaeha_bot.stt")
 
 SAMPLE_RATE = 16000  # faster-whisper 표준 입력
 
@@ -45,6 +48,11 @@ class STTModule:
         aliases: dict | None = None,    # 확정 오인식 정확 매핑 {"제아부사": "재하봇"}
         initial_prompt: str | None = None,  # Whisper 디코딩 힌트(고유명사 원천 보정).
                                             # 환각 위험 있어 기본 off. 마이크로 검증 후 켤 것.
+        # --- 반복 환각 가드 ---
+        max_chars_per_sec: float | None = None,  # 오디오 1초당 이 글자수를 넘으면 폭주로 보고 버린다.
+                                                 # None 이면 끔(옛 동작). 근거는 tests/ 와 config 주석.
+        min_chars_to_reject: int = 20,   # 이 길이 미만은 아무리 빨라도 버리지 않는다.
+                                         # 짧은 유아 발화 보호용(진짜 폭주는 본질적으로 길다).
     ) -> None:
         self.model_size = model_size
         self.device = device
@@ -60,6 +68,11 @@ class STTModule:
         self.keywords = keywords or []
         self.aliases = aliases or {}
         self.initial_prompt = initial_prompt
+        self.max_chars_per_sec = max_chars_per_sec
+        self.min_chars_to_reject = min_chars_to_reject
+        # 직전 transcribe 가 '환각이라 버림'이었는지. main 이 이걸 봐야 '말이 없었다'와
+        # 구분해 되물을 수 있다(빈 문자열만으로는 구분 불가 → 침묵하게 된다).
+        self.last_rejected = False
         self._model = None
 
     # ------------------------------------------------------------------ 모델
@@ -82,6 +95,10 @@ class STTModule:
         빈 입력/잡음은 '' 반환하고 복구는 상위(main)에서 처리한다.
         """
         model = self.load()
+        self.last_rejected = False
+        # 가드는 '오디오 길이'가 있어야 계산된다. wav 경로 입력은 길이를 모르므로 건너뛴다
+        # (_trim_edges 와 같은 제약 — 실파이프라인은 numpy 라 무영향).
+        duration = audio.size / SAMPLE_RATE if isinstance(audio, np.ndarray) else 0.0
         # numpy 오디오면 앞뒤 무음을 잘라 환각/반복을 막는다. Whisper 는 무음을 만나면
         # 학습된 문장을 게워내는 성질이 있고(특히 좁게 파인튜닝된 한국어 모델), 뒤 침묵을
         # 제거하면 이 환각·반복·fallback 폭주가 사라진다. (실측: 0/5 -> 4/5, 11s -> 2s)
@@ -110,7 +127,27 @@ class STTModule:
         text = dedupe_repeats(text)
         # ② 고유명사 OOV 오인식(재하봇->재하보사)을 자모 편집거리·정확매핑으로 사후 교정.
         text = correct_stt(text, self.keywords, self.aliases)
+        # ③ 남은 폭주(①이 못 잡는 '매번 다른 토큰' 형태)를 말속도로 거른다.
+        if self._is_runaway(text, duration):
+            self.last_rejected = True
+            log.warning("환각으로 판단해 버림(%.1f글자/초 > %.1f): %s...",
+                        _chars(text) / duration, self.max_chars_per_sec, text[:40])
+            return "", time.perf_counter() - t0
         return text, time.perf_counter() - t0
+
+    def _is_runaway(self, text: str, duration: float) -> bool:
+        """오디오 길이 대비 글자수가 사람 말속도를 벗어나면 환각으로 본다.
+
+        정답 길이와 비교하는 편이 훨씬 정확하지만 운영에선 정답을 모른다. 런타임에
+        아는 것은 오디오 길이뿐이라 '글자/초'를 쓴다. (2026-08-04 실측: 실제 아동
+        발화의 말속도는 중앙값 3.03, p95 5.44, 최대 6.88 글자/초.)
+        """
+        if not self.max_chars_per_sec or duration <= 0 or not text:
+            return False
+        n = _chars(text)
+        if n < self.min_chars_to_reject:
+            return False
+        return n / duration > self.max_chars_per_sec
 
     # --------------------------------------------------------- 마이크 녹음(VAD)
     def record_until_silence(self, verbose: bool = False, *,
@@ -285,6 +322,9 @@ class STTModule:
         audio = self.record_until_silence(verbose=verbose, source=source, prefix=prefix)
         rec_dt = time.perf_counter() - t0
         if audio.size == 0:
+            # 여기서 transcribe() 를 안 거치므로 플래그를 직접 지운다. 안 지우면 직전
+            # 거부가 남아 main 이 무음 턴마다 되묻고, 영영 잠들지 않는다.
+            self.last_rejected = False
             return "", 0.0
         text, tr_dt = self.transcribe(audio)
         if verbose:
@@ -303,6 +343,11 @@ class STTModule:
                 except Exception as e:
                     print(f"  [진단] 녹음본 저장 실패: {e}")
         return text, tr_dt
+
+
+def _chars(text: str) -> int:
+    """공백을 뺀 글자수. 띄어쓰기 습관이 말속도 판정을 흔들면 안 된다."""
+    return len("".join(text.split()))
 
 
 def _trim_edges(audio: np.ndarray, pad: float = 0.1) -> np.ndarray:

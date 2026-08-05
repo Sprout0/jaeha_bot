@@ -75,6 +75,21 @@ def _setup_audio_device() -> None:
                     dev, "입력" if din is None else "출력")
 
 
+def _empty_text_action(*, rejected: bool, wake_enabled: bool,
+                       idle_s: float, sleep_timeout: float) -> str:
+    """인식 결과가 비었을 때 무엇을 할지 결정한다 — 'reask' | 'sleep' | 'wait'.
+
+    빈 결과에는 성격이 다른 둘이 섞여 있다: (a)아무 말도 없었다 (b)말은 했는데
+    환각이라 버렸다. (b)에서 침묵하면 아이는 로봇이 고장 난 줄 안다. 또 (b)를
+    '무응답'으로 세면 말할수록 잠드는 로봇이 되므로 되묻기가 잠들기보다 우선이다.
+    """
+    if rejected:
+        return "reask"
+    if wake_enabled and idle_s >= sleep_timeout:
+        return "sleep"
+    return "wait"
+
+
 def _to_standby(detector, source) -> None:
     """대화 → 대기로 돌아갈 때의 뒷정리.
 
@@ -188,9 +203,19 @@ def main() -> None:
             stt_wait = max(0.0, (time.perf_counter() - t_listen) - tr_dt)
 
             # ── 대화 모드 ──
-            # 무음이 이어지면 sleep_timeout 초 뒤 다시 대기로 잠든다.
+            # 빈 결과: 환각이라 버렸으면 되묻고, 진짜 무음이면 시간을 보고 잠든다.
             if not text:
-                if wake_enabled and (time.time() - last_active) >= sleep_timeout:
+                action = _empty_text_action(
+                    rejected=stt.last_rejected, wake_enabled=wake_enabled,
+                    idle_s=time.time() - last_active, sleep_timeout=sleep_timeout)
+                if action == "reask":
+                    log.info("환각으로 버림 → 되묻기")
+                    tts.speak(SAFE_RECOVERY)
+                    last_active = time.time()
+                    time.sleep(ECHO_COOLDOWN)
+                    if source is not None:
+                        source.drain()
+                elif action == "sleep":
                     log.info("무응답 %.0f초 → 대기 모드로", sleep_timeout)
                     awake = False
                     tts.speak(SLEEP_MSG)

@@ -15,7 +15,9 @@ REMOTE='~/jaeha_bot'              # 젯슨 안의 프로젝트 폴더
 # 이 스크립트가 있는 폴더(=프로젝트 루트)로 이동 → 어디서 실행하든 동작
 cd "$(dirname "$0")"
 
-DIRS="app configs scenarios data"
+# tools: 평가·점검 스크립트. 런타임은 아니지만 젯슨에서 돌려야 할 때가 있다
+# (로컬 EXAONE 기준선 평가는 이 노트북 CPU 로는 너무 느려 젯슨에서 재야 한다).
+DIRS="app configs scenarios data tools"
 
 echo "== 코드 밀어넣기 -> $JETSON:$REMOTE =="
 

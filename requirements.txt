@@ -37,6 +37,12 @@ numpy>=1.24
 pyyaml>=6.0
 pydantic>=2.5
 
+# --- 모델 비교 평가용 (tools/eval_llm.py 전용, 런타임 아님) ---
+# 젯슨 실행에는 필요 없다. 평가를 돌리는 기계(노트북)에만 있으면 된다.
+openai>=2.0.0
+google-genai>=2.0.0
+python-dotenv>=1.0.0      # .env 에서 API 키 읽기(앱 재시작 불필요)
+
 # --- 비전 (STEP 9, 미구현) ---
 # app/vision_module.py 가 아직 스텁이라 **어떤 코드도 import 하지 않는다.**
 # 셋 다 무거우니 비전을 실제로 붙일 때 주석을 풀 것.

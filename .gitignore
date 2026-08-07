@@ -12,6 +12,9 @@ models/*
 *.gguf
 *.pt
 *.onnx
+# 동요·효과음 음원 (용량 — 목록/별칭은 configs/audio_assets.yaml 에 있고 git 에 들어간다)
+assets/*
+!assets/README.md
 # 런타임 산출물
 logs/*
 !logs/.gitkeep
@@ -22,3 +25,7 @@ logs/*
 
 # SDD 작업 산출물(원장·브리핑·리뷰패키지)
 .superpowers/
+
+# 호출어 학습용 합성 데이터(tools/gen_wake_supertonic.py 산출).
+# wav 수만 개·수백 MB 라 저장소에 들어가면 안 된다. 재현은 도구 + manifest.jsonl 로 한다.
+output/

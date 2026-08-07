@@ -47,7 +47,8 @@ jaeha_bot/
 │   └── wake/              # 호출어 학습 설정 (Colab 용, 런타임 아님)
 ├── scenarios/             # 놀이 카드(JSON)
 ├── data/                  # few-shot 예시 = QLoRA 데이터셋 씨앗
-├── tests/                 # 75개. 마이크·모델·젯슨 없이 전부 돈다
+├── tests/                 # 109개. 마이크·모델·젯슨 없이 전부 돈다
+├── tools/                 # 호출어 데이터 생성·검수 도구 (런타임 아님)
 ├── models/                # 가중치 (git 미추적, push_model.sh 로 별도 배포)
 ├── logs/                  # 계측·녹음 (git 미추적)
 └── docs/superpowers/      # 호출어 감지기 설계·계획 문서

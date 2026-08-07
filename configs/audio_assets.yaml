@@ -1,0 +1,118 @@
+# ============================================================
+# 오디오 에셋 레지스트리 — 봇이 '실제로 낼 수 있는 소리'의 목록
+# ------------------------------------------------------------
+# 노래는 TTS 로 못 부른다(읽을 뿐이다). 그래서 동요·효과음은 음원 파일이고,
+# 여기 적힌 것이 곧 봇의 능력이다. app/audio_player.py 가 읽는다.
+#
+# 🔴 파일이 없는 항목은 자동으로 '못 하는 것'이 된다.
+#    AudioLibrary.playable()/titles() 가 파일 실재 여부로 걸러 주므로, 목록에
+#    적어 두기만 하고 파일을 아직 안 넣었어도 봇이 "틀어줄게"라고 약속하지 않는다.
+#    → 그래서 아래 목록은 '갖고 싶은 것'을 먼저 적어 둬도 안전하다.
+#    기동 시 AudioLibrary.missing() 으로 빠진 파일을 확인할 것.
+#
+# ⚠️ 저작권 — 시연·논문에 들어가므로 반드시 확인하고 채울 것.
+#    license 필드에 근거를 남긴다. 안전한 순서:
+#      1) PD(저작권 만료·전래·외국 민요)  2) 직접 녹음(부모 목소리가 제일 좋다)
+#      3) CC0/CC-BY 음원  4) 라이선스 구매
+#    ❌ 상업 창작동요(핑크퐁 '아기상어' 등)는 그대로 쓰면 안 된다.
+#    license: 확인필요 = 아직 판단 안 함. 파일 넣기 전에 반드시 갱신.
+#
+# 파일명은 ASCII 로 쓴다 — 한글 파일명은 scp 로 젯슨에 보낼 때 인코딩이 깨진다
+# (.gitattributes 로 잡은 CRLF 문제와 같은 부류).
+# 실제 파일은 assets/ 아래 두며 git 미추적이다(용량). assets/README.md 참조.
+# ============================================================
+
+songs:
+  - id: nabiya
+    title: 나비야
+    file: songs/nabiya.mp3
+    # ⚠️ 별칭은 '그 곡을 특정할 수 있는 말'만 넣는다. 흔한 낱말을 넣으면
+    #    날조 판정과 요청 매칭 양쪽에서 오탐이 난다('나비'는 곤충이기도 하다).
+    aliases: [나비노래, 나비야노래]
+    license: "PD — 독일 민요 Hänschen klein 선율. 한국어 가사본은 별도 확인 필요"
+
+  - id: twinkle
+    title: 반짝반짝 작은별
+    file: songs/twinkle.mp3
+    aliases: [작은별, 별노래]  # '반짝반짝'은 의성어라 제외
+    license: "PD — Ah! vous dirai-je, maman(모차르트 변주 원곡)"
+
+  - id: head_shoulders
+    title: 머리 어깨 무릎 발
+    file: songs/head_shoulders.mp3
+    aliases: [머리어깨, 무릎발, 머리어깨무릎]
+    license: "PD — 영국 전래 Head, Shoulders, Knees and Toes"
+
+  - id: gom_three
+    title: 곰 세 마리
+    file: songs/gom_three.mp3
+    aliases: [곰세마리, 곰돌이, 곰노래]  # '세마리'는 수량 표현이라 제외
+    license: "확인필요 — 전래로 통용되나 출처 불명. 직접 녹음이 가장 안전"
+
+  - id: san_tokki
+    title: 산토끼
+    file: songs/san_tokki.mp3
+    aliases: [토끼노래, 산토끼노래]
+    license: "확인필요 — 이일래 작곡(1928). 보호기간 확인 전에는 쓰지 말 것"
+
+# 동물 효과음 — 🔽 우선순위 낮음(2026-08-06 결정). 파일 없어도 놀이는 정상 동작한다.
+#
+# 놀이의 핵심은 봇이 TTS 로 "멍멍" 하고 아이가 "강아지"를 맞히는 것이고, 이건 이미
+# 잘 된다. 진짜 짖는 소리로 바꾸면 오히려 나빠진다:
+#   - "멍멍"은 소리 흉내가 아니라 **2세가 실제로 쓰는 한국어 어휘**다
+#     (많은 아이가 '강아지'보다 '멍멍이'를 먼저 말한다)
+#   - 아이는 "멍멍"을 즉시 따라 하지만 진짜 짖는 소리는 따라 할 수 없다.
+#     이 프로젝트 목표가 발화 유도라면 따라 할 수 있는 쪽이 맞다
+# → 효과음은 '흥미 유발'용 선택 기능이다("진짜 강아지는 이런 소리야! 우리는
+#   멍멍이라고 해!"). 파일이 없으면 그 연출만 빠지고 놀이는 그대로 돌아간다.
+#
+# 목록은 scenario_cards.json 의 sound_match 8종과 1:1로 유지한다(테스트가 강제).
+# 나중에 넣더라도 카드와 어긋나지 않게 하려는 것 — 파일 유무와는 무관하다.
+sounds:
+  - id: dog
+    title: 강아지
+    file: sounds/dog.wav
+    aliases: [멍멍이, 멍멍, 개]
+    license: "확인필요"
+
+  - id: cat
+    title: 고양이
+    file: sounds/cat.wav
+    aliases: [야옹이, 야옹]
+    license: "확인필요"
+
+  - id: cow
+    title: 소
+    file: sounds/cow.wav
+    aliases: [음메, 젖소]
+    license: "확인필요"
+
+  - id: pig
+    title: 돼지
+    file: sounds/pig.wav
+    aliases: [꿀꿀이, 꿀꿀]
+    license: "확인필요"
+
+  - id: duck
+    title: 오리
+    file: sounds/duck.wav
+    aliases: [꽥꽥이, 꽥꽥]
+    license: "확인필요"
+
+  - id: chick
+    title: 병아리
+    file: sounds/chick.wav
+    aliases: [삐약이, 삐약삐약, 삐약]
+    license: "확인필요"
+
+  - id: frog
+    title: 개구리
+    file: sounds/frog.wav
+    aliases: [개굴이, 개굴개굴, 개굴]
+    license: "확인필요"
+
+  - id: sheep
+    title: 양
+    file: sounds/sheep.wav
+    aliases: [매애, 양이]
+    license: "확인필요"

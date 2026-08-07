@@ -1,6 +1,6 @@
 """호출어 학습용 클립 품질검수(QC) — 학습에 넣기 전에 '진짜 재하봇이라 말하는지' 센다.
 
-왜 필요한가 (2026-08-06):
+왜 필요한가 (2026-08-07):
   v2 생성 중 positive 클립을 들어보니 6개 중 5개가 '재하봇'으로 들리지 않았다.
   25초짜리 폭주(TTS 가 멈추지 못하고 헛소리를 이어감)도 있었다. augment 는 이걸
   2초로 잘라 쓰므로, 그대로 두면 **아무 말이나 = 호출어**로 학습된다.
@@ -30,9 +30,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.wake import best_wake_ratio  # noqa: E402  런타임과 같은 판정을 쓰려고 재사용
 
-# v2 target_phrases. 어떤 문구로 생성된 클립인지 파일명에 안 남으므로 전부와 대보고
-# 가장 가까운 값을 쓴다(하나라도 맞으면 정상 클립).
-DEFAULT_WORDS = ["재하봇", "제하봇", "재하봇아", "재하보사", "재하부사", "재하봇이", "재하보시"]
+# v3 에서 실제로 합성하는 문구(gen_wake_supertonic.DEFAULT_PHRASES 와 같은 갈래).
+# 어느 문구로 만든 클립인지는 manifest 를 봐야 알므로, 전부와 대보고 가장 가까운
+# 값을 쓴다(하나라도 맞으면 정상 클립).
+# ⚠️ 목록을 늘릴수록 판정이 관대해진다 — v2 의 비어휘 변형(재하보사·재하부사·재하보시)은
+#    이제 합성하지 않으므로 넣지 않는다. 넣으면 뭉개진 발음까지 통과한다.
+DEFAULT_WORDS = ["재하봇", "재하봇아", "재하봇이"]
 
 
 def best_ratio_any(text: str, words: list[str]) -> tuple[float, str]:

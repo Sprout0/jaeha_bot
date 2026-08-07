@@ -2,6 +2,7 @@
   "_comment": "교육 놀이 모드별 시나리오 카드 (가이드 4-1). 놀이 '내용'은 코드가 아니라 여기서 편집한다(app/education_modes.py 가 읽음).",
   "sound_match": {
     "title": "동물 소리 놀이(흉내내기)",
+    "aliases": ["동물소리놀이", "동물놀이", "동물소리", "흉내내기"],
     "intro": "동물 소리 놀이 하자!",
     "cards": [
       {"sound": "멍멍", "answer": "강아지"},
@@ -16,6 +17,7 @@
   },
   "color_play": {
     "title": "색칠 놀이 스무고개",
+    "aliases": ["색칠놀이", "색깔놀이", "색놀이", "스무고개"],
     "intro": "어떤 색이 보이니?",
     "cards": [
       {"hint": "사과처럼 빨간색", "answer": "빨강"}
@@ -23,6 +25,7 @@
   },
   "find_object": {
     "title": "주변 사물 찾기",
+    "aliases": ["사물찾기", "물건찾기", "사물놀이찾기"],
     "intro": "카메라로 같이 찾아볼까?",
     "cards": [
       {"target": "ball", "praise": "우와 공을 찾았네!"}
@@ -30,6 +33,7 @@
   },
   "repeat_word": {
     "title": "따라 말하기",
+    "aliases": ["따라말하기", "따라하기", "따라쟁이"],
     "intro": "따라 말하기 놀이 하자!",
     "cards": [
       {"word": "엄마"},
@@ -46,6 +50,7 @@
   },
   "emotion_talk": {
     "title": "감정 인지 대화",
+    "aliases": ["감정놀이", "기분놀이", "감정대화"],
     "intro": "지금 기분이 어때?",
     "cards": [
       {"emotion": "happy", "response": "기분이 좋구나, 같이 웃자!"}

@@ -78,20 +78,28 @@ class MetricsLogger:
             log.info("[계측] 모델 로드 후 메모리 RSS=%.0fMB", rss)
 
     def record_turn(self, *, stt_wait_s: float, stt_rec_s: float,
-                    think_s: float, think_kind: str, tts_s: float,
-                    reply: str = "") -> None:
+                    think_s: float, think_kind: str, tts_first_s: float,
+                    tts_play_s: float = 0.0, reply: str = "") -> None:
         """한 턴의 단계 지연을 기록한다.
 
-        stt_wait_s: 녹음대기(사람이 말한 시간 포함, 시스템 비용 아님) — 참고용.
-        stt_rec_s : STT 인식 '연산' 시간.
-        think_s   : 답 생성 시간(LLM 또는 놀이 렌더). think_kind=llm/game/game_start 등.
-        tts_s     : TTS 합성+재생 시작까지.
-        resp_compute_s = stt_rec + think + tts = '말끝 이후 순수 처리'(고정대기 제외).
+        stt_wait_s : 녹음대기(사람이 말한 시간 포함, 시스템 비용 아님) — 참고용.
+        stt_rec_s  : STT 인식 '연산' 시간.
+        think_s    : 답 생성 시간(LLM 또는 놀이 렌더). think_kind=llm/game/game_start 등.
+        tts_first_s: 말끝부터 **첫 소리가 날 때까지**. 아이가 체감하는 대기의 마지막 조각.
+        tts_play_s : 봇이 실제로 말하는 시간. **지연이 아니다** — 따로 기록만 한다.
+
+        🔴 2026-08-09 정정: 예전에는 `tts_s` 하나에 합성+**재생 완료까지**를 담고
+           그걸 resp_compute_s 에 더했다(speak() 이 sd.wait() 로 끝까지 기다린다).
+           그래서 '응답 3초' 지표에 **봇이 말하는 시간이 통째로** 들어가 있었다
+           — 젯슨 실측 tts_s 중앙 7.74s / resp 12.87s 가 그렇게 나온 값이다.
+           지금은 resp_compute_s = stt_rec + think + tts_first 로, 말끝부터 첫 소리까지만
+           센다. 이게 '몇 초 만에 반응하나'에 해당하는 숫자다.
+           ⚠️ 그래서 이 필드는 2026-08-09 이전 기록과 직접 비교하면 안 된다.
         """
         if not self.enabled:
             return
         self.turn += 1
-        resp = round(stt_rec_s + think_s + tts_s, 3)
+        resp = round(stt_rec_s + think_s + tts_first_s, 3)
         rec = {
             "ts": datetime.now().isoformat(timespec="seconds"),
             "tag": self.tag, "turn": self.turn,
@@ -100,15 +108,19 @@ class MetricsLogger:
             "stt_rec_s": round(stt_rec_s, 3),
             "think_s": round(think_s, 3),
             "think_kind": think_kind,
-            "tts_s": round(tts_s, 3),
-            "resp_compute_s": resp,           # 비교 핵심(GPU가 바꾸는 부분)
+            "tts_first_s": round(tts_first_s, 3),   # 첫 소리까지(체감)
+            "tts_play_s": round(tts_play_s, 3),     # 봇이 말하는 시간(지연 아님)
+            "resp_compute_s": resp,           # = 말끝부터 첫 소리까지
+            "metric_ver": 2,                  # 1 = tts 재생시간이 섞여 있던 옛 기록
             "rss_mb": _rss_mb(),
             "reply_len": len(reply or ""),
         }
         self.samples.append(rec)
         self._write(rec)
-        log.info("[계측] 턴%d 처리 %.2fs (STT인식 %.2f + 생각 %.2f + TTS %.2f) | 메모리 %sMB",
-                 self.turn, resp, stt_rec_s, think_s, tts_s, rec["rss_mb"])
+        log.info("[계측] 턴%d 첫소리까지 %.2fs (STT인식 %.2f + 생각 %.2f + TTS %.2f)"
+                 " | 발화 %.2fs | 메모리 %sMB",
+                 self.turn, resp, stt_rec_s, think_s, tts_first_s, tts_play_s,
+                 rec["rss_mb"])
 
     def summary(self) -> None:
         """세션 요약(중앙값/p90/최대 메모리)을 출력하고 파일에 남긴다."""
@@ -119,28 +131,34 @@ class MetricsLogger:
         resp = [s["resp_compute_s"] for s in warm]
         rec_ = [s["stt_rec_s"] for s in warm]
         think = [s["think_s"] for s in warm]
-        tts = [s["tts_s"] for s in warm]
+        tts = [s["tts_first_s"] for s in warm]
+        play = [s["tts_play_s"] for s in warm]
         rss = [s["rss_mb"] for s in self.samples if s["rss_mb"] is not None]
         under3 = sum(1 for r in resp if r <= 3.0)
         summ = {
             "ts": datetime.now().isoformat(timespec="seconds"),
-            "tag": self.tag, "event": "summary",
+            "tag": self.tag, "event": "summary", "metric_ver": 2,
             "turns": len(self.samples),
             "resp_median_s": round(statistics.median(resp), 3),
             "resp_p90_s": round(_p90(resp), 3),
             "stt_rec_median_s": round(statistics.median(rec_), 3),
             "think_median_s": round(statistics.median(think), 3),
-            "tts_median_s": round(statistics.median(tts), 3),
+            "tts_first_median_s": round(statistics.median(tts), 3),
+            "tts_play_median_s": round(statistics.median(play), 3),
             "rss_peak_mb": max(rss) if rss else None,
             "under_3s_ratio": round(under3 / len(resp), 2) if resp else None,
         }
         self._write(summ)
         print("\n===== 세션 계측 요약 (warm 기준) =====")
         print(f"  턴 수: {summ['turns']}  (환경 tag={self.tag}, 파일={self.path.name})")
-        print(f"  처리 지연  중앙값 {summ['resp_median_s']:.2f}s / p90 {summ['resp_p90_s']:.2f}s"
+        print(f"  ▶ 말끝부터 첫 소리까지  중앙값 {summ['resp_median_s']:.2f}s"
+              f" / p90 {summ['resp_p90_s']:.2f}s"
               f"  (목표 3s 이내 {int((summ['under_3s_ratio'] or 0)*100)}%)")
-        print(f"  단계 중앙값  STT인식 {summ['stt_rec_median_s']:.2f}s"
-              f" | 생각 {summ['think_median_s']:.2f}s | TTS {summ['tts_median_s']:.2f}s")
+        print(f"    단계  STT인식 {summ['stt_rec_median_s']:.2f}s"
+              f" | 생각 {summ['think_median_s']:.2f}s"
+              f" | TTS합성 {summ['tts_first_median_s']:.2f}s")
+        print(f"    (참고) 봇이 말하는 시간 {summ['tts_play_median_s']:.2f}s"
+              " — 지연이 아니라 발화 길이다")
         if summ["rss_peak_mb"]:
             print(f"  최대 메모리 RSS {summ['rss_peak_mb']:.0f}MB (8GB 예산 대비)")
         print("====================================\n")

@@ -21,6 +21,8 @@ import os
 import queue
 import re
 import threading
+import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -29,6 +31,29 @@ log = logging.getLogger("jaeha_bot.tts")
 
 # 문장 경계(마침표/물음표/느낌표 등). 문장 스트리밍용 분리에 사용.
 _SENT_SPLIT = re.compile(r"(?<=[.!?。！？…])\s+|\n+")
+
+# 재생 앞뒤에 덧대는 무음(초). 장치 스트림 시작·종료 지연을 흡수한다.
+# 앞쪽 무음 동안은 **아직 아무 소리도 안 난다** — 체감 지연에 포함해야 한다.
+PLAY_PAD_S = 0.15
+
+
+@dataclass(frozen=True)
+class SpeakTiming:
+    """speak() 한 번의 시간 분해. '지연'과 '봇이 말하는 시간'을 섞지 않으려고 나눈다.
+
+    first_audio_s: 부르고 나서 **첫 소리가 나기까지**. 아이가 체감하는 대기시간이 이것.
+    synth_s      : 합성 연산 시간(모델 로드가 필요했다면 그것도 포함).
+    play_s       : 소리가 나기 시작해서 끝날 때까지 = 봇이 말하는 시간. 지연이 아니다.
+    total_s      : first_audio_s + play_s. 예전 tts_s 와 같은 값.
+    """
+
+    first_audio_s: float
+    synth_s: float
+    play_s: float
+
+    @property
+    def total_s(self) -> float:
+        return self.first_audio_s + self.play_s
 
 
 @contextlib.contextmanager
@@ -268,32 +293,47 @@ class TTSModule:
         return rate
 
     # ---------------------------------------------------------------- 재생
-    def speak(self, text: str) -> None:
-        """통짜 합성 재생: 답변 전체를 한 번에 합성한다.
+    def speak(self, text: str) -> SpeakTiming:
+        """통짜 합성 재생: 답변 전체를 한 번에 합성한다. 시간 분해를 돌려준다.
 
         문장을 쪼개 따로 합성(스트리밍)하면 문장마다 억양이 독립적이라 전환이 뚝뚝 끊겨
         '매끄럽지 못'하게 들린다. 전체를 한 번에 넘기면 Supertonic 이 문장 간 억양을
         자연스럽게 이어 준다(실측: 통짜가 쪼개기보다 합성도 더 빠름 2.34s vs 4.23s).
         앞뒤 flat 무음만 잘라(말끝 여운은 보존) 시작 지연과 끝 공백을 줄인다.
         (참고: 예전 문장 쪼개기+gap 스트리밍 방식은 git/메모리 기록 참조. 되돌리려면 그 버전으로.)
+
+        ⚠️ 통짜 합성이라 **첫 소리 = 전체 합성이 끝난 뒤**다. 즉 답이 길수록 첫 소리도
+           늦어진다. 여기서 재는 first_audio_s 가 그 값이며, 줄이려면 문장 스트리밍으로
+           돌아가야 한다(대신 억양이 끊긴다) — 측정이 먼저다.
         """
         import sounddevice as sd
 
+        t0 = time.perf_counter()
         self.load()
         audio = self._trim(self._infer(text))
-        if audio.size:
-            # 실시간 재생(sounddevice, 기본 MME)은 스트림 시작·종료 지연이 커서
-            # 버퍼 앞뒤 샘플을 흘린다 → 앞 발음 잘림 + 끝 '뚝' 끊김.
-            # 앞뒤에 짧은 무음을 덧대 그 지연을 무음으로 흡수한다(합성 오디오는 손대지 않음).
-            # 오디션 wav(파일 재생)에는 이 현상이 없어 앱만 빠르고 잘려 들렸던 원인.
-            audio = np.concatenate([self._silence(0.15), audio, self._silence(0.15)])
-            # 장치가 합성 레이트를 지원하는지 미리 확인해 처음부터 맞는 레이트로 재생한다
-            # (실패-후-재시도가 아님 → paInvalidSampleRate 로그 안 뜸).
-            # PC 는 대개 그대로, Jetson USB(16000 전용)는 리샘플해서 재생.
-            rate = self._resolve_play_rate(sd)
-            play_audio = audio if rate == self.sample_rate else self._resample(audio, self.sample_rate, rate)
-            sd.play(play_audio, rate)
-            sd.wait()
+        synth_s = time.perf_counter() - t0
+        if not audio.size:
+            return SpeakTiming(first_audio_s=synth_s, synth_s=synth_s, play_s=0.0)
+
+        # 실시간 재생(sounddevice, 기본 MME)은 스트림 시작·종료 지연이 커서
+        # 버퍼 앞뒤 샘플을 흘린다 → 앞 발음 잘림 + 끝 '뚝' 끊김.
+        # 앞뒤에 짧은 무음을 덧대 그 지연을 무음으로 흡수한다(합성 오디오는 손대지 않음).
+        # 오디션 wav(파일 재생)에는 이 현상이 없어 앱만 빠르고 잘려 들렸던 원인.
+        audio = np.concatenate([self._silence(PLAY_PAD_S), audio,
+                                self._silence(PLAY_PAD_S)])
+        # 장치가 합성 레이트를 지원하는지 미리 확인해 처음부터 맞는 레이트로 재생한다
+        # (실패-후-재시도가 아님 → paInvalidSampleRate 로그 안 뜸).
+        # PC 는 대개 그대로, Jetson USB(16000 전용)는 리샘플해서 재생.
+        rate = self._resolve_play_rate(sd)
+        play_audio = audio if rate == self.sample_rate else self._resample(audio, self.sample_rate, rate)
+        sd.play(play_audio, rate)
+        # sd.play 는 바로 돌아온다(재생은 뒤에서 계속). 여기까지가 '소리 나기 직전'이고,
+        # 덧댄 앞 무음 동안은 아직 안 들리므로 그만큼 더한 게 진짜 첫 소리 시각이다.
+        play_started = time.perf_counter()
+        first_audio_s = play_started - t0 + PLAY_PAD_S
+        sd.wait()
+        return SpeakTiming(first_audio_s=first_audio_s, synth_s=synth_s,
+                           play_s=max(0.0, time.perf_counter() - play_started))
 
 
 def _repl() -> None:

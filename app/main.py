@@ -246,13 +246,14 @@ def main() -> None:
             log.info("[재하봇] %s", reply)
 
             # 말하기 + 에코 쿨다운(재생 여운이 가라앉은 뒤 다시 듣기).
-            t_tts = time.perf_counter()
-            tts.speak(reply)
-            tts_s = time.perf_counter() - t_tts
+            # speak() 은 재생이 끝날 때까지 막힌다. 그래서 '첫 소리까지'와 '말하는 시간'을
+            # 스스로 나눠 돌려준다 — 바깥에서 재면 둘이 합쳐져 지연이 부풀려진다.
+            tm = tts.speak(reply)
             last_active = time.time()  # 마지막 상호작용 시각(잠들기 타이머 기준)
             metrics.record_turn(stt_wait_s=stt_wait, stt_rec_s=tr_dt,
                                 think_s=think_s, think_kind=kind,
-                                tts_s=tts_s, reply=reply)
+                                tts_first_s=tm.first_audio_s,
+                                tts_play_s=tm.play_s, reply=reply)
             time.sleep(ECHO_COOLDOWN)
             if source is not None:
                 source.drain()   # 답하는 동안 쌓인 자기 목소리 버리기

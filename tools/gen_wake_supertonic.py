@@ -25,8 +25,24 @@
      그래서 검수는 정속 원본에만 걸고, 배속은 그 뒤에 얹는다.
      원본이 정확하면 배속본은 정의상 정확하다(신호처리는 음소를 새로 만들지 않는다).
 
-리샘플 배속은 피치도 같이 올린다(rate 1.35 = 약 +5.2반음). 우리에겐 이득이다 —
-유아 F0 가 성인보다 +4~7반음 높으므로 **빠른 발화와 유아 음역을 한 번에** 얻는다.
+🔴🔴 2026-08-09 정정 — 위 ②의 '배속'을 리샘플로 만든 건 **설계 오류였다.**
+
+  리샘플은 시간과 피치를 **같이** 바꾼다. 그래서 학습 데이터에서 '빠르다'와 '높다'가
+  항상 붙어 다녔고(격자의 대각선만 채운 꼴), 모델은 둘을 구분할 수 없어 **피치를 골랐다.**
+  실기 결과: 아이 목소리(높음)는 깨우는데 **어른이 빠르게 부르면 놓친다.**
+
+  실측(배포된 v3 모델에 같은 문장을 두 방식으로 넣어 비교):
+    리샘플로 0.74배 압축(피치↑)      -> 호출점수 중앙 0.795, 임계초과 87.5%
+    WSOLA 로 0.79배 압축(피치 유지)  -> 호출점수 중앙 **0.453**, 임계초과 60.0%
+    ...그런데 whisper 는 후자도 92.5% 를 '재하봇'으로 전사했다.
+    **음성은 멀쩡하고 모델만 못 알아듣는다** = 학습 데이터 탓이다.
+
+  → 이제 시간축(time_stretch, 피치 유지)과 피치축(pitch_shift, 길이 유지)을 **따로**
+    주고 EXPAND_GRID 로 곱한다. '빠르지만 낮은' 칸과 '느리지만 높은' 칸이 둘 다 있어야
+    모델이 두 축을 분리해 배운다.
+
+  교훈: **증강 축이 서로 상관되면 모델은 그중 쉬운 축을 고른다.**
+  v3 때 클래스 대칭(긍정·부정에 같은 증강)은 챙겼지만 **축 독립성**을 놓쳤다.
 
 다양성 축: 화자 20종(F1~F5/M1~M5 + '+' 블렌딩) × 합성속도 4 × 문구 5 × 시드(클립마다)
 
@@ -72,8 +88,22 @@ VOICES = [
 # 안전 구간에서만 합성하고, 빠른 발화는 --expand 로 만든다.
 SPEEDS = [0.85, 0.95, 1.0, 1.05]
 
-# --expand 배속. 통과한 클립만 시간축 압축해 '빠른 발화 + 유아 음역'을 만든다.
-EXPAND_RATES = [1.15, 1.25, 1.35]
+# --expand 격자: (시간배속, 피치배율). 통과한 클립에만 건다.
+#
+# 🔴 v3 실패의 원인이 여기 있었다. 예전엔 리샘플 하나로 처리해 **'빠르다'와 '높다'가
+#    항상 같이** 움직였다(대각선만 채운 격자). 모델은 둘을 구분할 수 없었고 피치를 골랐다
+#    — 실측: 피치 유지하고 빠르게만 하면 점수가 0.80 -> 0.45 로 반토막.
+#    그래서 두 축을 **따로** 준다. 아래 격자에는 '빠르지만 낮은'(1.35, 1.0) 과
+#    '느리지만 높은'(1.0, 1.35) 이 둘 다 있어야 한다. 없으면 같은 실패가 재현된다.
+EXPAND_GRID = [
+    (1.15, 1.0), (1.35, 1.0),    # 빠르기만 — 어른이 빨리 부르는 경우(v3 에 없던 칸)
+    (1.0, 1.15), (1.0, 1.35),    # 높기만 — 아이 음역, 말 속도는 보통
+    (1.15, 1.35), (1.35, 1.15),  # 섞임 — 두 축이 독립임을 보여 주는 칸
+    (1.25, 1.25),                # 예전 리샘플과 같은 대각선(있어도 되지만 이것만 있으면 안 됨)
+]
+# 클립 하나당 이만큼만 무작위로 골라 건다. 말뭉치 전체로는 위 7칸이 고루 덮이면서
+# 총 개수는 v3(원본×4)와 같게 유지된다 — 학습 시간이 그대로여야 비교가 된다.
+EXPAND_PER_CLIP = 3
 
 
 def build_grid(phrases: list[str]) -> list[tuple[str, str, float]]:
@@ -84,10 +114,10 @@ def build_grid(phrases: list[str]) -> list[tuple[str, str, float]]:
 
 
 def speed_up(audio: np.ndarray, sr: int, rate: float) -> np.ndarray:
-    """리샘플로 rate 배 빠르게(= 길이 1/rate, 피치 ×rate). soxr 없으면 선형보간.
+    """리샘플로 rate 배 빠르게(= 길이 1/rate, **피치도 ×rate**). soxr 없으면 선형보간.
 
-    음소를 새로 만들지 않고 시간축만 줄이므로, TTS 에 빠르게 말하라고 시킬 때처럼
-    음절이 삼켜지지 않는다.
+    ⚠️ 이건 '빠른 발화'가 아니라 '빠르고 높은 소리'다. 단독으로 쓰지 말 것 —
+       아래 pitch_shift 와 조합해 시간·피치를 **따로** 주는 데 쓴다.
     """
     if rate == 1.0 or audio.size == 0:
         return audio
@@ -99,6 +129,60 @@ def speed_up(audio: np.ndarray, sr: int, rate: float) -> np.ndarray:
         xp = np.linspace(0.0, 1.0, audio.size, dtype=np.float32)
         return np.interp(np.linspace(0.0, 1.0, n, dtype=np.float32), xp,
                          audio).astype(np.float32)
+
+
+def time_stretch(audio: np.ndarray, rate: float, sr: int = TARGET_SR,
+                 N: int = 1024, Hs: int = 256) -> np.ndarray:
+    """WSOLA — **피치를 유지한 채** rate 배 빠르게. 사람이 빨리 말하는 것과 같은 변형.
+
+    numpy 만 쓴다(젯슨에 scipy·librosa 가 없고, 새 의존성을 늘리지 않는다).
+
+    🔴 탐색 반경 delta 는 반드시 |Ha-Hs| 보다 작아야 한다. 크면 탐색기가 매번
+       '시간을 안 줄이는 위치'(k+Hs)를 고른다 — 거기가 상관 1.0 이라서.
+       그러면 **배속이 조용히 무효가 된다**(실제로 delta=160 으로 돌렸다가
+       rate 1.35 에서 길이비 0.93 이 나왔다, 기대는 0.74). 길이비를 꼭 검산할 것.
+    """
+    if abs(rate - 1.0) < 1e-6 or audio.size < 4 * N:
+        return audio.astype(np.float32)
+    x = audio.astype(np.float32)
+    Ha = int(round(Hs * rate))
+    delta = max(8, int(0.9 * abs(Ha - Hs)))
+    w = np.hanning(N).astype(np.float32)
+    L = N - Hs
+    out = np.zeros(int(x.size / rate) + 4 * N, dtype=np.float32)
+    nrm = np.zeros_like(out)
+    # ⚠️ 탐색 중심은 **직전에 고른 위치가 아니라 절대 이상위치**(ideal)여야 한다.
+    #    직전 위치 기준으로 하면 '덜 압축하는 쪽'으로 치우친 선택이 매 프레임 누적돼
+    #    배속이 요청보다 6~7% 덜 걸린다(실측). ideal 은 정확히 Ha 씩 나아간다.
+    ideal = 0.0
+    k = o = 0
+    while ideal + N + Hs + delta < x.size and o + N < out.size:
+        out[o:o + N] += x[k:k + N] * w
+        nrm[o:o + N] += w
+        tmpl = x[k + Hs:k + Hs + L]                  # 자연스러운 다음 이음매
+        ideal += Ha
+        ctr = int(round(ideal))
+        lo, hi = max(0, ctr - delta), min(x.size - N - L, ctr + delta)
+        if hi <= lo:
+            k = min(max(ctr, 0), max(x.size - N - L, 0))
+        else:
+            c = np.arange(lo, hi + 1, 4)
+            segs = np.stack([x[i:i + L] for i in c])
+            sim = segs @ tmpl / (np.linalg.norm(segs, axis=1) + 1e-9)
+            k = int(c[int(np.argmax(sim))])
+        o += Hs
+    nrm[nrm < 1e-6] = 1.0
+    return (out[:o + N] / nrm[:o + N]).astype(np.float32)
+
+
+def pitch_shift(audio: np.ndarray, factor: float, sr: int = TARGET_SR) -> np.ndarray:
+    """**길이를 유지한 채** 피치만 ×factor (유아 음역 재현용).
+
+    리샘플로 압축하면 피치가 올라가되 길이가 줄므로, 그만큼 WSOLA 로 늘려 되돌린다.
+    """
+    if abs(factor - 1.0) < 1e-6 or audio.size == 0:
+        return audio.astype(np.float32)
+    return time_stretch(speed_up(audio, sr, factor), 1.0 / factor, sr)
 
 
 def expand(out_dir: str, sf) -> int:
@@ -124,24 +208,51 @@ def expand(out_dir: str, sf) -> int:
     nxt = max(idxs) + 1
 
     man = open(os.path.join(out_dir, "manifest.jsonl"), "a", encoding="utf-8")
-    made = 0
+    rng = random.Random(20260809)          # 시드 고정 — 재현 가능해야 한다
+    made, ratios, cover = 0, [], {}
     for c in clips:
         y, sr = sf.read(c)
         if y.ndim > 1:
             y = y.mean(axis=1)
         y = y.astype(np.float32)
-        for rate in EXPAND_RATES:
-            z = speed_up(y, sr, rate)
+        for rate, pitch in rng.sample(EXPAND_GRID, EXPAND_PER_CLIP):
+            z = time_stretch(y, rate, sr)
+            z = pitch_shift(z, pitch, sr)
             name = f"clip_{nxt:06d}.wav"
             sf.write(os.path.join(out_dir, name), z, sr)
             man.write(json.dumps({"clip": name, "src": os.path.basename(c),
-                                  "rate": rate, "dur": round(z.size / sr, 3)},
+                                  "rate": rate, "pitch": pitch,
+                                  "dur": round(z.size / sr, 3)},
                                  ensure_ascii=False) + "\n")
+            if y.size:
+                ratios.append((rate, z.size / y.size))
+            cover[(rate, pitch)] = cover.get((rate, pitch), 0) + 1
             nxt += 1
             made += 1
     man.close()
-    print(f"배속 변형 {made}개 추가 (원본 {len(clips)} × {len(EXPAND_RATES)}배속) "
+    print(f"변형 {made}개 추가 (원본 {len(clips)} × {EXPAND_PER_CLIP}칸) "
           f"-> 총 {len(clips) + made}개")
+
+    # 🔴 배속이 실제로 걸렸는지 검산한다. WSOLA 는 탐색 반경을 잘못 잡으면 조용히
+    #    아무 일도 안 한다 — 그러면 '빠른 발화'가 또 학습에서 빠지고, 우리는 그걸
+    #    실기에서야 알게 된다(v3 가 정확히 그렇게 실패했다).
+    print("\n  [검산] 시간배속별 실제 길이비 (기대 = 1/배속)")
+    bad = False
+    for rate in sorted({r for r, _ in EXPAND_GRID}):
+        vals = [v for r, v in ratios if r == rate]
+        if not vals:
+            continue
+        got, want = sum(vals) / len(vals), 1.0 / rate
+        off = abs(got - want)
+        bad = bad or off > 0.08
+        print(f"    {rate:<5} 실제 {got:.3f} / 기대 {want:.3f}"
+              f"{'   🔴 배속이 안 걸렸다' if off > 0.08 else ''}")
+    print("\n  [격자] 칸별 개수")
+    for key in sorted(cover):
+        print(f"    시간 {key[0]:<5} 피치 {key[1]:<5} {cover[key]}")
+    if bad:
+        print("\n→ 길이가 기대와 다르다. 이대로 학습하면 v3 실패가 반복된다.")
+        return 1
     return 0
 
 
@@ -158,8 +269,8 @@ def main() -> int:
                     help="시드 시작값. **평가셋은 반드시 학습셋과 다른 값으로 줄 것** — "
                          "같으면 확산 노이즈가 같아 똑같은 클립이 나와 시험지가 샌다")
     ap.add_argument("--expand", action="store_true",
-                    help="합성 대신, 폴더의 기존 클립을 배속 변형해 이어붙인다"
-                         " (검수 통과본에만 적용할 것)")
+                    help="합성 대신, 폴더의 기존 클립에 시간×피치 격자를 걸어 이어붙인다"
+                         " (검수 통과본에만 적용할 것). 끝에 길이비를 검산한다")
     args = ap.parse_args()
 
     import soundfile as sf

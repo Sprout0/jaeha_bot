@@ -36,6 +36,98 @@ _SENT_SPLIT = re.compile(r"(?<=[.!?。！？…])\s+|\n+")
 # 앞쪽 무음 동안은 **아직 아무 소리도 안 난다** — 체감 지연에 포함해야 한다.
 PLAY_PAD_S = 0.15
 
+# OpenAI TTS 스트리밍 재생 관련.
+OPENAI_PCM_RATE = 24000   # response_format="pcm" 은 24kHz 16bit mono LE 고정(컨테이너 없음)
+STREAM_CHUNK = 4096       # HTTP 조각 크기
+# 재생 시작 전에 모아 둘 분량(초). 네트워크가 잠깐 멈춰도 말이 끊기지 않게 하는 완충이다.
+# 🔴 싸지 않다 — 젯슨 실측(2026-08-10) 첫 소리 중앙:
+#      0.05s -> 0.650s | 0.15s -> 0.601s | 0.25s -> 1.030s
+#    API 가 첫 조각을 보낸 뒤 잠깐 쉬어서, 0.25초어치를 기다리면 그 공백을 그대로 문다.
+#    0.15 가 최적점이다. 더 줄여도 이득이 없고 굶을 위험만 커진다.
+STREAM_PREBUFFER_S = 0.15
+
+
+class _StreamResampler:
+    """조각 경계를 이어 붙이는 리샘플러(스트리밍 전용).
+
+    조각마다 따로 리샘플하면 경계에서 파형이 튀어 '탁' 소리가 난다. 상태를 들고 있어야 한다.
+    soxr 가 있으면 ResampleStream(고품질), 없으면 직전 조각 꼬리를 물고 가는 선형보간.
+    (젯슨엔 soxr 가 있고 노트북엔 없다 — 버퍼 경로의 _resample 과 같은 사정이다.)
+    """
+
+    def __init__(self, src: int, dst: int) -> None:
+        self.src, self.dst = src, dst
+        self._soxr = None
+        self._buf = np.zeros(0, dtype=np.float32)
+        self._pos = 0.0
+        if src == dst:
+            return
+        try:
+            import soxr
+
+            self._soxr = soxr.ResampleStream(src, dst, 1, dtype="float32")
+        except Exception:      # 미설치·미지원이면 선형 폴백
+            log.info("soxr 없음 — 스트리밍 리샘플을 선형보간으로 처리한다(%d->%d)", src, dst)
+
+    def __call__(self, frames: np.ndarray) -> np.ndarray:
+        if self.src == self.dst:
+            return frames
+        if self._soxr is not None:
+            return np.asarray(self._soxr.resample_chunk(frames), dtype=np.float32)
+        # 선형 폴백: 남은 입력에 이어 붙이고, 뽑을 수 있는 출력 좌표까지만 소비한다.
+        self._buf = np.concatenate([self._buf, frames])
+        step = self.src / self.dst
+        last = len(self._buf) - 1
+        if last < 0 or self._pos > last:
+            return np.zeros(0, dtype=np.float32)
+        n = int((last - self._pos) / step) + 1
+        idx = self._pos + step * np.arange(n)
+        out = np.interp(idx, np.arange(len(self._buf)), self._buf).astype(np.float32)
+        keep = int(idx[-1])                    # 다음 보간에 필요한 왼쪽 샘플부터 남긴다
+        self._buf = self._buf[keep:]
+        self._pos = idx[-1] + step - keep
+        return out
+
+    def flush(self) -> np.ndarray:
+        """리샘플러 안에 남은 꼬리를 꺼낸다. 안 부르면 발화 끝이 조금씩 깎인다.
+
+        soxr 는 내부 버퍼를 들고 있어 last=True 로 비워 줘야 한다(젯슨 실측 12ms/발화).
+        """
+        if self.src == self.dst:
+            return np.zeros(0, dtype=np.float32)
+        if self._soxr is not None:
+            return np.asarray(
+                self._soxr.resample_chunk(np.zeros(0, dtype=np.float32), last=True),
+                dtype=np.float32)
+        # 선형 폴백: 마지막 샘플까지 한 번 더 훑고 버퍼를 비운다.
+        tail, self._buf = self._buf, np.zeros(0, dtype=np.float32)
+        if tail.size < 2:
+            return np.zeros(0, dtype=np.float32)
+        step = self.src / self.dst
+        n = int((len(tail) - 1 - self._pos) / step) + 1
+        if n <= 0:
+            return np.zeros(0, dtype=np.float32)
+        idx = self._pos + step * np.arange(n)
+        self._pos = 0.0
+        return np.interp(idx, np.arange(len(tail)), tail).astype(np.float32)
+
+
+class _SoundDeviceSink:
+    """실제 스피커. write() 가 블로킹이라 재생 속도에 맞춰 자연히 조절된다."""
+
+    def __init__(self, rate: int) -> None:
+        import sounddevice as sd
+
+        self._stream = sd.OutputStream(samplerate=rate, channels=1, dtype="float32")
+        self._stream.start()
+
+    def write(self, frames: np.ndarray) -> None:
+        self._stream.write(np.ascontiguousarray(frames, dtype=np.float32))
+
+    def close(self) -> None:
+        self._stream.stop()
+        self._stream.close()
+
 
 @dataclass(frozen=True)
 class SpeakTiming:
@@ -95,6 +187,17 @@ class TTSModule:
                                     # None 이면 매번 랜덤(말투 들쭉날쭉). 값 바꾸면 목소리 캐릭터가 달라짐.
         gap: float = 0.2,           # 문장 사이 삽입 무음(초). 앞뒤 pad 합쳐 총 간격≈0.3s
                                     # (TTS 표준 문장 간격). 더 붙이려면 0.15, 더 띄우려면 0.3.
+        # ── 원격 백엔드(선택) ────────────────────────────────────────────────
+        # "supertonic"(기본, 로컬) | "openai". openai 여도 Supertonic 은 계속 로드한다 —
+        # 폴백이 차가우면(로드 3.5초) 네트워크가 끊긴 순간 아이가 그만큼 기다린다.
+        backend: str = "supertonic",
+        openai_model: str = "gpt-4o-mini-tts",
+        openai_voice: str = "shimmer",   # 청취 비교로 채택(2026-08-10). 대안: coral
+        openai_instructions: str = "",   # 톤·속도 지시. tts-1 계열은 이 인자를 받지 않으니 비워둘 것
+        openai_timeout: float = 3.0,     # 실측 p95 1.72s / 최대 2.24s → 3초면 이상 상황만 걸린다
+        # 조각이 오는 대로 재생한다(첫 소리를 앞당긴다). 통짜 수신은 1.25s, 스트리밍은 0.6s 대.
+        # ⚠️ 소리가 한 번 나가면 폴백이 불가능하다 — 중간에 끊기면 말이 잘린 채로 끝난다.
+        openai_stream: bool = True,
     ) -> None:
         self.model = model
         self.voice = voice
@@ -105,6 +208,13 @@ class TTSModule:
         self.providers = list(providers) if providers else None
         self.seed = seed
         self.gap = gap
+        self.backend = backend
+        self.openai_model = openai_model
+        self.openai_voice = openai_voice
+        self.openai_instructions = openai_instructions
+        self.openai_timeout = openai_timeout
+        self.openai_stream = openai_stream
+        self._oa = None           # OpenAI 클라이언트(첫 사용 때 1회 생성)
         self._tts = None
         self._style = None
         self.sample_rate = 44100  # load() 에서 실제 값으로 갱신
@@ -186,10 +296,152 @@ class TTSModule:
 
     # ---------------------------------------------------------- 합성(-> numpy)
     def _infer(self, text: str) -> np.ndarray:
-        self.load()
+        """백엔드를 골라 합성한다. 원격이 실패하면 **말없이 멈추지 않고** 로컬로 내려간다.
+
+        아이 앞에서 소리가 안 나는 것이 최악이므로 폴백은 예외를 밖으로 던지지 않는다.
+        대신 반드시 경고를 남긴다 — 조용한 폴백은 '느려진 이유'를 못 찾게 만든다.
+        """
+        self.load()   # 원격을 쓰더라도 폴백을 미리 데워 둔다(로드 3.5초를 실패 시점에 치르지 않게)
         text = (text or "").strip()
         if not text:
             return np.zeros(0, dtype=np.float32)
+        if self.backend == "openai":
+            try:
+                return self._infer_openai(text)
+            except Exception as e:  # 네트워크·인증·타임아웃 무엇이든 로컬로 간다
+                log.warning("OpenAI TTS 실패(%s: %s) — Supertonic 으로 폴백",
+                            type(e).__name__, str(e)[:120])
+        return self._infer_local(text)
+
+    # ------------------------------------------------------- 원격 합성(OpenAI)
+    def _infer_openai(self, text: str) -> np.ndarray:
+        """gpt-4o-mini-tts -> wav -> 모듈 샘플레이트 float32 mono.
+
+        wav 를 쓰는 이유: soundfile 로 어디서나 디코드된다(mp3 는 libsndfile 버전을 탄다).
+        3초 발화에서 wav-mp3 전송량 차이는 체감 지연에 묻힌다.
+        ⚠️ 지금은 통짜로 받아서 재생한다 — 첫 소리 = 다운로드 완료 시각이다.
+           스트리밍 재생(response_format="pcm")으로 바꾸면 여기서 더 줄일 여지가 있다.
+        """
+        import io
+
+        import soundfile as sf
+
+        kw = dict(model=self.openai_model, voice=self.openai_voice,
+                  input=text, response_format="wav")
+        if self.openai_instructions:
+            kw["instructions"] = self.openai_instructions
+        data = self._openai_client().audio.speech.create(**kw).content
+
+        audio, rate = sf.read(io.BytesIO(data), dtype="float32", always_2d=False)
+        if audio.ndim > 1:                      # 혹시 스테레오로 오면 모노로
+            audio = audio.mean(axis=1)
+        return self._resample(np.asarray(audio, dtype=np.float32), rate, self.sample_rate)
+
+    def _openai_client(self):
+        if self._oa is None:
+            from openai import OpenAI
+
+            self._oa = OpenAI(timeout=self.openai_timeout)
+        return self._oa
+
+    # ------------------------------------------------------- 스트리밍 재생(OpenAI)
+    @staticmethod
+    def _iter_pcm_floats(byte_iter) -> "Iterator[np.ndarray]":
+        """PCM 바이트 조각 -> float32 프레임.
+
+        16bit 라 **2바이트가 한 샘플**이다. HTTP 조각 경계는 샘플을 반으로 가를 수 있으므로
+        남은 1바이트를 다음 조각 앞에 이어 붙인다. 안 그러면 이후 전체가 한 바이트씩 밀려
+        잡음이 된다. 맨 끝에 남는 홀수 바이트는 버린다(반쪽 샘플은 복원할 수 없다).
+        """
+        leftover = b""
+        for raw in byte_iter:
+            if not raw:
+                continue
+            buf = leftover + raw
+            usable = len(buf) - (len(buf) % 2)
+            leftover = buf[usable:]
+            if usable:
+                yield np.frombuffer(buf[:usable], dtype="<i2").astype(np.float32) / 32768.0
+
+    def _speak_streaming(self, byte_iter, src_rate: int, make_sink) -> bool:
+        """조각이 오는 대로 흘려보낸다. 첫 소리가 나기 전에 실패하면 False(호출부가 폴백).
+
+        🔴 폴백 판단은 여기서 끝난다 — 스피커에 한 조각이라도 나간 뒤에는 되돌릴 수 없다.
+           그래서 소리를 내기 전까지의 실패와 그 뒤의 실패를 구분해 다루고, 후자는
+           '말이 잘렸다'고 남긴다(조용히 끝나면 원인을 못 찾는다).
+        """
+        rate = self._play_rate or src_rate
+        resample = _StreamResampler(src_rate, rate)
+        prebuffer = int(STREAM_PREBUFFER_S * rate)
+        sink, pending, buffered = None, [], 0
+        try:
+            for frames in self._iter_pcm_floats(byte_iter):
+                out = resample(frames)
+                if out.size == 0:
+                    continue
+                if sink is not None:
+                    sink.write(out)
+                    continue
+                pending.append(out)
+                buffered += out.size
+                if buffered >= prebuffer:      # 완충이 찼으니 이제 소리를 낸다
+                    sink = make_sink(rate)
+                    for part in pending:
+                        sink.write(part)
+                    pending.clear()
+            tail = resample.flush()            # 리샘플러 안에 남은 꼬리(말끝) 회수
+            if tail.size:
+                pending.append(tail)
+            if sink is None and pending:       # 완충도 못 채우고 끝난 짧은 발화
+                sink = make_sink(rate)
+                for part in pending:
+                    sink.write(part)
+            elif sink is not None and tail.size:
+                sink.write(tail)
+        except Exception as e:
+            if sink is None:
+                log.warning("OpenAI TTS 스트리밍 실패(%s: %s) — 버퍼 경로로 폴백",
+                            type(e).__name__, str(e)[:120])
+                return False
+            log.warning("OpenAI TTS 재생 도중 끊김(%s: %s) — 말이 잘렸다",
+                        type(e).__name__, str(e)[:120])
+        finally:
+            if sink is not None:
+                sink.close()
+        return sink is not None
+
+    def _speak_openai_stream(self, text: str, t0: float) -> "SpeakTiming | None":
+        """스트리밍 경로 전체. 첫 소리 전에 실패하면 None 을 돌려 버퍼 경로로 넘긴다."""
+        import sounddevice as sd
+
+        self._resolve_play_rate(sd)   # 장치가 받는 레이트를 먼저 확정한다
+        started: dict[str, float] = {}
+
+        def make_sink(rate: int):
+            started["t"] = time.perf_counter()
+            return _SoundDeviceSink(rate)
+
+        kw = dict(model=self.openai_model, voice=self.openai_voice,
+                  input=text, response_format="pcm")
+        if self.openai_instructions:
+            kw["instructions"] = self.openai_instructions
+        try:
+            with self._openai_client().audio.speech.with_streaming_response.create(**kw) as resp:
+                ok = self._speak_streaming(resp.iter_bytes(STREAM_CHUNK),
+                                           OPENAI_PCM_RATE, make_sink)
+        except Exception as e:   # 연결 자체가 안 된 경우 — 아직 아무 소리도 안 났다
+            log.warning("OpenAI TTS 연결 실패(%s: %s) — 버퍼 경로로 폴백",
+                        type(e).__name__, str(e)[:120])
+            return None
+        if not ok:
+            return None
+        # 첫 소리 = 스트림을 연 시각. 장치 자체 버퍼 지연은 여기 안 잡히므로 약간 낙관적이다.
+        first_audio_s = started["t"] - t0
+        return SpeakTiming(first_audio_s=first_audio_s, synth_s=first_audio_s,
+                           play_s=max(0.0, time.perf_counter() - started["t"]))
+
+    # ------------------------------------------------------ 로컬 합성(Supertonic)
+    def _infer_local(self, text: str) -> np.ndarray:
         # Supertonic 은 초기 노이즈를 np.random.randn(전역 RNG)으로 뽑는다. 합성 직전
         # 시드를 고정하면 문장마다 같은 노이즈에서 출발해 말투·속도가 일정해진다.
         if self.seed is not None:
@@ -310,6 +562,12 @@ class TTSModule:
 
         t0 = time.perf_counter()
         self.load()
+        # 스트리밍 경로: 조각이 오는 대로 재생해 첫 소리를 앞당긴다(실측 1.25s -> 0.6s대).
+        # 실패해도 아직 소리가 안 났다면 None 이 와서 아래 버퍼 경로가 그대로 이어받는다.
+        if self.backend == "openai" and self.openai_stream and (text or "").strip():
+            timing = self._speak_openai_stream(text, t0)
+            if timing is not None:
+                return timing
         audio = self._trim(self._infer(text))
         synth_s = time.perf_counter() - t0
         if not audio.size:

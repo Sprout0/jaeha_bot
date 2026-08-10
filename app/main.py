@@ -114,6 +114,10 @@ def build_pipeline():
         system_prompt=settings.prompts["system"],
         **llm_cfg,
     )
+    # 로컬 GGUF 를 기동 때 올려 둔다. backend=openai 여도 마찬가지 —
+    # 폴백이 차가우면 네트워크가 끊긴 그 턴에 6초를 기다린다(2026-08-10 실측).
+    # 첫 턴 지연을 기동 쪽으로 옮기는 것뿐이라 로컬 전용 구성에도 손해가 없다.
+    agent.warm()
     return stt, tts, vision, agent
 
 

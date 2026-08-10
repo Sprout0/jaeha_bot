@@ -159,6 +159,17 @@ class LLMAgent:
         min_p: float = 0.05,
         max_sentences: int = 2,
         fewshot_path: str | None = None,
+        # ── 원격 백엔드(선택) ────────────────────────────────────────────────
+        # "local"(기본, llama.cpp) | "openai".
+        # 2026-08-10 젯슨 실측: LLM 중앙 1.769s -> 0.892s, 길이 지시도 API 가 더 잘 따른다.
+        # 원격이어도 GGUF 경로는 남긴다 — 네트워크가 끊기면 그대로 폴백해야 하기 때문.
+        backend: str = "local",
+        api_model: str = "gpt-4o-mini",
+        # 실측 p95 2.25s / 최대 2.28s(28회). 3초를 넘는 건 정상 범위가 아니다.
+        # 🔴 이 값은 '네트워크가 죽었을 때 아이가 견디는 침묵'과 같다 —
+        #    타임아웃 후에 로컬이 1.7초를 더 쓰므로 총 침묵 = api_timeout + 1.7s.
+        #    올리면 헛폴백이 줄고, 내리면 장애 시 침묵이 짧아진다.
+        api_timeout: float = 3.0,
     ) -> None:
         self.model_path = model_path
         self.system_prompt = system_prompt
@@ -180,6 +191,10 @@ class LLMAgent:
         self.fewshot = load_fewshot(fewshot_path)
         if self.fewshot:
             self.system_prompt = _augment_system(system_prompt, self.fewshot)
+        self.backend = backend
+        self.api_model = api_model
+        self.api_timeout = api_timeout
+        self._oa = None   # OpenAI 클라이언트(첫 사용 때 1회 생성)
         self.history: list[dict] = []
         self._llm = None  # 지연 로딩(첫 호출 때 1회만 로드)
 
@@ -208,6 +223,83 @@ class LLMAgent:
             log.info("LLM 로딩 완료")
         return self._llm
 
+    def warm(self) -> None:
+        """로컬 경로를 기동 때 한 번 돌려 둔다(폴백을 차갑게 두지 않기 위해).
+
+        🔴 **로드만으로는 부족하다.** 2026-08-10 젯슨 실측:
+             GGUF 로드 1.84s → 그런데 첫 폴백은 여전히 7.18s
+           비용의 대부분은 2165자 시스템 프롬프트의 prompt eval 과 CUDA 커널 초기화라,
+           실제 추론을 한 번 돌려야 사라진다(이후 1.7s 대). 아이 앞에서 7초 침묵은
+           폴백이 아니라 실패다.
+        덤으로 backend=local 일 때도 **첫 턴**이 빨라진다 — 지연을 기동 쪽으로 옮길 뿐이다.
+        실패해도 예외를 올리지 않는다(모델 파일 없는 기계에서도 원격 백엔드는 돌아야 한다).
+        이력은 건드리지 않는다 — 예열 대화가 남으면 첫 답변의 맥락이 오염된다.
+        """
+        try:
+            self._complete_local([
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": "안녕"},
+            ])
+        except Exception as e:
+            log.warning("로컬 폴백 예열 실패(%s: %s) — 원격이 끊기면 응답이 늦어진다",
+                        type(e).__name__, str(e)[:120])
+
+    # ------------------------------------------------------------ 완성(백엔드 선택)
+    def _complete(self, messages: list[dict]) -> str:
+        """messages -> 답변 텍스트. 원격이 실패하면 로컬로 내려간다.
+
+        아이가 아무 답도 못 듣는 것이 최악이므로 예외를 밖으로 던지지 않는다.
+        대신 반드시 경고를 남긴다 — 조용한 폴백은 '왜 느려졌는지'를 못 찾게 만든다.
+        후처리(_strip_speaker_prefix 등)는 호출부가 공통으로 하므로 여기서는 하지 않는다.
+        """
+        if self.backend == "openai":
+            try:
+                return self._complete_api(messages)
+            except Exception as e:  # 네트워크·인증·타임아웃 무엇이든 로컬로 간다
+                log.warning("OpenAI LLM 실패(%s: %s) — 로컬 EXAONE 으로 폴백",
+                            type(e).__name__, str(e)[:120])
+        return self._complete_local(messages)
+
+    def _complete_api(self, messages: list[dict]) -> str:
+        # 인자를 model/max_completion_tokens/messages 로만 두는 것은 tools/eval_llm.py
+        # make_openai 와 같게 맞추려는 것이다 — 평가에서 잰 품질·지연을 그대로 재현해야 한다.
+        r = self._api_client().chat.completions.create(
+            model=self.api_model,
+            max_completion_tokens=self.max_tokens,
+            messages=messages,
+        )
+        return (r.choices[0].message.content or "").strip()
+
+    def _api_client(self):
+        if self._oa is None:
+            from openai import OpenAI
+
+            self._oa = OpenAI(timeout=self.api_timeout)
+        return self._oa
+
+    def _complete_local(self, messages: list[dict]) -> str:
+        out = self._ensure_loaded().create_chat_completion(
+            messages=messages,
+            max_tokens=self.max_tokens,
+            temperature=self.temperature,
+            repeat_penalty=self.repeat_penalty,
+            top_p=self.top_p,
+            top_k=self.top_k,
+            min_p=self.min_p,
+        )
+        return (out["choices"][0]["message"].get("content") or "").strip()
+
+    def _postprocess(self, reply: str) -> str:
+        """소리로 읽을 수 있는 형태로 다듬는다. **백엔드와 무관하게 반드시 거친다.**
+
+        이모지·마크다운·'재하봇:' 이름표는 TTS 로 읽으면 치명적이라, 원격 답변이라고
+        건너뛰면 안 된다. respond()/render() 가 같은 것을 쓰도록 여기 모아 둔다.
+        """
+        reply = _strip_speaker_prefix(reply)  # '재하봇:' 이름표 제거(모델이 가끔 붙임)
+        reply = _flatten_markdown(reply)      # 목록/굵게/여러줄 -> 한 문단(TTS로 기호 읽기 방지)
+        reply = _strip_emoji(reply)           # 소리로 읽으므로 이모지 제거(프롬프트+코드 이중 차단)
+        return _clamp_sentences(reply, self.max_sentences)  # 최대 N문장(사족 제거, 뚝끊김 방지)
+
     def _build_messages(self, user_text: str, vision_context: str) -> list[dict]:
         messages: list[dict] = [{"role": "system", "content": self.system_prompt}]
         messages.extend(self.history)
@@ -234,21 +326,8 @@ class LLMAgent:
         if not user_text:
             return {"text": "", "function_call": None}
 
-        llm = self._ensure_loaded()
-        out = llm.create_chat_completion(
-            messages=self._build_messages(user_text, vision_context),
-            max_tokens=self.max_tokens,
-            temperature=self.temperature,
-            repeat_penalty=self.repeat_penalty,
-            top_p=self.top_p,
-            top_k=self.top_k,
-            min_p=self.min_p,
-        )
-        reply = (out["choices"][0]["message"].get("content") or "").strip()
-        reply = _strip_speaker_prefix(reply)  # '재하봇:' 이름표 제거(모델이 가끔 붙임)
-        reply = _flatten_markdown(reply)  # 목록/굵게/여러줄 -> 한 문단(TTS로 기호 읽기 방지)
-        reply = _strip_emoji(reply)  # 소리로 읽으므로 이모지 제거(프롬프트+코드 이중 차단)
-        reply = _clamp_sentences(reply, self.max_sentences)  # 최대 N문장(사족 제거, TTS 길이·뚝끊김 방지)
+        reply = self._postprocess(
+            self._complete(self._build_messages(user_text, vision_context)))
         if reply:
             self._remember(user_text, reply)
         return {"text": reply, "function_call": None}
@@ -264,25 +343,10 @@ class LLMAgent:
         instruction = (instruction or "").strip()
         if not instruction:
             return ""
-        llm = self._ensure_loaded()
-        out = llm.create_chat_completion(
-            messages=[
-                {"role": "system", "content": _RENDER_SYSTEM},
-                {"role": "user", "content": instruction},
-            ],
-            max_tokens=self.max_tokens,
-            temperature=self.temperature,
-            repeat_penalty=self.repeat_penalty,
-            top_p=self.top_p,
-            top_k=self.top_k,
-            min_p=self.min_p,
-        )
-        reply = (out["choices"][0]["message"].get("content") or "").strip()
-        reply = _strip_speaker_prefix(reply)
-        reply = _flatten_markdown(reply)
-        reply = _strip_emoji(reply)
-        reply = _clamp_sentences(reply, self.max_sentences)
-        return reply
+        return self._postprocess(self._complete([
+            {"role": "system", "content": _RENDER_SYSTEM},
+            {"role": "user", "content": instruction},
+        ]))
 
 
 def _repl() -> None:

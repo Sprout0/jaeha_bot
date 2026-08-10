@@ -16,6 +16,23 @@ CONFIG_DIR = BASE_DIR / "configs"
 LOCAL_NAME = "local.yaml"
 
 
+def load_env(base_dir: Path | None = None) -> None:
+    """프로젝트 루트의 `.env` 를 환경변수로 읽어들인다(있으면).
+
+    API 백엔드(llm.backend / tts.backend = openai)를 켰을 때 키를 여기서 얻는다.
+    🔴 이게 없으면 키가 없어도 예외가 아니라 **조용히 로컬 폴백**이라, 'API 를 켰다고
+       믿는데 실제로는 안 켜진' 상태가 된다(2026-08-10 에 실제로 겪음 — 노트북은 키가
+       setx 환경변수라 돌았고 .env 엔 없어서, 젯슨에 파일을 복사해도 안 넘어갔다).
+    이미 설정된 환경변수는 덮어쓰지 않는다(shell/setx 가 파일보다 우선).
+    python-dotenv 가 없으면 조용히 지나간다 — 로컬 전용 구성에선 필요 없다.
+    """
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    load_dotenv((base_dir or BASE_DIR) / ".env")
+
+
 def load_yaml(name: str, config_dir: Path | None = None) -> dict:
     path = (config_dir or CONFIG_DIR) / name
     with open(path, "r", encoding="utf-8") as f:
@@ -49,6 +66,7 @@ def load_models(config_dir: Path | None = None) -> dict:
 
 class Settings:
     def __init__(self) -> None:
+        load_env()   # yaml 보다 먼저 — API 백엔드가 키를 찾을 수 있어야 한다
         self.models = load_models()
         self.prompts = load_yaml("prompt_templates.yaml")
         # 안전·윤리 규칙(가이드 6). ⚠️ 현재 코드에서 소비하는 곳이 없다 — 필터/에스컬레이션을

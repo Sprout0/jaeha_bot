@@ -64,7 +64,18 @@ ANIMAL_ITEMS, REPEAT_ITEMS = _load_items()
 _ANIMAL_TRIGGERS = ["동물소리놀이", "동물놀이", "동물소리", "울음소리", "동물흉내", "동물소리게임"]
 _REPEAT_TRIGGERS = ["따라말하기", "따라하기", "따라말해", "따라쟁이", "따라해놀이"]
 
-_STOP_WORDS = ["그만", "안할래", "싫어", "그만할래", "안해", "하기싫어", "됐어", "끝났어"]
+# 구성 단서(아래 match_trigger 2번)에 쓸 동물 이름의 최소 길이.
+# 🔴 '소'·'양' 같은 한 글자 이름은 흔한 낱말 속에 그대로 들어 있다 — '목소리', '소파',
+#    '양말', '모양'. 여기에 '소리'나 '놀이'만 겹치면 아무 말이나 놀이로 바뀐다.
+#    실기(2026-08-10)에서 아이가 "와 목소리가 왜그래?" 한 마디에 동물 놀이가 시작돼
+#    4턴을 끌려갔다. claims.py 의 _MIN_NAME 과 같은 취지의 가드다.
+#    대가: "소 놀이 하자"로는 못 켠다. '동물 소리'라고 하거나 두 글자 이름을 쓰면 된다.
+_MIN_ANIMAL_NAME = 2
+
+# 놀이에서 빠져나오는 말. '그만' 계열만 있으면 아이가 흔히 쓰는 "다른 놀이 하자"에
+# 갇힌다(실기에서 실제로 갇혔다). ⚠️ '다른 동물'은 계속하겠다는 뜻이라 넣지 않는다.
+_STOP_WORDS = ["그만", "안할래", "싫어", "그만할래", "안해", "하기싫어", "됐어", "끝났어",
+               "다른놀이", "딴놀이", "다른거", "딴거"]
 _NO_WORDS = ["아니", "안할래", "그만", "싫어", "됐어", "안해"]
 
 
@@ -112,7 +123,7 @@ def match_trigger(text: str) -> str | None:
         if t in n or jamo_ratio(n, t) <= 0.2:
             return "repeat"
     # 2) 구성 단서: (동물 or 동물이름) + 놀이/소리/흉내 → 동물놀이
-    animal_names = [a for a, _ in ANIMAL_ITEMS]
+    animal_names = [a for a, _ in ANIMAL_ITEMS if len(a) >= _MIN_ANIMAL_NAME]
     if ("동물" in n or any(a in n for a in animal_names)) and (
         "놀이" in n or "게임" in n or "소리" in n or "흉내" in n or "울음" in n
     ):

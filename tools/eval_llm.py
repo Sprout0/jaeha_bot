@@ -39,7 +39,10 @@ try:
 except ImportError:
     pass
 
-from app.agent import _augment_system, load_fewshot          # noqa: E402
+from app.agent import (                                      # noqa: E402
+    _augment_system, _clamp_sentences, _flatten_markdown,
+    _strip_emoji, _strip_speaker_prefix, load_fewshot,
+)
 from app.claims import find_fabrications                     # noqa: E402
 from app.safety import check_reply                           # noqa: E402
 from app.config import settings                              # noqa: E402
@@ -61,9 +64,37 @@ def build_system_prompt() -> str:
     return _augment_system(settings.prompts["system"], fewshot)
 
 
+def spoken(text: str) -> str:
+    """모델 원문 -> **아이가 실제로 듣는 문자열**. 채점 대상은 항상 이쪽이다.
+
+    🔴 왜 이게 여기 있어야 하는가 (2026-08-11 에 실제로 당한 일):
+       운영은 app/agent.py `_postprocess` 를 반드시 거친다 — 이름표 제거,
+       마크다운 평탄화, 이모지 제거, 그리고 **최대 max_sentences 문장으로 잘라내기**.
+       그런데 평가는 API 원문을 그대로 채점했다. 그래서 안전 평가셋이 42/42 통과로
+       찍혔는데, 실제로 입 밖으로 나가는 문장은 세 번째 절이 잘린 것이었다:
+         원문  "그건 아직 못 해! 위험해! 엄마 아빠한테 물어보자."
+         실제  "그건 아직 못 해! 위험해!"            ← 어른 유도가 사라진다
+       42문항 중 30문항이 그랬다. 즉 **아이가 듣지 않는 문자열로 안전을 인증했다.**
+    ⚠️ 이 함수를 지우거나 '어차피 원문이 더 정확하다'며 되돌리면 그 구멍이 그대로
+       다시 열린다. 백엔드가 무엇이든(local/openai/gemini) 채점은 말해지는 문자열로.
+       make_local 은 respond() 안에서 이미 같은 후처리를 거치므로 두 번 걸어도 무해하다
+       (후처리는 멱등이다) — 중요한 건 '모든 백엔드가 같은 잣대'라는 것.
+    """
+    text = _strip_speaker_prefix(text)
+    text = _flatten_markdown(text)
+    text = _strip_emoji(text)
+    return _clamp_sentences(text, _max_sentences())
+
+
+def _max_sentences() -> int:
+    """운영이 쓰는 하드캡을 config 에서 그대로 읽는다(값을 여기 베끼지 않는다)."""
+    return int(settings.models["llm"].get("max_sentences", 2))
+
+
 # ── 백엔드 ────────────────────────────────────────────────────────────────────
 # 각 백엔드는 (답변, 캐시적중토큰) 을 돌려주는 callable 을 만든다.
 # 새 제공사를 붙일 때 여기만 늘리면 되고 지표·리포트는 그대로 쓴다.
+# 🔴 새 백엔드도 반드시 spoken() 을 통과시킬 것 — 위 주석의 이유.
 
 def make_openai(model: str, system: str, max_tokens: int):
     from openai import OpenAI
@@ -81,7 +112,7 @@ def make_openai(model: str, system: str, max_tokens: int):
         details = getattr(usage, "prompt_tokens_details", None)
         if details is not None:
             cached = getattr(details, "cached_tokens", 0) or 0
-        return (r.choices[0].message.content or "").strip(), cached
+        return spoken((r.choices[0].message.content or "").strip()), cached
 
     return ask
 
@@ -119,7 +150,7 @@ def make_gemini(model: str, system: str, max_tokens: int):
         thoughts = getattr(u, "thoughts_token_count", 0) or 0
         if thoughts:
             log_once(f"⚠️ {model}: thinking 이 꺼지지 않았다(사고 {thoughts}토큰)")
-        return (r.text or "").strip(), cached
+        return spoken((r.text or "").strip()), cached
 
     return ask
 
@@ -273,6 +304,12 @@ def main() -> None:
             if keep is not None:
                 res["records"] = [r for r in res["records"] if r["id"] in keep]
             for rec in res["records"]:
+                # 옛 로그는 API 원문이 그대로 저장돼 있다(spoken() 이전 실행).
+                # 같은 잣대로 다시 보려면 여기서도 '말해지는 문자열'로 바꿔 채점한다 —
+                # 그러지 않으면 옛 실행은 계속 '아이가 듣지 않는 문장'으로 채점된다.
+                # 새 로그는 이미 후처리된 문자열이고 spoken() 은 멱등이라 안전하다.
+                rec["reply"] = spoken(rec["reply"])
+                rec["chars"] = len(rec["reply"])
                 rec["fabrications"] = find_fabrications(rec["reply"])
                 rec["safety_flags"] = check_reply(rec["reply"])
             res["summary"] = summarize(res["records"])

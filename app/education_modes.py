@@ -304,15 +304,22 @@ class AnimalSoundGame(Game):
             req = [sound] + nreq
         return _beat(fb, ins, req)
 
+    # 🔴 체크포인트에는 '다음 질문'이 없다. 그래서 확장 문장이 이 턴의 **유일한**
+    #    확장 기회인데, 지시문이 "'{sound}' 를 넣어 칭찬" 으로만 줄어 있었다.
+    #    require 가 [sound, "더"] 라 "멍멍! 더 할래?" 도 통과한다 — 확장 0 이다.
+    #    확장이 구조로 보장된다는 이 브랜치의 주장이 여기서 조용히 깨져 있었다.
+    #    지시문에 확장 절을 되돌리고, require 에 대상 이름을 넣어 맨 흉내만으로는
+    #    검증을 통과하지 못하게 한다(빠지면 확장된 폴백 템플릿으로 내려간다).
     def _react_checkpoint_beat(self, animal, sound, said):
         praise = (f"{said}! {_j(animal)} {said} 하고 울어!" if said
                   else f"{_j(animal)} {sound} 하고 울어!")
         return _beat(f"{praise} 더 할래?",
                      f"딱 두 문장으로만 말해. 반말. "
-                     f"첫 문장에 '{sound}' 를 그대로 넣어 밝게 칭찬하고"
-                     f"(따라 하는 말을 따로 한 문장으로 끊지 않는다), "
+                     f"첫 문장은 '{sound}' 를 그대로 다시 쓰면서 '{_j(animal)} {sound} 하고 울어' "
+                     f"처럼 한두 낱말만 붙여 늘린 한 문장으로 밝게 칭찬한다"
+                     f"(따라 하는 말을 따로 한 문장으로 끊지 않는다). "
                      f"둘째 문장은 '더 할래?'.",
-                     [sound, "더"])
+                     [sound, animal, "더"])
 
     def _retry_beat(self, animal, sound):
         fb = f"{_j(animal)} {sound}! 같이 해보자, {sound}!"
@@ -356,14 +363,18 @@ class RepeatWordGame(Game):
             req = [word, nword]
         return _beat(fb, ins, req)
 
+    # 동물 놀이 체크포인트와 같은 이유로 확장 절을 되돌린다(위 주석 참고).
+    # require 에 '잘' 을 넣어 맨 흉내("바나나! 더 할래?")로는 통과하지 못하게 한다 —
+    # 이 놀이에서 확장은 낱말 뒤에 붙는 칭찬 절이고, 두 폴백 템플릿에도 다 들어 있다.
     def _react_checkpoint_beat(self, word, _tgt, said):
         praise = f"{said}! 우와 잘 따라했어!" if said else f"{word}! 잘했어!"
         return _beat(f"{praise} 더 할래?",
                      f"딱 두 문장으로만 말해. 반말. "
-                     f"첫 문장에 '{word}' 를 그대로 넣어 밝게 칭찬하고"
-                     f"(따라 하는 말을 따로 한 문장으로 끊지 않는다), "
+                     f"첫 문장은 '{word}' 를 그대로 다시 쓰면서 '우와 {word} 잘 따라했어' "
+                     f"처럼 한두 낱말만 붙여 늘린 한 문장으로 밝게 칭찬한다"
+                     f"(따라 하는 말을 따로 한 문장으로 끊지 않는다). "
                      f"둘째 문장은 '더 할래?'.",
-                     [word, "더"])
+                     [word, "잘", "더"])
 
     def _retry_beat(self, word, _tgt):
         fb = f"{word}! 같이 해보자, {word}!"

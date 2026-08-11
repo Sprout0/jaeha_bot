@@ -58,6 +58,28 @@ def test_checkpoint_also_expands():
     assert "멍멍" in fb and "강아지" in fb and "더 할래?" in fb
 
 
+def test_checkpoint_require_rejects_a_bare_echo():
+    # 체크포인트에는 '다음 질문'이 없어서 확장 문장이 이 턴의 유일한 확장이다.
+    # require 가 [소리, '더'] 뿐이면 "멍멍! 더 할래?" 가 통과한다 — 확장이 0 인데
+    # LLM 경로가 검증을 통과해 버린다. 대상 이름이 require 에 있어야 막힌다.
+    g = _game([("강아지", "멍멍")])
+
+    req = g.step("멍멍")["require"]
+
+    assert "강아지" in req, f"확장 절이 require 로 강제되지 않는다: {req}"
+    assert not all(tok in "멍멍! 더 할래?" for tok in req), \
+        "맨 흉내만 한 답이 검증을 통과한다"
+
+
+def test_checkpoint_instruction_asks_for_expansion():
+    g = _game([("강아지", "멍멍")])
+
+    ins = g.step("멍멍")["instruction"]
+
+    assert "강아지는 멍멍 하고 울어" in ins, f"확장 절 지시가 빠졌다: {ins}"
+    assert "두 문장" in ins, "두 문장 상한은 유지돼야 한다(클램프에 잘린다)"
+
+
 from app.education_modes import RepeatWordGame
 
 
@@ -86,6 +108,39 @@ def test_repeat_game_misheard_uses_the_card_word():
 
     assert "바나나" in out
     assert out.count("바나나") >= 2, f"따라 한 뒤 다시 써야 한다: {out}"
+
+
+def test_repeat_checkpoint_require_rejects_a_bare_echo():
+    # 따라 말하기도 같은 구멍이 있었다: require 가 [낱말, '더'] 라
+    # "바나나! 더 할래?" 로 통과했다. 칭찬 절('잘 따라했어')이 이 놀이의 확장이다.
+    g = _repeat_game([("바나나", "바나나")])
+
+    beat = g.step("바나나")
+
+    assert not all(tok in "바나나! 더 할래?" for tok in beat["require"]), \
+        f"맨 흉내만 한 답이 검증을 통과한다: {beat['require']}"
+    assert "잘 따라했어" in beat["instruction"], \
+        f"확장 절 지시가 빠졌다: {beat['instruction']}"
+    assert "두 문장" in beat["instruction"]
+
+
+def test_repeat_checkpoint_fallback_still_satisfies_require():
+    # 폴백은 건드리지 않았다. require 를 늘렸으니 폴백이 그 조건을 여전히
+    # 만족하는지 확인한다 — 아니면 '검증이 요구하는 것'과 '실제 내보내는 것'이 갈린다.
+    g = _repeat_game([("바나나", "바나나")])
+
+    beat = g.step("바나나")
+
+    assert all(tok in beat["fallback"] for tok in beat["require"]), beat
+
+
+def test_animal_checkpoint_fallback_still_satisfies_require():
+    for said, batch in (("멍멍", [("강아지", "멍멍")]), ("몰라", [("강아지", "멍멍")])):
+        g = _game(batch)
+        if said == "몰라":
+            g.step("몰라")          # 재시도 한 번 소진 → 다음 턴에 체크포인트로
+        beat = g.step(said)
+        assert all(tok in beat["fallback"] for tok in beat["require"]), (said, beat)
 
 
 def test_completion_prompt_used_when_card_has_lead():

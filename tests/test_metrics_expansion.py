@@ -38,3 +38,18 @@ def test_record_turn_logs_expansion_fields(tmp_path):
 
     assert rec["expansion_delta"] == 4     # 봇 5낱말 - 아이 1낱말
     assert rec["reuse"] == 1.0
+
+
+def test_record_turn_nulls_expansion_when_child_text_is_punctuation_only(tmp_path):
+    # child_text="..." 는 빈 문자열이 아니라 truthy 지만, 낱말로 쪼개면 하나도 안 남는다.
+    # expansion_delta 가 raw 문자열의 truthy 여부로 판단하면 reuse=None 인데
+    # expansion_delta 만 숫자가 나오는 모순이 생긴다 — 둘 다 None 이어야 한다.
+    m = MetricsLogger(enabled=True, tag="test", log_dir=str(tmp_path))
+    m.record_turn(stt_wait_s=1.0, stt_rec_s=0.5, think_s=0.9, think_kind="game",
+                  tts_first_s=0.8, tts_play_s=2.0,
+                  reply="멍멍! 강아지는 멍멍 하고 울어!", child_text="...")
+
+    rec = json.loads(m.path.read_text(encoding="utf-8").splitlines()[-1])
+
+    assert rec["expansion_delta"] is None
+    assert rec["reuse"] is None

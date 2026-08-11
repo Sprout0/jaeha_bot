@@ -121,6 +121,10 @@ class MetricsLogger:
             return
         self.turn += 1
         resp = round(stt_rec_s + think_s + tts_first_s, 3)
+        # 낱말을 파싱해서 개수를 봐야 한다 — 원본 문자열은 "..." 처럼 문장부호만
+        # 있어도 truthy라서, 원본으로 판단하면 reuse(None)와 expansion_delta(숫자)가
+        # 같은 턴에서 서로 다른 결론을 낸다. 반드시 _words() 결과로 판단할 것.
+        child_words = _words(child_text)
         rec = {
             "ts": datetime.now().isoformat(timespec="seconds"),
             "tag": self.tag, "turn": self.turn,
@@ -135,8 +139,8 @@ class MetricsLogger:
             "metric_ver": 2,                  # 1 = tts 재생시간이 섞여 있던 옛 기록
             "rss_mb": _rss_mb(),
             "reply_len": len(reply or ""),
-            "expansion_delta": (len(_words(reply)) - len(_words(child_text))
-                                if child_text else None),
+            "expansion_delta": (len(_words(reply)) - len(child_words)
+                                if child_words else None),
             "reuse": _reuse_ratio(child_text, reply),
         }
         self.samples.append(rec)

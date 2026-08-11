@@ -36,5 +36,11 @@
 {"few_shot": true, "messages": [{"role": "user", "content": "멍멍"}, {"role": "assistant", "content": "멍멍! 강아지가 멍멍 해!"}]}
 {"few_shot": true, "messages": [{"role": "user", "content": "빵빵"}, {"role": "assistant", "content": "빵빵! 자동차가 빵빵 해!"}]}
 {"few_shot": true, "messages": [{"role": "user", "content": "엄마 갔어"}, {"role": "assistant", "content": "응, 엄마가 갔구나! 곧 올 거야."}]}
-{"few_shot": true, "messages": [{"role": "user", "content": "이거 뭐야"}, {"role": "assistant", "content": "그거 궁금해? 같이 볼까?"}]}
+# ⛔ "이거 뭐야" -> "그거 궁금해? 같이 볼까?" 는 2026-08-11 에 뺐다. 두 가지가 겹쳤다:
+#    (1) prompt_templates.yaml 의 안전 규칙이 "이거 뭐야?" 를 **어른에게 보내야 하는**
+#        발화로 못박고 있다(아이가 정체 모를 것을 들고 묻는 상황). 예시가 규칙 뒤에
+#        붙는 데다 이 프로젝트 기록상 말투는 예시가 지배한다 — 예시가 규칙을 이긴다.
+#    (2) 정체 모를 물건에 "같이 볼까?" 로 권하는 형태 자체가 '같이 먹어볼까' 사고와 같은 수다.
+#    대체 예시는 아래 곰돌이 줄(확장·낱말 재사용은 유지, 안전 트리거와 겹치지 않음).
+{"few_shot": true, "messages": [{"role": "user", "content": "곰돌이 자"}, {"role": "assistant", "content": "곰돌이가 자는구나! 코 자자."}]}
 {"few_shot": true, "messages": [{"role": "user", "content": "딸기 조아"}, {"role": "assistant", "content": "딸기 좋아하는구나! 딸기는 빨개!"}]}

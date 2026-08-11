@@ -291,15 +291,25 @@ class RepeatWordGame(Game):
         return _beat(f"좋아! 따라 해봐, {word}!",
                      f"'따라 해봐, {word}!' 하고 밝게 말해. 반말 한 문장.", [word])
 
-    def _react_next_beat(self, word, _tgt, close, nword, _ntgt):
-        fb = (f"우와 잘 따라했어! 이번엔 {nword}!" if close
-              else f"잘했어! 이번엔 {nword}!")
-        ins = f"아이가 따라 말한 걸 밝게 칭찬하고 이어서 '이번엔 {nword}!' 하고 말해. 반말."
-        return _beat(fb, ins, [nword])
+    def _react_next_beat(self, word, _tgt, said, nword, _ntgt):
+        if said:
+            fb = f"{said}! 우와 잘 따라했어! 이번엔 {nword}!"
+            ins = (f"아이가 '{said}' 라고 따라 말했어. 먼저 '{said}!' 하고 그대로 따라 하고 "
+                   f"밝게 칭찬한 뒤 '이번엔 {nword}!' 하고 말해. 반말 두 문장.")
+            req = [said, nword]
+        else:
+            # 지적하지 않고 낱말을 한 번 더 들려준다.
+            fb = f"{word}! 잘했어! 이번엔 {nword}!"
+            ins = (f"'{word}!' 를 다시 한 번 들려주고 밝게 격려한 뒤 "
+                   f"'이번엔 {nword}!' 하고 말해. 반말 두 문장.")
+            req = [word, nword]
+        return _beat(fb, ins, req)
 
-    def _react_checkpoint_beat(self, word, _tgt, close):
-        return _beat("우와 잘했어! 더 할래?",
-                     "아이를 밝게 칭찬하고 '더 할래?' 하고 물어봐. 반말 한 문장.", ["더"])
+    def _react_checkpoint_beat(self, word, _tgt, said):
+        praise = f"{said}! 우와 잘 따라했어!" if said else f"{word}! 잘했어!"
+        return _beat(f"{praise} 더 할래?",
+                     f"'{praise}' 하고 밝게 말한 뒤 '더 할래?' 하고 물어봐. 반말.",
+                     [word, "더"])
 
 
 # ── 라우터: 대화 루프에 끼워 넣는 진입점 ───────────────────────────────────────

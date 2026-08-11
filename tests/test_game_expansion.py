@@ -56,3 +56,33 @@ def test_checkpoint_also_expands():
     fb = g.step("멍멍")["fallback"]
 
     assert "멍멍" in fb and "강아지" in fb and "더 할래?" in fb
+
+
+from app.education_modes import RepeatWordGame
+
+
+def _repeat_game(batch):
+    g = RepeatWordGame()
+    g.batch = list(batch)
+    g.bi = 0
+    g.state = "await_answer"
+    return g
+
+
+def test_repeat_game_echoes_the_child_word():
+    g = _repeat_game([("바나나", "바나나"), ("딸기", "딸기")])
+
+    fb = g.step("바나나")["fallback"]
+
+    assert fb.startswith("바나나"), f"아이 말을 먼저 따라 해야 한다: {fb}"
+    assert "딸기" in fb, f"다음 낱말로 이어야 한다: {fb}"
+
+
+def test_repeat_game_misheard_uses_the_card_word():
+    # '바나'만 말해도 인정된다(자모거리 0.333). 되받는 건 카드의 '바나나'여야 한다.
+    g = _repeat_game([("바나나", "바나나"), ("딸기", "딸기")])
+
+    out = _text(g.step("바나"))
+
+    assert "바나나" in out
+    assert out.count("바나나") >= 2, f"따라 한 뒤 다시 써야 한다: {out}"

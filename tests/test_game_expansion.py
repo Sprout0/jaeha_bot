@@ -86,3 +86,33 @@ def test_repeat_game_misheard_uses_the_card_word():
 
     assert "바나나" in out
     assert out.count("바나나") >= 2, f"따라 한 뒤 다시 써야 한다: {out}"
+
+
+def test_completion_prompt_used_when_card_has_lead():
+    # 2세에게는 wh- 질문보다 완성형이 맞다(문헌: 1~2세 권장 유형).
+    # 정답을 정확히 받아쓸 필요가 없어 우리 STT 약점과도 궁합이 좋다.
+    g = _game([("강아지", "멍멍"), ("고양이", "야옹")])
+
+    text, req = g._prompt("강아지", "멍멍")
+
+    assert text == "강아지는 멍?", f"완성형이어야 한다: {text}"
+    assert "멍" in req
+
+
+def test_wh_prompt_used_when_card_has_no_lead():
+    # '음메' 는 앞부분('음')이 어색해 lead 를 안 넣는다 -> 기존 wh- 유지.
+    # 한 형태만 반복하면 단조로워지므로 섞는 것이 설계 의도다.
+    g = _game([("소", "음메")])
+
+    text, req = g._prompt("소", "음메")
+
+    assert text == "소는 어떻게 울어?"
+    assert "울어" in req
+
+
+def test_ask_beat_uses_the_prompt_helper():
+    g = _game([("강아지", "멍멍")])
+
+    beat = g._ask_beat("강아지", "멍멍")
+
+    assert "강아지는 멍?" in beat["fallback"]

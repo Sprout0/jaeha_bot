@@ -5,12 +5,12 @@
     "aliases": ["동물소리놀이", "동물놀이", "동물소리", "흉내내기"],
     "intro": "동물 소리 놀이 하자!",
     "cards": [
-      {"sound": "멍멍", "answer": "강아지"},
+      {"sound": "멍멍", "answer": "강아지", "lead": "멍"},
       {"sound": "야옹", "answer": "고양이"},
       {"sound": "음메", "answer": "소"},
-      {"sound": "꿀꿀", "answer": "돼지"},
-      {"sound": "꽥꽥", "answer": "오리"},
-      {"sound": "삐약삐약", "answer": "병아리"},
+      {"sound": "꿀꿀", "answer": "돼지", "lead": "꿀"},
+      {"sound": "꽥꽥", "answer": "오리", "lead": "꽥"},
+      {"sound": "삐약삐약", "answer": "병아리", "lead": "삐약"},
       {"sound": "개굴개굴", "answer": "개구리"},
       {"sound": "매애", "answer": "양"}
     ]

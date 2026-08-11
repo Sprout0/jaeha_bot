@@ -33,11 +33,12 @@ _DEFAULT_ANIMALS = [("강아지", "멍멍"), ("고양이", "야옹"), ("소", "�
 _DEFAULT_WORDS = ["엄마", "사과", "바나나"]
 
 
-def _load_items() -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
-    """scenario_cards.json 에서 (동물 소리, 따라말 단어) 항목을 읽는다.
+def _load_items() -> tuple[list[tuple[str, str]], list[tuple[str, str]], dict[str, str]]:
+    """scenario_cards.json 에서 (동물, 따라말, 완성형 lead) 를 읽는다.
 
-    동물: (answer=동물이름, sound=울음소리) 쌍. 따라말: (word, word) 쌍.
-    파일이 없거나 깨지면 기본값으로 대체(놀이는 계속 동작).
+    lead 는 '완성형 프롬프트'의 앞부분이다("멍멍" -> "멍" -> "강아지는 멍?").
+    ⚠️ ITEMS 를 3-튜플로 만들면 match_trigger 의 `[a for a, _ in ANIMAL_ITEMS]` 가
+       깨진다. 그래서 별도 dict 로 싣고 기존 자료구조는 건드리지 않는다.
     """
     try:
         data = json.loads(_SCENARIO_PATH.read_text(encoding="utf-8"))
@@ -47,17 +48,20 @@ def _load_items() -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
         words = [(c["word"], c["word"])
                  for c in data.get("repeat_word", {}).get("cards", [])
                  if c.get("word")]
+        leads = {c["sound"]: c["lead"]
+                 for c in data.get("sound_match", {}).get("cards", [])
+                 if c.get("sound") and c.get("lead")}
         if not animals:
             animals = list(_DEFAULT_ANIMALS)
         if not words:
             words = [(w, w) for w in _DEFAULT_WORDS]
-        return animals, words
+        return animals, words, leads
     except (OSError, ValueError, KeyError) as e:
         log.warning("놀이 카드 로드 실패(기본값 사용): %s", e)
-        return list(_DEFAULT_ANIMALS), [(w, w) for w in _DEFAULT_WORDS]
+        return list(_DEFAULT_ANIMALS), [(w, w) for w in _DEFAULT_WORDS], {}
 
 
-ANIMAL_ITEMS, REPEAT_ITEMS = _load_items()
+ANIMAL_ITEMS, REPEAT_ITEMS, _LEADS = _load_items()
 
 # ── 트리거/응답 판정용 어휘(1단: 어휘 + 자모 유사도) ────────────────────────────
 # 정확한 문장이 아니어도, 오인식·변형·유사표현을 관대하게 잡는다.
@@ -236,35 +240,49 @@ class AnimalSoundGame(Game):
     BATCH_MIN = 4
     BATCH_MAX = 4
 
+    def _prompt(self, animal, sound):
+        """묻는 말과 그 문장의 require 토큰.
+
+        lead 가 있으면 완성형('강아지는 멍?'), 없으면 기존 wh-('어떻게 울어?').
+        비율은 카드의 lead 유무로 조절하니 코드를 안 건드리고 실험할 수 있다.
+        ⚠️ 말줄임표('멍...?')를 쓰지 않는다 — 이 문자열은 그대로 TTS 로 읽히고,
+           기호를 소리 내 읽을 위험이 있다. 물음표만으로 억양을 만든다.
+        """
+        lead = _LEADS.get(sound)
+        if lead:
+            return f"{_j(animal)} {lead}?", [animal, lead]
+        return f"{_j(animal)} 어떻게 울어?", [animal, "울어"]
+
     # require 에 다음 동물 이름 + '울어'(질문 형태)를 함께 넣어, LLM 이 설명으로
     # 새고 질문을 빠뜨리면(고양이는 눈빛으로 표현해…) 검증 실패→템플릿으로 폴백된다.
     def _intro_beat(self, animal, sound):
-        return _beat(
-            f"좋아, 동물 소리 놀이 하자! {_j(animal)} 어떻게 울어?",
-            f"아이랑 동물 소리 놀이를 시작해. 밝게 인사하고 '{_j(animal)} 어떻게 울어?' 하고 물어봐. 반말로 짧게.",
-            [animal, "울어"])
+        q, req = self._prompt(animal, sound)
+        return _beat(f"좋아, 동물 소리 놀이 하자! {q}",
+                     f"아이랑 동물 소리 놀이를 시작해. 밝게 인사하고 '{q}' 하고 물어봐. 반말로 짧게.",
+                     req)
 
     def _ask_beat(self, animal, sound):
-        return _beat(
-            f"좋아! {_j(animal)} 어떻게 울어?",
-            f"놀이를 이어서 '{_j(animal)} 어떻게 울어?' 하고 밝게 물어봐. 반말 한 문장.",
-            [animal, "울어"])
+        q, req = self._prompt(animal, sound)
+        return _beat(f"좋아! {q}",
+                     f"놀이를 이어서 '{q}' 하고 밝게 물어봐. 반말 한 문장.",
+                     req)
 
     def _react_next_beat(self, animal, sound, said, nanimal, nsound):
+        nq, nreq = self._prompt(nanimal, nsound)
         if said:
             # 모방(먼저 그대로 따라 하기) → 확장(한두 낱말만 붙이기).
             # said 는 _heard 가 정규화한 카드의 정답 낱말이라 오인식이 섞이지 않는다.
-            fb = f"{said}! {_j(animal)} {said} 하고 울어! 그럼 {_j(nanimal)}?"
+            fb = f"{said}! {_j(animal)} {said} 하고 울어! 그럼 {nq}"
             ins = (f"아이가 '{said}' 라고 말했어. 먼저 '{said}!' 하고 그대로 따라 하고, "
                    f"'{_j(animal)} {said} 하고 울어' 처럼 한두 낱말만 붙여 늘려줘. "
-                   f"그다음 '{_j(nanimal)}?' 하고 물어봐. 반말 두 문장.")
-            req = [said, nanimal]
+                   f"그다음 '{nq}' 하고 물어봐. 반말 두 문장.")
+            req = [said] + nreq
         else:
             # 지적하지 않고 정답 소리를 들려준다(모델링).
-            fb = f"{_j(animal)} {sound} 하고 울어! 그럼 {_j(nanimal)}?"
+            fb = f"{_j(animal)} {sound} 하고 울어! 그럼 {nq}"
             ins = (f"{_j(animal)} '{sound}' 하고 운다고 밝게 알려주고, "
-                   f"이어서 '{_j(nanimal)}?' 하고 물어봐. 반말 두 문장.")
-            req = [sound, nanimal]
+                   f"이어서 '{nq}' 하고 물어봐. 반말 두 문장.")
+            req = [sound] + nreq
         return _beat(fb, ins, req)
 
     def _react_checkpoint_beat(self, animal, sound, said):

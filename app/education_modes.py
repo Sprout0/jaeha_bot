@@ -196,18 +196,28 @@ class Game:
 
         # await_answer: 현재 항목에 리액션하고 다음으로
         subj, tgt = self.batch[self.bi]
-        close = self._is_close(tgt, text)
+        said = self._heard(tgt, text)   # 인정한 낱말 / 못 알아들었으면 None
         self.bi += 1
         if self.bi >= len(self.batch):
             # 배치 끝 → 칭찬 + '더 할래?' (체크포인트 진입)
             self.state = "await_continue"
-            return self._react_checkpoint_beat(subj, tgt, close)
+            return self._react_checkpoint_beat(subj, tgt, said)
         nsubj, ntgt = self.batch[self.bi]
-        return self._react_next_beat(subj, tgt, close, nsubj, ntgt)
+        return self._react_next_beat(subj, tgt, said, nsubj, ntgt)
 
     # 소리/단어가 얼추 맞는지(STT 관대). 하위 클래스 공통 구현.
     def _is_close(self, target: str, text: str) -> bool:
         return jamo_ratio(_norm(text), _norm(target)) <= 0.5
+
+    def _heard(self, target: str, text: str) -> str | None:
+        """얼추 맞으면 **카드의 정답 낱말**을 돌려준다. 아이 발화 원문은 내보내지 않는다.
+
+        🔴 원문을 되받으면 STT 오인식이 증폭된다 — 아이가 '멍멍' 했는데 '명명'으로
+           받아쓰면 봇이 "명명! 강아지가 명명 해!" 라며 잘못된 발음을 가르친다.
+           기대 어휘로 정규화해 되받으면 그 사고가 구조적으로 불가능하다.
+           (기존 '제한 어휘 priming' 방침과 같은 결)
+        """
+        return target if self._is_close(target, text) else None
 
     def _bye_beat(self) -> dict:
         return _beat("재밌었어! 또 놀자!",
@@ -216,8 +226,8 @@ class Game:
     # 하위 클래스가 구현
     def _intro_beat(self, subj, tgt) -> dict: raise NotImplementedError
     def _ask_beat(self, subj, tgt) -> dict: raise NotImplementedError
-    def _react_next_beat(self, subj, tgt, close, nsubj, ntgt) -> dict: raise NotImplementedError
-    def _react_checkpoint_beat(self, subj, tgt, close) -> dict: raise NotImplementedError
+    def _react_next_beat(self, subj, tgt, said, nsubj, ntgt) -> dict: raise NotImplementedError
+    def _react_checkpoint_beat(self, subj, tgt, said) -> dict: raise NotImplementedError
 
 
 # ── 동물 소리 놀이(흉내 방향) ──────────────────────────────────────────────────
@@ -240,21 +250,29 @@ class AnimalSoundGame(Game):
             f"놀이를 이어서 '{_j(animal)} 어떻게 울어?' 하고 밝게 물어봐. 반말 한 문장.",
             [animal, "울어"])
 
-    def _react_next_beat(self, animal, sound, close, nanimal, nsound):
-        if close:
-            fb = f"우와 진짜 {animal} 같다! 그럼 {_j(nanimal)} 어떻게 울어?"
-            ins = (f"아이가 {animal} 울음소리를 잘 흉내냈어. 신나게 칭찬하고 "
-                   f"이어서 '{_j(nanimal)} 어떻게 울어?' 하고 물어봐. 반말.")
+    def _react_next_beat(self, animal, sound, said, nanimal, nsound):
+        if said:
+            # 모방(먼저 그대로 따라 하기) → 확장(한두 낱말만 붙이기).
+            # said 는 _heard 가 정규화한 카드의 정답 낱말이라 오인식이 섞이지 않는다.
+            fb = f"{said}! {_j(animal)} {said} 하고 울어! 그럼 {_j(nanimal)}?"
+            ins = (f"아이가 '{said}' 라고 말했어. 먼저 '{said}!' 하고 그대로 따라 하고, "
+                   f"'{_j(animal)} {said} 하고 울어' 처럼 한두 낱말만 붙여 늘려줘. "
+                   f"그다음 '{_j(nanimal)}?' 하고 물어봐. 반말 두 문장.")
+            req = [said, nanimal]
         else:
-            fb = f"{_j(animal)} {sound} 하고 울어! 그럼 {_j(nanimal)} 어떻게 울어?"
-            ins = (f"아이한테 {_j(animal)} '{sound}' 하고 운다고 밝게 알려주고, "
-                   f"이어서 '{_j(nanimal)} 어떻게 울어?' 하고 물어봐. 반말 두 문장.")
-        return _beat(fb, ins, [nanimal, "울어"])
+            # 지적하지 않고 정답 소리를 들려준다(모델링).
+            fb = f"{_j(animal)} {sound} 하고 울어! 그럼 {_j(nanimal)}?"
+            ins = (f"{_j(animal)} '{sound}' 하고 운다고 밝게 알려주고, "
+                   f"이어서 '{_j(nanimal)}?' 하고 물어봐. 반말 두 문장.")
+            req = [sound, nanimal]
+        return _beat(fb, ins, req)
 
-    def _react_checkpoint_beat(self, animal, sound, close):
-        praise = f"우와 진짜 {animal} 같다!" if close else f"{animal}는 {sound} 하고 울어!"
+    def _react_checkpoint_beat(self, animal, sound, said):
+        praise = (f"{said}! {_j(animal)} {said} 하고 울어!" if said
+                  else f"{_j(animal)} {sound} 하고 울어!")
         return _beat(f"{praise} 더 할래?",
-                     "아이를 밝게 칭찬하고 '더 할래?' 하고 물어봐. 반말 한 문장.", ["더"])
+                     f"'{praise}' 를 밝게 말하고 '더 할래?' 하고 물어봐. 반말.",
+                     [sound, "더"])
 
 
 # ── 따라 말하기 놀이(배치 3~5개) ───────────────────────────────────────────────

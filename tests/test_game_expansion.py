@@ -116,3 +116,65 @@ def test_ask_beat_uses_the_prompt_helper():
     beat = g._ask_beat("강아지", "멍멍")
 
     assert "강아지는 멍?" in beat["fallback"]
+
+
+def test_first_miss_invites_the_child_to_try_together():
+    # 모방은 확장만큼 중요한 기법이다. 2세가 실제로 소리를 낼 계기를 한 번 준다.
+    g = _game([("강아지", "멍멍"), ("고양이", "야옹")])
+
+    beat = g.step("몰라")
+
+    assert "같이 해보자" in beat["fallback"], beat["fallback"]
+    assert "멍멍" in beat["fallback"]
+    assert g.bi == 0, "재시도 중에는 같은 항목에 머물러야 한다"
+
+
+def test_second_miss_moves_on():
+    # 기회는 정확히 한 번. 두 번째엔 맞든 틀리든 넘어간다(무한 루프 방지).
+    g = _game([("강아지", "멍멍"), ("고양이", "야옹")])
+    g.step("몰라")
+
+    beat = g.step("몰라")
+
+    assert "같이 해보자" not in beat["fallback"]
+    assert g.bi == 1, "두 번째엔 다음 항목으로 넘어가야 한다"
+    assert "멍멍" in beat["fallback"], "지적 대신 정답 소리를 들려준다(모델링)"
+
+
+def test_retry_then_correct_gets_normal_expansion():
+    g = _game([("강아지", "멍멍"), ("고양이", "야옹")])
+    g.step("몰라")
+
+    fb = g.step("멍멍")["fallback"]
+
+    assert fb.startswith("멍멍")
+    assert fb.count("멍멍") >= 2
+
+
+def test_never_scolds_on_a_miss():
+    g = _game([("강아지", "멍멍"), ("고양이", "야옹")])
+
+    out = _text(g.step("몰라"))
+
+    for scold in ("틀렸", "아니야", "아니란다"):
+        assert scold not in out, f"지적하면 안 된다: {out}"
+
+
+def test_stop_works_during_retry():
+    # 2026-08-10 에 '빠져나갈 수 없는' 실패를 겪었다. 재시도 중에도 탈출은 열려 있어야 한다.
+    g = _game([("강아지", "멍멍"), ("고양이", "야옹")])
+    g.step("몰라")
+
+    g.step("그만")
+
+    assert g.done is True
+
+
+def test_retry_flag_resets_between_items():
+    g = _game([("강아지", "멍멍"), ("고양이", "야옹"), ("돼지", "꿀꿀")])
+    g.step("몰라")     # 1번 항목 재시도
+    g.step("몰라")     # 넘어감 (bi=1)
+
+    beat = g.step("몰라")   # 2번 항목의 첫 실패 → 다시 재시도가 나와야 한다
+
+    assert "같이 해보자" in beat["fallback"], beat["fallback"]

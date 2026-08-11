@@ -164,6 +164,7 @@ class Game:
         self.bi = 0
         self.state = "await_answer"
         self.done = False
+        self.retried = False   # 현재 항목에서 '같이 해보자' 를 이미 한 번 줬는지
 
     def _next_batch(self) -> None:
         n = random.randint(self.BATCH_MIN, self.BATCH_MAX)
@@ -175,6 +176,7 @@ class Game:
             self.batch.append(self.seq[self.pos])
             self.pos += 1
         self.bi = 0
+        self.retried = False
         self.state = "await_answer"
 
     def start(self) -> dict:
@@ -200,7 +202,13 @@ class Game:
 
         # await_answer: 현재 항목에 리액션하고 다음으로
         subj, tgt = self.batch[self.bi]
-        said = self._heard(tgt, text)   # 인정한 낱말 / 못 알아들었으면 None
+        said = self._heard(tgt, text)
+        if said is None and not self.retried:
+            # 못 알아들었으면 같은 항목에 한 번 더 머문다 — 아이가 소리 낼 계기를 준다.
+            # 기회는 정확히 한 번이다(두 번째엔 맞든 틀리든 진행 → 무한 루프 방지).
+            self.retried = True
+            return self._retry_beat(subj, tgt)
+        self.retried = False
         self.bi += 1
         if self.bi >= len(self.batch):
             # 배치 끝 → 칭찬 + '더 할래?' (체크포인트 진입)
@@ -232,6 +240,7 @@ class Game:
     def _ask_beat(self, subj, tgt) -> dict: raise NotImplementedError
     def _react_next_beat(self, subj, tgt, said, nsubj, ntgt) -> dict: raise NotImplementedError
     def _react_checkpoint_beat(self, subj, tgt, said) -> dict: raise NotImplementedError
+    def _retry_beat(self, subj, tgt) -> dict: raise NotImplementedError
 
 
 # ── 동물 소리 놀이(흉내 방향) ──────────────────────────────────────────────────
@@ -292,6 +301,12 @@ class AnimalSoundGame(Game):
                      f"'{praise}' 를 밝게 말하고 '더 할래?' 하고 물어봐. 반말.",
                      [sound, "더"])
 
+    def _retry_beat(self, animal, sound):
+        fb = f"{_j(animal)} {sound}! 같이 해보자, {sound}!"
+        ins = (f"아이가 못 맞혔어. 지적하지 말고 '{_j(animal)} {sound}!' 하고 들려준 뒤 "
+               f"'같이 해보자, {sound}!' 하고 권해. 반말 두 문장.")
+        return _beat(fb, ins, [sound])
+
 
 # ── 따라 말하기 놀이(배치 3~5개) ───────────────────────────────────────────────
 class RepeatWordGame(Game):
@@ -328,6 +343,12 @@ class RepeatWordGame(Game):
         return _beat(f"{praise} 더 할래?",
                      f"'{praise}' 하고 밝게 말한 뒤 '더 할래?' 하고 물어봐. 반말.",
                      [word, "더"])
+
+    def _retry_beat(self, word, _tgt):
+        fb = f"{word}! 같이 해보자, {word}!"
+        ins = (f"지적하지 말고 '{word}!' 를 다시 들려주고 "
+               f"'같이 해보자, {word}!' 하고 권해. 반말 두 문장.")
+        return _beat(fb, ins, [word])
 
 
 # ── 라우터: 대화 루프에 끼워 넣는 진입점 ───────────────────────────────────────

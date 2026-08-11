@@ -267,7 +267,8 @@ class AnimalSoundGame(Game):
     def _intro_beat(self, animal, sound):
         q, req = self._prompt(animal, sound)
         return _beat(f"좋아, 동물 소리 놀이 하자! {q}",
-                     f"아이랑 동물 소리 놀이를 시작해. 밝게 인사하고 '{q}' 하고 물어봐. 반말로 짧게.",
+                     f"아이랑 동물 소리 놀이를 시작해. 딱 두 문장으로만 말해. 반말. "
+                     f"첫 문장은 놀이를 하자는 밝은 인사, 둘째 문장은 '{q}'.",
                      req)
 
     def _ask_beat(self, animal, sound):
@@ -276,21 +277,30 @@ class AnimalSoundGame(Game):
                      f"놀이를 이어서 '{q}' 하고 밝게 물어봐. 반말 한 문장.",
                      req)
 
+    # 🔴 지시문은 **딱 두 문장**만 요구한다. agent._postprocess 가 렌더 결과를
+    #    max_sentences(=2) 로 자르기 때문이다. 세 마디("멍멍!" / 확장 / 다음 질문)를
+    #    시키면 세 번째 문장인 '다음 질문'이 잘려 require 검증에 걸리고 매번 템플릿으로
+    #    폴백한다 — LLM 경로가 예외가 아니라 상시로 죽는다(2026-08-11 리뷰).
+    #    그래서 모방은 따로 끊지 말고 확장 문장 **안에서** 하도록 시킨다
+    #    ("멍멍, 강아지가 멍멍 하고 울어!" = 한 문장).
     def _react_next_beat(self, animal, sound, said, nanimal, nsound):
         nq, nreq = self._prompt(nanimal, nsound)
         if said:
-            # 모방(먼저 그대로 따라 하기) → 확장(한두 낱말만 붙이기).
+            # 모방(그대로 따라 하기) → 확장(한두 낱말만 붙이기).
             # said 는 _heard 가 정규화한 카드의 정답 낱말이라 오인식이 섞이지 않는다.
             fb = f"{said}! {_j(animal)} {said} 하고 울어! 그럼 {nq}"
-            ins = (f"아이가 '{said}' 라고 말했어. 먼저 '{said}!' 하고 그대로 따라 하고, "
-                   f"'{_j(animal)} {said} 하고 울어' 처럼 한두 낱말만 붙여 늘려줘. "
-                   f"그다음 '{nq}' 하고 물어봐. 반말 두 문장.")
+            ins = (f"아이가 '{said}' 라고 말했어. 딱 두 문장으로만 말해. 반말. "
+                   f"첫 문장은 '{said}' 를 그대로 다시 쓰면서 '{_j(animal)} {said} 하고 울어' "
+                   f"처럼 한두 낱말만 붙여 늘린 한 문장으로 만든다"
+                   f"(따라 하는 말을 느낌표로 끊어 따로 한 문장으로 만들지 않는다). "
+                   f"둘째 문장은 '{nq}'.")
             req = [said] + nreq
         else:
             # 지적하지 않고 정답 소리를 들려준다(모델링).
             fb = f"{_j(animal)} {sound} 하고 울어! 그럼 {nq}"
-            ins = (f"{_j(animal)} '{sound}' 하고 운다고 밝게 알려주고, "
-                   f"이어서 '{nq}' 하고 물어봐. 반말 두 문장.")
+            ins = (f"딱 두 문장으로만 말해. 반말. "
+                   f"첫 문장은 {_j(animal)} '{sound}' 하고 운다고 밝게 알려주기, "
+                   f"둘째 문장은 '{nq}'.")
             req = [sound] + nreq
         return _beat(fb, ins, req)
 
@@ -298,7 +308,10 @@ class AnimalSoundGame(Game):
         praise = (f"{said}! {_j(animal)} {said} 하고 울어!" if said
                   else f"{_j(animal)} {sound} 하고 울어!")
         return _beat(f"{praise} 더 할래?",
-                     f"'{praise}' 를 밝게 말하고 '더 할래?' 하고 물어봐. 반말.",
+                     f"딱 두 문장으로만 말해. 반말. "
+                     f"첫 문장에 '{sound}' 를 그대로 넣어 밝게 칭찬하고"
+                     f"(따라 하는 말을 따로 한 문장으로 끊지 않는다), "
+                     f"둘째 문장은 '더 할래?'.",
                      [sound, "더"])
 
     def _retry_beat(self, animal, sound):
@@ -317,31 +330,39 @@ class RepeatWordGame(Game):
     def _intro_beat(self, word, _tgt):
         return _beat(
             f"따라 말하기 놀이 하자! 따라 해봐, {word}!",
-            f"아이랑 따라 말하기 놀이를 시작해. 밝게 '따라 해봐, {word}!' 하고 말해. 반말 짧게.",
+            f"아이랑 따라 말하기 놀이를 시작해. 딱 두 문장으로만 말해. 반말. "
+            f"첫 문장은 놀이를 하자는 밝은 인사, 둘째 문장은 '따라 해봐, {word}!'.",
             [word])
 
     def _ask_beat(self, word, _tgt):
         return _beat(f"좋아! 따라 해봐, {word}!",
                      f"'따라 해봐, {word}!' 하고 밝게 말해. 반말 한 문장.", [word])
 
+    # 동물 놀이와 같은 이유로 지시문은 딱 두 문장만 요구한다(위 주석 참고).
     def _react_next_beat(self, word, _tgt, said, nword, _ntgt):
         if said:
             fb = f"{said}! 우와 잘 따라했어! 이번엔 {nword}!"
-            ins = (f"아이가 '{said}' 라고 따라 말했어. 먼저 '{said}!' 하고 그대로 따라 하고 "
-                   f"밝게 칭찬한 뒤 '이번엔 {nword}!' 하고 말해. 반말 두 문장.")
+            ins = (f"아이가 '{said}' 라고 따라 말했어. 딱 두 문장으로만 말해. 반말. "
+                   f"첫 문장에 '{said}' 를 그대로 넣어 밝게 칭찬하고"
+                   f"(따라 하는 말을 느낌표로 끊어 따로 한 문장으로 만들지 않는다), "
+                   f"둘째 문장은 '이번엔 {nword}!'.")
             req = [said, nword]
         else:
             # 지적하지 않고 낱말을 한 번 더 들려준다.
             fb = f"{word}! 잘했어! 이번엔 {nword}!"
-            ins = (f"'{word}!' 를 다시 한 번 들려주고 밝게 격려한 뒤 "
-                   f"'이번엔 {nword}!' 하고 말해. 반말 두 문장.")
+            ins = (f"딱 두 문장으로만 말해. 반말. "
+                   f"첫 문장에 '{word}' 를 다시 넣어 밝게 격려하고, "
+                   f"둘째 문장은 '이번엔 {nword}!'.")
             req = [word, nword]
         return _beat(fb, ins, req)
 
     def _react_checkpoint_beat(self, word, _tgt, said):
         praise = f"{said}! 우와 잘 따라했어!" if said else f"{word}! 잘했어!"
         return _beat(f"{praise} 더 할래?",
-                     f"'{praise}' 하고 밝게 말한 뒤 '더 할래?' 하고 물어봐. 반말.",
+                     f"딱 두 문장으로만 말해. 반말. "
+                     f"첫 문장에 '{word}' 를 그대로 넣어 밝게 칭찬하고"
+                     f"(따라 하는 말을 따로 한 문장으로 끊지 않는다), "
+                     f"둘째 문장은 '더 할래?'.",
                      [word, "더"])
 
     def _retry_beat(self, word, _tgt):

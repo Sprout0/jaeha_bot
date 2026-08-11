@@ -383,7 +383,8 @@ def _repl() -> None:
         system_prompt=settings.prompts["system"],
         **llm_cfg,
     )
-    recovery = settings.prompts.get("recovery", "음, 다시 한 번 말해줄래?")
+    # 되묻기 문구의 단일 소스는 prompt_templates.yaml 의 recovery 다(main.py 와 같은 값).
+    recovery = settings.prompts.get("recovery") or "어? 잘 못 들었어. 다시 말해줄래?"
 
     print("재하봇 1 — 글자 대화 테스트. (종료: 빈 줄 / exit / quit)")
     while True:

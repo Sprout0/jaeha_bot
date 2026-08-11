@@ -22,7 +22,11 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("jaeha_bot")
 
-SAFE_RECOVERY = "음, 다시 한 번 말해줄래?"
+# 되묻기 문구는 configs/prompt_templates.yaml 의 `recovery` 한 곳에서만 온다.
+# 🔴 예전엔 여기 하드코딩과 yaml 이 각자 있어서, yaml 만 고친 변경이 운영에 하나도
+#    반영되지 않았다(yaml 의 유일한 소비처가 app/agent.py 의 터미널 REPL 이었다).
+#    설정을 고쳤는데 봇이 그대로 말하는 종류의 사고라 눈에도 안 띈다. → 단일 소스로 묶는다.
+SAFE_RECOVERY = settings.prompts.get("recovery") or "어? 잘 못 들었어. 다시 말해줄래?"
 GREETING = "안녕. 나는 재하봇이야! 나랑 놀자!"
 GOODBYE = "안녕! 또 보자~"
 # 트리거(호출어) 모드 문구.

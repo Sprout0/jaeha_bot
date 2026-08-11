@@ -258,7 +258,8 @@ def main() -> None:
             metrics.record_turn(stt_wait_s=stt_wait, stt_rec_s=tr_dt,
                                 think_s=think_s, think_kind=kind,
                                 tts_first_s=tm.first_audio_s,
-                                tts_play_s=tm.play_s, reply=reply)
+                                tts_play_s=tm.play_s, reply=reply,
+                                child_text=text)
             time.sleep(ECHO_COOLDOWN)
             if source is not None:
                 source.drain()   # 답하는 동안 쌓인 자기 목소리 버리기

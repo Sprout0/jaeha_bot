@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import statistics
 import time
 from datetime import datetime
@@ -42,6 +43,24 @@ def _p90(xs: list[float]) -> float:
         return 0.0
     s = sorted(xs)
     return s[min(len(s) - 1, int(0.9 * (len(s) - 1) + 0.5))]
+
+
+def _words(text: str) -> list[str]:
+    """공백 기준 낱말(문장부호 제거). 확장 폭·재사용률 계산용 대충 나누기다."""
+    return re.sub(r"[^\w\s]", " ", text or "").split()
+
+
+def _reuse_ratio(child: str, reply: str) -> float | None:
+    """아이 낱말 중 봇 답변에 다시 나온 비율. 모방·확장의 **대리지표**다.
+
+    부분일치로 센다 — 어절 정확 비교면 조사가 붙은 '멍멍을' 을 못 잡는다.
+    ⚠️ 정확한 값이 아니라 추세를 보는 숫자다. 아이가 실제로 더 말했는지는 재지 못한다.
+    """
+    cw = _words(child)
+    if not cw:
+        return None
+    rep = reply or ""
+    return round(sum(1 for w in cw if w in rep) / len(cw), 2)
 
 
 class MetricsLogger:
@@ -79,7 +98,8 @@ class MetricsLogger:
 
     def record_turn(self, *, stt_wait_s: float, stt_rec_s: float,
                     think_s: float, think_kind: str, tts_first_s: float,
-                    tts_play_s: float = 0.0, reply: str = "") -> None:
+                    tts_play_s: float = 0.0, reply: str = "",
+                    child_text: str = "") -> None:
         """한 턴의 단계 지연을 기록한다.
 
         stt_wait_s : 녹음대기(사람이 말한 시간 포함, 시스템 비용 아님) — 참고용.
@@ -87,6 +107,7 @@ class MetricsLogger:
         think_s    : 답 생성 시간(LLM 또는 놀이 렌더). think_kind=llm/game/game_start 등.
         tts_first_s: 말끝부터 **첫 소리가 날 때까지**. 아이가 체감하는 대기의 마지막 조각.
         tts_play_s : 봇이 실제로 말하는 시간. **지연이 아니다** — 따로 기록만 한다.
+        child_text : 아이가 한 말(STT 출력). 확장·재사용 대리지표 계산에만 쓴다.
 
         🔴 2026-08-09 정정: 예전에는 `tts_s` 하나에 합성+**재생 완료까지**를 담고
            그걸 resp_compute_s 에 더했다(speak() 이 sd.wait() 로 끝까지 기다린다).
@@ -114,6 +135,9 @@ class MetricsLogger:
             "metric_ver": 2,                  # 1 = tts 재생시간이 섞여 있던 옛 기록
             "rss_mb": _rss_mb(),
             "reply_len": len(reply or ""),
+            "expansion_delta": (len(_words(reply)) - len(_words(child_text))
+                                if child_text else None),
+            "reuse": _reuse_ratio(child_text, reply),
         }
         self.samples.append(rec)
         self._write(rec)

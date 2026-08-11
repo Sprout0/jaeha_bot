@@ -147,6 +147,30 @@ def test_api_audio_is_resampled_to_module_rate(fake_openai):
         f"1초 오디오는 모듈 레이트({MODULE_RATE})에 맞춰져야 함: {audio.size}"
 
 
+# ------------------------------------------------------------------- 커넥션 예열
+def test_warm_opens_the_api_connection_when_remote(fake_openai):
+    # LLM 과 같은 사정 — 첫 발화가 TLS 최초 수립 비용을 치른다.
+    tts = _tts(backend="openai")
+
+    tts.warm()
+
+    assert len(fake_openai["calls"]) == 1, "원격이면 커넥션을 미리 열어야 한다"
+
+
+def test_warm_does_not_call_api_when_local(fake_openai):
+    tts = _tts()
+
+    tts.warm()
+
+    assert fake_openai["calls"] == [], "로컬 백엔드가 API 를 부르면 안 된다(과금)"
+
+
+def test_warm_failure_does_not_break_startup(fake_openai):
+    fake_openai["fail"] = RuntimeError("no network")
+
+    _tts(backend="openai").warm()   # 예외가 새어 나오면 기동이 막힌다
+
+
 def test_empty_text_skips_api_entirely(fake_openai):
     tts = _tts(backend="openai")
 

@@ -313,6 +313,24 @@ class TTSModule:
                             type(e).__name__, str(e)[:120])
         return self._infer_local(text)
 
+    def warm(self) -> None:
+        """원격 백엔드면 API 커넥션(DNS·TCP·TLS)을 미리 맺어 둔다.
+
+        LLM 과 같은 사정이다 — 첫 호출만 3초대이고 그 다음부터 0.5~0.6초다.
+        한 글자만 합성해 연결을 열고 오디오는 버린다(과금은 무시할 수준).
+        로컬 백엔드면 아무것도 하지 않는다. 실패해도 기동을 막지 않는다.
+        """
+        if self.backend != "openai":
+            return
+        try:
+            self._openai_client().audio.speech.create(
+                model=self.openai_model, voice=self.openai_voice,
+                input="응", response_format="wav",
+            )
+        except Exception as e:
+            log.warning("TTS API 커넥션 예열 실패(%s: %s) — 첫 발화가 느려질 뿐이다",
+                        type(e).__name__, str(e)[:120])
+
     # ------------------------------------------------------- 원격 합성(OpenAI)
     def _infer_openai(self, text: str) -> np.ndarray:
         """gpt-4o-mini-tts -> wav -> 모듈 샘플레이트 float32 mono.

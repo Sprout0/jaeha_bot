@@ -167,7 +167,7 @@ def test_warm_preloads_local_model_when_backend_is_remote(fake_llama, fake_opena
     assert fake_llama["loaded"] == 1, "원격 백엔드일수록 로컬 폴백을 미리 데워야 한다"
 
 
-def test_warm_runs_a_real_inference_not_just_load(fake_llama):
+def test_warm_runs_a_real_inference_not_just_load(fake_llama, fake_openai):
     # 🔴 로드만 데우면 안 된다 — 젯슨 실측에서 로드는 1.84s 인데 첫 폴백은 7.18s 였다.
     # 비용의 대부분은 2165자 시스템 프롬프트의 prompt eval + CUDA 커널 초기화라,
     # 실제로 한 번 추론을 돌려야 그게 사라진다.
@@ -180,7 +180,38 @@ def test_warm_runs_a_real_inference_not_just_load(fake_llama):
         "실제 시스템 프롬프트로 데워야 prompt eval 이 캐시된다"
 
 
-def test_warm_does_not_pollute_history(fake_llama):
+def test_warm_opens_the_api_connection_when_remote(fake_llama, fake_openai):
+    """🔴 첫 턴이 3.1~3.6초인데 그 다음부터 0.5~0.6초다 — 차이는 TLS 최초 수립이다.
+
+    아이의 **첫 질문**이 늘 이 값을 치른다. 기동 때 미리 한 번 다녀오면 사라진다.
+    """
+    agent = _agent(fake_llama, backend="openai")
+
+    agent.warm()
+
+    assert len(fake_openai["calls"]) == 1, "원격이면 커넥션도 데워야 한다"
+    assert fake_openai["calls"][0]["max_completion_tokens"] == 1, \
+        "예열은 연결만 맺으면 된다 — 토큰을 더 쓸 이유가 없다"
+
+
+def test_warm_does_not_call_api_when_local(fake_llama, fake_openai):
+    _agent(fake_llama).warm()
+
+    assert fake_openai["calls"] == [], "로컬 백엔드가 API 를 부르면 안 된다(과금)"
+
+
+def test_api_warm_failure_still_warms_local(fake_llama, fake_openai):
+    # 네트워크가 없는 채로 켜질 수도 있다. 기동이 막히면 안 되고, 로컬은 데워져야 한다.
+    fake_openai["fail"] = RuntimeError("no network")
+    agent = _agent(fake_llama, backend="openai")
+
+    agent.warm()
+
+    assert fake_llama["loaded"] == 1
+    assert fake_llama["calls"], "원격 예열이 실패해도 로컬 예열은 끝나야 한다"
+
+
+def test_warm_does_not_pollute_history(fake_llama, fake_openai):
     agent = _agent(fake_llama, backend="openai")
 
     agent.warm()
@@ -188,7 +219,7 @@ def test_warm_does_not_pollute_history(fake_llama):
     assert agent.history == [], "예열 대화가 이력에 남으면 안 된다"
 
 
-def test_warm_is_idempotent(fake_llama):
+def test_warm_is_idempotent(fake_llama, fake_openai):
     agent = _agent(fake_llama, backend="openai")
 
     agent.warm()

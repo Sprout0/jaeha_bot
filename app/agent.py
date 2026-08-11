@@ -243,6 +243,24 @@ class LLMAgent:
         except Exception as e:
             log.warning("로컬 폴백 예열 실패(%s: %s) — 원격이 끊기면 응답이 늦어진다",
                         type(e).__name__, str(e)[:120])
+        if self.backend == "openai":
+            self._warm_api()
+
+    def _warm_api(self) -> None:
+        """API 커넥션(DNS·TCP·TLS)을 미리 맺어 둔다.
+
+        🔴 젯슨 실측: 첫 호출 3.1~3.6초, 그 다음부터 0.5~0.6초. 차이는 순전히 최초 연결이다.
+           호출어로 깨운 뒤 오는 **아이의 첫 질문**이 늘 이 값을 치르므로 기동 때 미리 다녀온다.
+        토큰은 1개면 된다 — 연결만 맺으면 되고 답은 버린다.
+        """
+        try:
+            self._api_client().chat.completions.create(
+                model=self.api_model, max_completion_tokens=1,
+                messages=[{"role": "user", "content": "안녕"}],
+            )
+        except Exception as e:   # 네트워크 없이 켜질 수도 있다. 기동을 막지 않는다.
+            log.warning("API 커넥션 예열 실패(%s: %s) — 첫 턴이 느려질 뿐 동작에는 지장 없다",
+                        type(e).__name__, str(e)[:120])
 
     # ------------------------------------------------------------ 완성(백엔드 선택)
     def _complete(self, messages: list[dict]) -> str:

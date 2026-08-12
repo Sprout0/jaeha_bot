@@ -288,7 +288,10 @@ class AnimalSoundGame(Game):
         if said:
             # 모방(그대로 따라 하기) → 확장(한두 낱말만 붙이기).
             # said 는 _heard 가 정규화한 카드의 정답 낱말이라 오인식이 섞이지 않는다.
-            fb = f"{said}! {_j(animal)} {said} 하고 울어! 그럼 {nq}"
+            # 🔴 따라 하는 말을 '!' 로 끊으면 세 문장이 된다 — LLM 경로는 두 문장으로
+            #    잘리므로 폴백만 더 길어진다(A5). 지시문이 LLM 에게 요구하는 형태와
+            #    똑같이, 쉼표로 이어 확장 문장 **안에** 넣는다.
+            fb = f"{said}, {_j(animal)} {said} 하고 울어! 그럼 {nq}"
             ins = (f"아이가 '{said}' 라고 말했어. 딱 두 문장으로만 말해. 반말. "
                    f"첫 문장은 '{said}' 를 그대로 다시 쓰면서 '{_j(animal)} {said} 하고 울어' "
                    f"처럼 한두 낱말만 붙여 늘린 한 문장으로 만든다"
@@ -313,7 +316,7 @@ class AnimalSoundGame(Game):
     #    지시문에 확장 절을 되돌리고, require 에 대상 이름을 넣어 맨 흉내만으로는
     #    검증을 통과하지 못하게 한다(빠지면 확장된 폴백 템플릿으로 내려간다).
     def _react_checkpoint_beat(self, animal, sound, said):
-        praise = (f"{said}! {_j(animal)} {said} 하고 울어!" if said
+        praise = (f"{said}, {_j(animal)} {said} 하고 울어!" if said
                   else f"{_j(animal)} {sound} 하고 울어!")
         return _beat(f"{praise} 더 할래?",
                      f"딱 두 문장으로만 말해. 반말. "
@@ -354,7 +357,7 @@ class RepeatWordGame(Game):
     #    배치의 대부분이 이 beat 라 구멍은 체크포인트보다 여기가 컸다.
     def _react_next_beat(self, word, _tgt, said, nword, _ntgt):
         if said:
-            fb = f"{said}! 우와 잘 따라했어! 이번엔 {nword}!"
+            fb = f"{said}, 우와 잘 따라했어! 이번엔 {nword}!"   # 쉼표로 두 문장 유지(A5)
             ins = (f"아이가 '{said}' 라고 따라 말했어. 딱 두 문장으로만 말해. 반말. "
                    f"첫 문장은 '{said}' 를 그대로 다시 쓰면서 '우와 {said} 잘 따라했어' "
                    f"처럼 한두 낱말만 붙여 늘린 한 문장으로 밝게 칭찬한다"
@@ -363,7 +366,7 @@ class RepeatWordGame(Game):
             req = [said, "잘", nword]
         else:
             # 지적하지 않고 낱말을 한 번 더 들려준다.
-            fb = f"{word}! 잘했어! 이번엔 {nword}!"
+            fb = f"{word}, 잘했어! 이번엔 {nword}!"
             ins = (f"딱 두 문장으로만 말해. 반말. "
                    f"첫 문장은 '{word}' 를 다시 들려주면서 '{word} 잘했어' 처럼 "
                    f"한두 낱말만 붙여 늘린 한 문장으로 밝게 격려한다"
@@ -376,7 +379,7 @@ class RepeatWordGame(Game):
     # require 에 '잘' 을 넣어 맨 흉내("바나나! 더 할래?")로는 통과하지 못하게 한다 —
     # 이 놀이에서 확장은 낱말 뒤에 붙는 칭찬 절이고, 두 폴백 템플릿에도 다 들어 있다.
     def _react_checkpoint_beat(self, word, _tgt, said):
-        praise = f"{said}! 우와 잘 따라했어!" if said else f"{word}! 잘했어!"
+        praise = f"{said}, 우와 잘 따라했어!" if said else f"{word}, 잘했어!"
         return _beat(f"{praise} 더 할래?",
                      f"딱 두 문장으로만 말해. 반말. "
                      f"첫 문장은 '{word}' 를 그대로 다시 쓰면서 '우와 {word} 잘 따라했어' "

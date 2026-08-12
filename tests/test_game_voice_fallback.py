@@ -69,3 +69,59 @@ def test_voice_uses_template_when_there_is_no_renderer():
 
 def test_voice_returns_none_for_no_beat():
     assert GameManager(render=lambda ins: "뭐라도")._voice(None) is None
+
+
+# ── A5: 폴백 문장 수 (2026-08-12) ────────────────────────────────────────────
+from app.education_modes import AnimalSoundGame, RepeatWordGame   # noqa: E402
+
+
+def _walk(cls, correct: bool) -> list[dict]:
+    """놀이를 끝까지 굴려 나오는 모든 beat 를 모은다(인트로·리액션·재시도·체크포인트)."""
+    g = cls()
+    beats = [g.start()]
+    for _ in range(16):
+        if g.done:
+            break
+        if g.state == "await_continue":
+            text = "응"
+        else:
+            _subj, tgt = g.batch[g.bi]
+            text = tgt if correct else "몰라"
+        beats.append(g.step(text))
+    beats.append(g._bye_beat())
+    return beats
+
+
+def _all_beats() -> list[dict]:
+    out = []
+    for cls in (AnimalSoundGame, RepeatWordGame):
+        for correct in (True, False):
+            out += _walk(cls, correct)
+    return out
+
+
+def test_every_fallback_survives_the_production_sentence_cap():
+    """🔴 A5. LLM 경로는 두 문장으로 잘리는데 폴백은 클램프를 안 거친다.
+
+    그래서 같은 상황인데 **LLM 이 성공하면 두 문장, 폴백이면 세 문장**을 말했다.
+    폴백은 예외 경로가 아니라 평상시 경로다(이 파일 맨 위 주석).
+
+    고치는 방향은 클램프를 거는 게 아니다 — 그러면 세 번째 마디인 '다음 질문'이
+    잘려 놀이가 끊긴다. 따라 하는 말을 느낌표로 끊지 말고 확장 문장 **안에** 넣어
+    두 문장으로 만든다. 지시문이 LLM 에게 이미 요구하는 바로 그 형태다
+    ("따라 하는 말을 느낌표로 끊어 따로 한 문장으로 만들지 않는다").
+    """
+    from app.agent import _clamp_sentences
+    from app.config import settings
+
+    cap = settings.models["llm"]["max_sentences"]
+    for beat in _all_beats():
+        fb = beat["fallback"]
+        assert _clamp_sentences(fb, cap) == fb, \
+            f"폴백이 {cap}문장을 넘는다(LLM 경로였다면 잘렸을 문장): {fb}"
+
+
+def test_clamped_fallback_still_carries_every_required_token():
+    """문장을 합치다가 require 토큰을 잃으면 '검증이 요구하는 것'과 갈린다."""
+    for beat in _all_beats():
+        assert all(tok in beat["fallback"] for tok in beat["require"]), beat

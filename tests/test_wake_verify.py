@@ -153,3 +153,39 @@ def test_clear_preroll_also_clears_verify_window():
         src.read()
     src.clear_preroll()
     assert src.verify_window().size == 0
+
+
+# ── 설정 정합성 ──────────────────────────────────────────────────────────
+def test_shipped_config_pairs_threshold_with_verify():
+    """🔴 임계값과 verify.enabled 는 **항상 같이** 움직여야 한다.
+
+    2단계를 끄면서 임계를 0.03 에 두면 1단계 혼자 시간당 13.6회 깨어난다.
+    반대로 2단계를 켜면서 임계를 0.25 에 두면 재현율이 30% 에 머물러(실음성 실측)
+    2단계를 붙인 의미가 없다. 한 줄만 되돌리는 사고를 여기서 막는다.
+    """
+    from pathlib import Path
+
+    import yaml
+
+    cfg = yaml.safe_load(
+        (Path(__file__).resolve().parent.parent / "configs" / "model_paths.yaml")
+        .read_text(encoding="utf-8"))
+    o = cfg["wake"]["onnx"]
+    thr = float(o["threshold"])
+    on = bool((o.get("verify") or {}).get("enabled", False))
+    if on:
+        assert thr <= 0.05, f"2단계가 켜졌는데 1단계 임계가 높다({thr}) — 2단계가 무의미하다"
+    else:
+        assert thr >= 0.15, f"2단계가 꺼졌는데 1단계 임계가 낮다({thr}) — 헛깨움이 폭발한다"
+
+
+def test_conversation_stt_has_no_wake_prompt():
+    """검증용 힌트가 대화 STT 로 새면 아이 말이 전부 '재하봇'으로 편향된다."""
+    from pathlib import Path
+
+    import yaml
+
+    cfg = yaml.safe_load(
+        (Path(__file__).resolve().parent.parent / "configs" / "model_paths.yaml")
+        .read_text(encoding="utf-8"))
+    assert not (cfg.get("stt") or {}).get("initial_prompt")

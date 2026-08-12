@@ -44,7 +44,7 @@ from app.agent import (                                      # noqa: E402
     _strip_emoji, _strip_speaker_prefix, load_fewshot,
 )
 from app.claims import find_fabrications                     # noqa: E402
-from app.safety import check_reply                           # noqa: E402
+from app.safety import JUDGE_VER, check_reply                # noqa: E402
 from app.config import settings                              # noqa: E402
 
 
@@ -201,19 +201,30 @@ def _ask_with_retry(ask, text: str, tries: int = 4) -> tuple[str, int, str | Non
     return "", 0, "재시도 소진", 0.0
 
 
+def score_record(rec: dict) -> dict:
+    """한 기록을 **현재 판정기로** 채점한다. 신규 실행과 재채점이 같은 함수를 쓴다.
+
+    🔴 판정 입력이 두 군데로 갈라지면 조용히 어긋난다(2026-08-11 에 `spoken()`
+       으로 한 번 당했다). 채점에 필요한 조립은 전부 여기 한 곳에 둔다.
+    ⚠️ `child_text` 를 빼면 판정기는 '질문 쪽에만 있는 위험'을 못 본다 — A1.
+    """
+    rec["reply"] = spoken(rec.get("reply") or "")
+    rec["chars"] = len(rec["reply"])
+    rec["fabrications"] = find_fabrications(rec["reply"])
+    rec["safety_flags"] = check_reply(rec["reply"], child_text=rec.get("ask", ""))
+    return rec
+
+
 def evaluate(name: str, ask, rows: list[dict], repeat: int) -> dict:
     records = []
     for _ in range(repeat):
         for row in rows:
             reply, cached, error, elapsed = _ask_with_retry(ask, row["text"])
-            records.append({
+            records.append(score_record({
                 "id": row["id"], "category": row["category"], "ask": row["text"],
                 "want": row.get("want", ""), "reply": reply, "error": error,
-                "latency_s": round(elapsed, 3), "chars": len(reply),
-                "cached_tokens": cached,
-                "fabrications": find_fabrications(reply),
-                "safety_flags": check_reply(reply),
-            })
+                "latency_s": round(elapsed, 3), "cached_tokens": cached,
+            }))
             # 🔴 오류를 반드시 표시한다. 예전엔 답변 길이만 찍어서 429 로 실패한 요청이
             # '0자 응답'처럼 보였고, 모델이 빈 답을 낸다고 오진했다.
             # flush: 백그라운드/파이프로 돌릴 때 버퍼링되면 진행 상황이 안 보인다.
@@ -244,6 +255,9 @@ def summarize(records: list[dict]) -> dict:
         # 🔴 오류 없이 '빈 답변'을 낸 횟수. 아이에게 아무 말도 안 한 것이라
         # 오류만큼 심각한데, 오류로 안 잡혀서 표에서 조용히 사라졌었다.
         "empty_replies": sum(1 for r in ok if not r["reply"]),
+        # 🔴 어느 판정기가 낸 숫자인지 남긴다. ver 1 은 답변에 danger 낱말이 없으면
+        # 조기 통과시켰고 재현율이 ~1/3 이었다 — 그때 수치와 직접 비교하면 안 된다.
+        "judge_ver": JUDGE_VER,
         "unsafe": sum(1 for r in ok if r.get("safety_flags")),
         "unsafe_invite": sum(1 for r in ok if "위험행동제안" in (r.get("safety_flags") or [])),
         "by_category": by_cat,
@@ -311,10 +325,7 @@ def main() -> None:
                 # 같은 잣대로 다시 보려면 여기서도 '말해지는 문자열'로 바꿔 채점한다 —
                 # 그러지 않으면 옛 실행은 계속 '아이가 듣지 않는 문장'으로 채점된다.
                 # 새 로그는 이미 후처리된 문자열이고 spoken() 은 멱등이라 안전하다.
-                rec["reply"] = spoken(rec["reply"])
-                rec["chars"] = len(rec["reply"])
-                rec["fabrications"] = find_fabrications(rec["reply"])
-                rec["safety_flags"] = check_reply(rec["reply"])
+                score_record(rec)
             res["summary"] = summarize(res["records"])
         report(results)
         return

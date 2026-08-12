@@ -64,7 +64,8 @@ class OnnxWakeDetector:
                  providers=None, source=None,
                  continuation_window: float = 0.5,
                  verifier=None, verify_cooldown_s: float = 1.0,
-                 verify_min_rms: float = 0.005) -> None:
+                 verify_min_rms: float = 0.005,
+                 verify_rearm_delta: float = 0.05) -> None:
         import pathlib
 
         import onnxruntime as ort
@@ -84,11 +85,13 @@ class OnnxWakeDetector:
         log.info("호출어 ONNX 로드: %s (providers=%s)", classifier, providers)
 
         self._init_state(threshold, trigger_frames, continuation_window, source,
-                         verifier, verify_cooldown_s, verify_min_rms)
+                         verifier, verify_cooldown_s, verify_min_rms,
+                         verify_rearm_delta)
 
     def _init_state(self, threshold, trigger_frames, continuation_window, source,
                     verifier=None, verify_cooldown_s: float = 1.0,
-                    verify_min_rms: float = 0.005):
+                    verify_min_rms: float = 0.005,
+                    verify_rearm_delta: float = 0.05):
         """__init__ 과 테스트가 공유하는 순수 상태 초기화(ONNX 로드 없음).
 
         ⚠️ 새 상태는 **반드시 여기에** 둔다. __init__ 에만 두면 _init_state 로 만든
@@ -104,9 +107,13 @@ class OnnxWakeDetector:
         # 2단계 검증기: audio(np.float32) -> bool. None 이면 1단계만으로 깨어난다(= 옛 동작).
         self.verifier = verifier
         self.verify_cooldown_s = float(verify_cooldown_s)
-        self.verify_min_rms = float(verify_min_rms)   # 에너지 게이트 하한(튜닝 손잡이)
+        self.verify_min_rms = float(verify_min_rms)   # 에너지 게이트 하한(무음만 거른다)
+        # 직전 검증보다 이만큼 높은 점수는 '새 사건'으로 보고 재무장한다.
+        # 소음이 계속돼 점수가 임계 아래로 안 내려가는 상황의 유일한 탈출구다.
+        self.verify_rearm_delta = float(verify_rearm_delta)
         self._armed = True       # 히스테리시스: 기각 후에는 점수가 임계 아래로 내려가야 재무장
         self._last_verify = 0.0  # 쿨다운 기준 시각
+        self._last_score = 0.0   # 직전 검증 때의 점수(재무장 판단용)
 
     # ------------------------------------------------------------------ 체인
     def reset(self) -> None:
@@ -115,6 +122,7 @@ class OnnxWakeDetector:
         self._emb.clear()
         self._hits = 0
         self._armed = True
+        self._last_score = 0.0
 
     def push(self, frame: np.ndarray) -> float | None:
         """80ms 프레임 하나를 넣고 점수를 얻는다. 워밍업 중이면 None."""
@@ -209,7 +217,14 @@ class OnnxWakeDetector:
         """
         import time
 
-        if not self._armed:
+        # 🔴 재무장 조건이 둘이다. '임계 아래로 내려갔다 오기'만으로는 소음 속에서 영영
+        #    재무장이 안 된다 — 유튜브가 계속 나오면 점수가 임계(0.05) 아래로 안 떨어져
+        #    첫 기각 이후로 귀를 닫는다. 실기 로그(2026-08-12 14:11)가 그 모습이다:
+        #      14:11:14 [검증] 후보 기각 — 점수 0.060
+        #      14:11:29 [대기] 최근 20초 최고 점수 **0.226**   <- 검증조차 안 했다
+        #    0.226 은 진짜 호출인데(성공한 호출이 0.186) 통째로 흘려보냈다.
+        #    → **점수가 직전 검증 때보다 뚜렷이 높으면 그건 새 사건**이다. 그때도 재무장한다.
+        if not self._armed and score < self._last_score + self.verify_rearm_delta:
             return False
         now = time.monotonic()
         if now - self._last_verify < self.verify_cooldown_s:
@@ -217,6 +232,7 @@ class OnnxWakeDetector:
 
         self._armed = False          # 판정 전에 내린다 — 예외가 나도 폭주하지 않게
         self._last_verify = now
+        self._last_score = score
         audio = self.source.verify_window()
 
         # 에너지 게이트 — **디지털 무음만** 거른다. whisper 를 헛되이 부르지 않기 위한 것뿐이다.

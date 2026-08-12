@@ -125,6 +125,34 @@ def test_cooldown_blocks_refire_even_after_score_drops():
     assert len(calls) == 1, f"쿨다운이 안 먹었다(호출 {len(calls)}회)"
 
 
+def test_louder_score_rearms_even_while_noise_stays_above_threshold():
+    """🔴 2026-08-12 실기 사고 — 유튜브를 틀면 첫 기각 이후 영영 귀를 닫았다.
+
+    로그: 14:11:14 후보 기각(점수 0.060) → 14:11:29 최고 점수 **0.226 인데 검증 없음**.
+    소음이 계속돼 점수가 임계(0.05) 아래로 안 떨어지면 재무장 조건이 성립하지 않아,
+    그 뒤에 온 진짜 호출을 통째로 흘려보냈다.
+    → 직전 검증보다 뚜렷이 높은 점수는 '새 사건'으로 보고 재무장해야 한다.
+    """
+    calls = []
+    # 소음이 임계 위에 머무는 상태(0.06)에서 진짜 호출(0.23)이 온다
+    d, _ = _det([0.06] + [0.06] * 5 + [0.23],
+                verifier=lambda a: calls.append(1) or False,
+                verify_cooldown_s=0.0)
+    d.wait_for_wake(max_frames=10)
+    assert len(calls) == 2, (
+        f"소음이 안 걷혀도 큰 점수는 검증해야 한다(호출 {len(calls)}회)")
+
+
+def test_small_fluctuation_above_threshold_does_not_rearm():
+    """잔물결까지 새 사건으로 보면 whisper 폭주로 되돌아간다. 뚜렷한 상승만 인정한다."""
+    calls = []
+    d, _ = _det([0.06] + [0.07, 0.08, 0.09] * 3,
+                verifier=lambda a: calls.append(1) or False,
+                verify_cooldown_s=0.0)
+    d.wait_for_wake(max_frames=12)
+    assert len(calls) == 1, f"잔물결에 재무장했다(호출 {len(calls)}회)"
+
+
 def test_verifier_error_does_not_crash_the_bot():
     """whisper 가 터져도 봇은 계속 들어야 한다. 안전하게 '기각'으로 본다."""
     def boom(_a):

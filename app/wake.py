@@ -153,14 +153,34 @@ def make_wake_verifier(vcfg: dict, stt, word: str):
         return None
     prompt = vcfg.get("initial_prompt") or None
     max_ratio = float(vcfg.get("max_ratio", 0.45))
+    plain_ratio = float(vcfg.get("plain_max_ratio", 0.65))
 
     def verify(audio) -> bool:
-        text, _ = stt.transcribe(audio, initial_prompt=prompt)
-        ratio = best_wake_ratio(text or "", word)
-        log.info("[검증] '%s' 자모거리 %.2f (컷 %.2f) → %s",
-                 (text or "")[:24], ratio, max_ratio,
-                 "통과" if ratio <= max_ratio else "기각")
-        return ratio <= max_ratio
+        # ── 1) 힌트 **없이** 먼저 듣는다 ──────────────────────────────
+        # 🔴 여기가 환각을 죽이는 자리다. initial_prompt 는 whisper 에게 '재하봇이 있다'고
+        #    미리 알려 주는 장치라, 없는 오디오에도 만들어 낸다(유튜브 실측: 후보의 47~100%가
+        #    '재하봇, 재하봇…' 으로 전사됐다). 힌트를 빼면 실제 내용이 나온다:
+        #      힌트있음 0.00 '재하봇, 재하…'  /  힌트없음 1.00 '등과'
+        #      힌트있음 0.00 '재하봇 두 이름…' /  힌트없음 0.88 '두 이릉이 있다면'
+        #    유튜브 후보 15곳 중 이 관문을 통과한 것 **0건**.
+        #    먼저 도는 이유는 비용이다 — 가짜는 여기서 끝나 whisper 를 한 번만 쓴다.
+        plain, _ = stt.transcribe(audio, initial_prompt=None)
+        r2 = best_wake_ratio(plain or "", word)
+        if r2 > plain_ratio:
+            log.info("[검증] 기각 — 힌트없이 '%s' 자모거리 %.2f > %.2f",
+                     (plain or "")[:26], r2, plain_ratio)
+            return False
+
+        # ── 2) 힌트를 주고 다시 듣는다 ───────────────────────────────
+        # 힌트 없는 쪽만으로는 진짜 호출을 41% 밖에 못 읽는다(OOV 고유명사라서).
+        # 여기서 고유명사 인식을 회복한다 — 단, 1)을 통과한 오디오에만 쓴다.
+        hinted, _ = stt.transcribe(audio, initial_prompt=prompt)
+        r1 = best_wake_ratio(hinted or "", word)
+        ok = r1 <= max_ratio
+        log.info("[검증] %s — 힌트없이 '%s'(%.2f) / 힌트주고 '%s'(%.2f, 컷 %.2f)",
+                 "통과" if ok else "기각", (plain or "")[:16], r2,
+                 (hinted or "")[:16], r1, max_ratio)
+        return ok
 
     return verify
 

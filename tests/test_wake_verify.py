@@ -221,6 +221,57 @@ def test_shipped_config_pairs_threshold_with_verify():
         assert thr >= 0.15, f"2단계가 꺼졌는데 1단계 임계가 낮다({thr}) — 헛깨움이 폭발한다"
 
 
+def test_two_pass_rejects_prompt_hallucination():
+    """🔴 유튜브를 틀어 놓기만 해도 깨어나던 사고를 고정한다(2026-08-12).
+
+    initial_prompt 는 whisper 에게 '재하봇이 있다'고 알려 주는 장치라 없는 오디오에도
+    만들어 낸다. 힌트 없이 들으면 실제 내용이 나온다 — 그 차이로 가른다.
+    실측: 유튜브 후보 15곳 중 힌트만 쓰면 47~100% 통과, 두 번 대조하면 **0건**.
+    """
+    from app.wake import make_wake_verifier
+
+    class Stt:
+        """유튜브 소리를 흉내낸다 — 힌트를 주면 호출어를 만들어 내는 그 상황."""
+
+        def transcribe(self, audio, initial_prompt=None):
+            return ("재하봇, 재하봇" if initial_prompt else "우리의 러시아 형님이오"), 0.1
+
+    v = {"enabled": True, "initial_prompt": "재하봇아, 재하봇이, 재하봇 불러.",
+         "max_ratio": 0.45, "plain_max_ratio": 0.65}
+    assert make_wake_verifier(v, Stt(), "재하봇")(None) is False
+
+
+def test_two_pass_still_accepts_a_real_call():
+    """진짜 호출은 힌트 없이도 호출어에 가깝게 읽힌다 — 통과해야 한다."""
+    from app.wake import make_wake_verifier
+
+    class Stt:
+        def transcribe(self, audio, initial_prompt=None):
+            # 힌트 없으면 OOV 라 살짝 뭉개지고, 힌트를 주면 정확해진다
+            return ("재하봇" if initial_prompt else "재하봇."), 0.1
+
+    v = {"enabled": True, "initial_prompt": "힌트", "max_ratio": 0.45,
+         "plain_max_ratio": 0.65}
+    assert make_wake_verifier(v, Stt(), "재하봇")(None) is True
+
+
+def test_two_pass_skips_second_call_when_plain_pass_fails():
+    """가짜는 첫 호출에서 끝나야 한다 — whisper 를 두 번 쓰면 비용이 두 배가 된다."""
+    from app.wake import make_wake_verifier
+
+    calls = []
+
+    class Stt:
+        def transcribe(self, audio, initial_prompt=None):
+            calls.append(initial_prompt)
+            return "전혀 다른 말이라 자모거리가 멀다", 0.1
+
+    v = {"enabled": True, "initial_prompt": "힌트", "max_ratio": 0.45,
+         "plain_max_ratio": 0.65}
+    make_wake_verifier(v, Stt(), "재하봇")(None)
+    assert calls == [None], f"힌트 없는 판정에서 끝냈어야 한다: {calls}"
+
+
 def test_conversation_stt_has_no_wake_prompt():
     """검증용 힌트가 대화 STT 로 새면 아이 말이 전부 '재하봇'으로 편향된다."""
     from pathlib import Path

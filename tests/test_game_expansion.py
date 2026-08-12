@@ -80,6 +80,47 @@ def test_checkpoint_instruction_asks_for_expansion():
     assert "두 문장" in ins, "두 문장 상한은 유지돼야 한다(클램프에 잘린다)"
 
 
+def test_next_beat_require_rejects_a_bare_echo():
+    # 🔴 A2 (2026-08-12). 어제는 체크포인트만 고쳤고 이 beat 는 그대로 뒀다.
+    # require 가 [said] + 다음질문 토큰뿐이라 확장 절('강아지는 멍멍 하고 울어')이
+    # 통째로 빠진 "멍멍! 그럼 고양이는 야?" 가 검증을 통과한다 — 확장 0 인데 초록불.
+    # 이 beat 는 배치의 대부분(4항목 중 3턴)을 차지하므로 구멍이 여기가 제일 크다.
+    g = _game([("강아지", "멍멍"), ("고양이", "야옹")])
+    nq, _ = g._prompt("고양이", "야옹")
+
+    beat = g.step("멍멍")
+
+    assert "강아지" in beat["require"], \
+        f"확장 절이 require 로 강제되지 않는다: {beat['require']}"
+    assert not all(tok in f"멍멍! 그럼 {nq}" for tok in beat["require"]), \
+        "맨 흉내만 한 답이 검증을 통과한다"
+
+
+def test_next_beat_require_rejects_a_bare_echo_on_a_miss():
+    # 못 알아들은 턴도 같다. 폴백은 '강아지는 멍멍 하고 울어'(모델링)인데
+    # require 가 그걸 강제하지 않으면 LLM 은 소리만 던지고 넘어갈 수 있다.
+    g = _game([("강아지", "멍멍"), ("고양이", "야옹")])
+    nq, _ = g._prompt("고양이", "야옹")
+    g.step("몰라")            # 재시도 한 번 소진
+
+    beat = g.step("몰라")     # 두 번째엔 다음 항목으로 넘어가는 리액션
+
+    assert "강아지" in beat["require"], beat["require"]
+    assert not all(tok in f"멍멍! 그럼 {nq}" for tok in beat["require"])
+
+
+def test_animal_next_beat_fallback_still_satisfies_require():
+    # require 를 늘렸으니 폴백이 그 조건을 여전히 만족해야 한다 — 아니면
+    # '검증이 요구하는 것'과 '실제 내보내는 것'이 갈린다.
+    for first, batch in (("멍멍", [("강아지", "멍멍"), ("고양이", "야옹")]),
+                         ("몰라", [("강아지", "멍멍"), ("고양이", "야옹")])):
+        g = _game(batch)
+        if first == "몰라":
+            g.step("몰라")
+        beat = g.step(first)
+        assert all(tok in beat["fallback"] for tok in beat["require"]), (first, beat)
+
+
 from app.education_modes import RepeatWordGame
 
 
@@ -108,6 +149,41 @@ def test_repeat_game_misheard_uses_the_card_word():
 
     assert "바나나" in out
     assert out.count("바나나") >= 2, f"따라 한 뒤 다시 써야 한다: {out}"
+
+
+def test_repeat_next_beat_require_rejects_a_bare_echo():
+    # 🔴 A2 (2026-08-12). 따라 말하기의 리액션 beat 에는 **확장 지시가 아예 없었다**
+    # ("밝게 칭찬하고" 뿐). require 도 [낱말, 다음낱말] 이라 "바나나! 이번엔 딸기!" 로
+    # 통과한다 — 이 놀이에서 확장은 낱말 뒤에 붙는 칭찬 절('우와 잘 따라했어')이다.
+    # 체크포인트는 어제 고쳤는데 여기는 안 고쳤다.
+    g = _repeat_game([("바나나", "바나나"), ("딸기", "딸기")])
+
+    beat = g.step("바나나")
+
+    assert not all(tok in "바나나! 이번엔 딸기!" for tok in beat["require"]), \
+        f"맨 흉내만 한 답이 검증을 통과한다: {beat['require']}"
+    assert "잘 따라했어" in beat["instruction"], \
+        f"확장 절 지시가 빠졌다: {beat['instruction']}"
+    assert "두 문장" in beat["instruction"], "두 문장 상한은 유지돼야 한다"
+
+
+def test_repeat_next_beat_require_rejects_a_bare_echo_on_a_miss():
+    g = _repeat_game([("바나나", "바나나"), ("딸기", "딸기")])
+    g.step("몰라")            # 재시도 한 번 소진
+
+    beat = g.step("몰라")
+
+    assert not all(tok in "바나나! 이번엔 딸기!" for tok in beat["require"]), \
+        f"맨 흉내만 한 답이 검증을 통과한다: {beat['require']}"
+
+
+def test_repeat_next_beat_fallback_still_satisfies_require():
+    for first in ("바나나", "몰라"):
+        g = _repeat_game([("바나나", "바나나"), ("딸기", "딸기")])
+        if first == "몰라":
+            g.step("몰라")
+        beat = g.step(first)
+        assert all(tok in beat["fallback"] for tok in beat["require"]), (first, beat)
 
 
 def test_repeat_checkpoint_require_rejects_a_bare_echo():

@@ -219,21 +219,20 @@ class OnnxWakeDetector:
         self._last_verify = now
         audio = self.source.verify_window()
 
-        # 🔴 에너지 게이트 — whisper 를 부르기 전에 '말소리가 있긴 한가'를 먼저 본다.
-        #    실측(2026-08-12): initial_prompt 는 whisper 를 '재하봇' 쪽으로 편향시키는데,
-        #    조용한 구간에서는 그 편향이 그대로 **환각**이 된다. 방 소음 41건 중 1건이
-        #    자모거리 0.00 인 '재하봇'으로 전사돼 통과했다(힌트를 빼면 0건).
-        #    말소리 세기에 못 미치면 검증할 것도 없다 — 부르지 않고 기각한다.
-        #    기준 = 소음 바닥의 2배, 하한 verify_min_rms(_observe_continuation 과 같은 꼴).
-        #    실측 여유: 진짜 호출 44건의 최대프레임 RMS 는 최소 0.0515 / 중앙 0.1215 라
-        #    하한 0.005 대비 10배 여유가 있다. 방 소음은 중앙 0.0052 로 기준선에 걸쳐 있어
-        #    **이 하한이 그대로 튜닝 손잡이**다 — 로그의 '최대 RMS' 값을 보고 올리면 된다.
-        floor = getattr(self.source, "noise_floor", 0.0)
-        gate = max(floor * 2.0, self.verify_min_rms)
+        # 에너지 게이트 — **디지털 무음만** 거른다. whisper 를 헛되이 부르지 않기 위한 것뿐이다.
+        #
+        # 🔴 2026-08-12 실기에서 이 게이트가 진짜 호출을 막았다. 원래는 소음 바닥의 2배를
+        #    기준으로 삼았는데, 유튜브를 틀면 바닥이 0.005 -> **0.024** 로 뛰어 기준이
+        #    0.0485 가 된다. 진짜 호출의 최대프레임 RMS 는 최소 0.0515 라 경계에 걸리고,
+        #    실제로 점수 0.103 짜리 후보가 RMS 0.0344 로 잘려 나갔다(로그 14:03:40).
+        #    ➡️ **소음 바닥에 비례시키지 않는다.** 시끄러울수록 기준이 올라가면 정확히
+        #       가장 필요한 순간에 귀를 닫는 꼴이 된다.
+        #    ➡️ 환각 방어는 이제 게이트가 아니라 '두 번 대조'가 한다(app/wake.py). 게이트는
+        #       무음에 whisper 를 안 쓰는 절약 장치로만 남긴다.
         loudest = _peak_rms(audio)
-        if loudest < gate:
-            log.info("[검증] 소리가 약해 건너뜀 — 최대 RMS %.4f < %.4f (점수 %.3f)",
-                     loudest, gate, score)
+        if loudest < self.verify_min_rms:
+            log.info("[검증] 무음이라 건너뜀 — 최대 RMS %.4f < %.4f (점수 %.3f)",
+                     loudest, self.verify_min_rms, score)
             return False
 
         try:

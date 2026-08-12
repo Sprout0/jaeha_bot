@@ -173,8 +173,8 @@ def _quiet_det(level, verifier, floor=0.0):
     return d
 
 
-def test_quiet_window_never_reaches_whisper():
-    """조용하면 검증기를 부르지도 않는다 — 환각할 기회 자체를 없앤다."""
+def test_silent_window_never_reaches_whisper():
+    """디지털 무음에는 whisper 를 쓰지 않는다(절약 장치). 환각 방어는 두 번 대조가 한다."""
     calls = []
     d = _quiet_det(0.001, lambda a: calls.append(1) or True)
     assert d.wait_for_wake(max_frames=40) is None
@@ -189,12 +189,18 @@ def test_speech_level_window_does_reach_whisper():
     assert calls == [1]
 
 
-def test_gate_follows_measured_noise_floor():
-    """시끄러운 방이면 기준도 올라간다(소음 바닥의 2배) — 고정값이면 방마다 틀린다."""
+def test_gate_does_not_scale_with_noise_floor():
+    """🔴 2026-08-12 실기 사고를 고정한다.
+
+    게이트를 '소음 바닥 × 2' 로 두면, 유튜브를 틀어 바닥이 0.005 -> 0.024 로 오를 때
+    기준이 0.0485 가 되어 **진짜 호출**(최대프레임 RMS 최소 0.0515)을 잘라 버린다.
+    실제로 점수 0.103 짜리 후보가 RMS 0.0344 로 검증도 못 받고 버려졌다.
+    시끄러울수록 귀를 닫는 설계였다 — 바닥에 비례시키지 않는다.
+    """
     calls = []
     d = _quiet_det(0.02, lambda a: calls.append(1) or True, floor=0.03)
-    assert d.wait_for_wake(max_frames=40) is None, "소음 바닥보다 작은데 통과했다"
-    assert calls == []
+    assert d.wait_for_wake(max_frames=40) is not None, "시끄럽다고 진짜 호출을 막았다"
+    assert calls == [1]
 
 
 # ── 설정 정합성 ──────────────────────────────────────────────────────────

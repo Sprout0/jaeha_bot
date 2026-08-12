@@ -7,7 +7,8 @@
 """
 import numpy as np
 
-from tools.record_wake_real import FRAME, PAD_S, SR, f0_median, score
+from tools.record_wake_real import (FRAME, PAD_S, SILENT_RMS, SR, f0_median,
+                                    rms, score)
 
 
 class _FakeDet:
@@ -74,3 +75,63 @@ def test_f0_separates_male_from_child_range():
 def test_f0_returns_zero_on_silence():
     """무음에서 억지 값을 내면 F0 표가 거짓말을 한다."""
     assert f0_median(np.zeros(SR, dtype=np.float32)) == 0.0
+
+
+# ── 무음 관문 ────────────────────────────────────────────────────────────
+# 🔴 2026-08-12: 이 관문이 없어서 무음 20개를 받아 놓고 '발음 문제'라는 결론까지 냈다.
+#    젯슨 기본 입력(35번)은 에러 없이 0.0 만 주기 때문에 예외로는 절대 안 잡힌다.
+
+def test_silence_threshold_sits_between_dead_mic_and_quiet_room():
+    """죽은 마이크(0.0)와 조용한 방(실측 0.0035) 사이에 선이 있어야 한다."""
+    assert 0.0 < SILENT_RMS < 0.0035
+
+
+def test_rms_flags_dead_mic_and_passes_quiet_room():
+    assert rms(np.zeros(SR, dtype=np.float32)) < SILENT_RMS
+    rng = np.random.default_rng(0)
+    room = (rng.standard_normal(SR) * 0.0035).astype(np.float32)
+    assert rms(room) > SILENT_RMS
+
+
+def test_rms_handles_empty_input():
+    assert rms(np.zeros(0, dtype=np.float32)) == 0.0
+
+
+def _fake_sd(monkeypatch, value):
+    import sounddevice as sd
+    monkeypatch.setattr(
+        sd, "rec",
+        lambda n, **k: np.full((n, 1), value, dtype=np.float32))
+
+
+def test_check_mic_aborts_when_mic_is_dead(monkeypatch):
+    """무음이면 20번 부르게 하기 전에 여기서 멈춰야 한다."""
+    import pytest
+
+    from tools.record_wake_real import check_mic
+    _fake_sd(monkeypatch, 0.0)
+    with pytest.raises(SystemExit) as e:
+        check_mic(0)
+    assert "봇" in str(e.value), "무엇을 하라는 안내가 있어야 한다"
+
+
+def test_check_mic_passes_on_quiet_room(monkeypatch):
+    from tools.record_wake_real import check_mic
+    _fake_sd(monkeypatch, 0.0035)
+    check_mic(0)          # 예외가 안 나면 통과
+
+
+def test_check_mic_explains_when_device_is_busy(monkeypatch):
+    """봇이 마이크를 쥐고 있으면 열기 자체가 실패한다 — 그 경우도 안내해야 한다."""
+    import pytest
+    import sounddevice as sd
+
+    from tools.record_wake_real import check_mic
+
+    def boom(*a, **k):
+        raise RuntimeError("Device unavailable")
+
+    monkeypatch.setattr(sd, "rec", boom)
+    with pytest.raises(SystemExit) as e:
+        check_mic(0)
+    assert "봇" in str(e.value)

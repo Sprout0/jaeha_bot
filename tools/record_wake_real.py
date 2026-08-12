@@ -20,6 +20,7 @@ whisper 전사는 대조군이다. whisper 가 '재하봇'으로 읽는데 감�
     python tools/record_wake_real.py            # 조건당 5회
     python tools/record_wake_real.py --n 10     # 조건당 10회
 ⚠️ ReSpeaker 는 장치가 하나뿐이라 봇이 돌고 있으면 마이크를 못 연다. 먼저 끌 것.
+   (그 상태로 돌리면 젯슨 기본 입력 35번이 잡히는데, 이 장치는 **에러 없이 무음**을 준다.)
 """
 from __future__ import annotations
 
@@ -55,25 +56,64 @@ CONDITIONS = [
 ]
 
 
-def setup_device() -> None:
-    """설정의 audio.device(이름 부분일치)를 입력 장치로 지정한다. app/main.py 와 같은 방식."""
+# 무음 판정 기준. 젯슨 실측(2026-08-12): 조용한 방의 소음 바닥이 RMS 0.0035 정도고,
+# 캡처가 아예 안 되면 **정확히 0.0** 이 나온다. 그 사이에 선을 긋는다.
+SILENT_RMS = 2e-4
+
+
+def rms(y: np.ndarray) -> float:
+    return float(np.sqrt(np.mean(np.asarray(y, dtype=np.float64) ** 2))) if y.size else 0.0
+
+
+def pick_device() -> int | None:
+    """설정의 audio.device(이름 부분일치)에 해당하는 **입력 장치 번호**를 돌려준다.
+
+    🔴 sd.default.device 에 넣고 끝내면 안 된다. 젯슨의 시스템 기본 입력은 35번인데
+       이 장치는 **에러 없이 0.0 만 준다**(실측 2026-08-12). 전역 기본값은 다른 코드가
+       바꿀 수도 있으므로, 번호를 직접 들고 다니며 sd.rec 에 매번 넘긴다.
+    """
     name = (load_models().get("audio") or {}).get("device")
     if not name:
-        return
+        return None
     for i, d in enumerate(sd.query_devices()):
         if name.lower() in d["name"].lower() and d["max_input_channels"] > 0:
-            sd.default.device = (i, sd.default.device[1])
             print(f"입력 장치: [{i}] {d['name']}")
-            return
-    print(f"⚠️ '{name}' 못 찾음 — 시스템 기본 마이크를 쓴다")
+            return i
+    print(f"⚠️ '{name}' 을(를) 못 찾음 — 시스템 기본 마이크를 쓴다(USB 연결 확인)")
+    return None
 
 
-def record_take(label: str) -> np.ndarray:
+def check_mic(device: int | None) -> None:
+    """녹음을 시작하기 전에 마이크가 실제로 소리를 잡는지 1초로 확인한다.
+
+    🔴 이 관문이 없어서 무음 20개를 받아 놓고 '발음 문제'라는 엉뚱한 결론까지 냈다
+       (2026-08-12). 못 잡으면 여기서 멈추는 게 20번 부르게 하는 것보다 낫다.
+    """
+    print("마이크 확인 중(1초, 아무 말 안 해도 됨)...")
+    try:
+        y = sd.rec(SR, samplerate=SR, channels=1, dtype="float32",
+                   device=device, blocking=True).reshape(-1)
+    except Exception as e:
+        raise SystemExit(
+            f"🔴 마이크를 열 수 없다: {type(e).__name__}: {e}\n"
+            "   봇이 돌고 있으면 끄세요 — ReSpeaker 는 장치가 하나라 동시에 못 엽니다.")
+    r = rms(y)
+    print(f"  주변 소음 RMS {r:.5f}")
+    if r < SILENT_RMS:
+        raise SystemExit(
+            "🔴 마이크가 소리를 전혀 잡지 못한다(무음). 녹음해도 의미가 없어 여기서 멈춘다.\n"
+            "   1) 봇이 돌고 있으면 끄세요 (Ctrl+C) — 마이크는 하나뿐입니다.\n"
+            "   2) ReSpeaker USB 연결 확인:  arecord -l\n"
+            "   3) 음소거/게인 확인:  alsamixer -c 0  (F4 로 Capture 탭)")
+
+
+def record_take(device: int | None) -> np.ndarray:
     for c in (3, 2, 1):
         print(f"\r  {c}...", end="", flush=True)
         time.sleep(0.7)
     print("\r  🔴 말하세요!   ", end="", flush=True)
-    buf = sd.rec(int(TAKE_S * SR), samplerate=SR, channels=1, dtype="float32")
+    buf = sd.rec(int(TAKE_S * SR), samplerate=SR, channels=1, dtype="float32",
+                 device=device)
     sd.wait()
     print("\r  (끝)          ")
     return buf.reshape(-1)
@@ -125,7 +165,8 @@ def main() -> int:
     det = OnnxWakeDetector(model_dir=cfg["model_dir"], classifier=cfg["classifier"],
                            threshold=thr, trigger_frames=int(cfg.get("trigger_frames", 1)))
     print(f"감지기: {cfg['model_dir']}/{cfg['classifier']}  임계 {thr}")
-    setup_device()
+    device = pick_device()
+    check_mic(device)
 
     day = datetime.now().strftime("%Y%m%d_%H%M")
     outdir = os.path.join(args.outdir, day)
@@ -136,13 +177,30 @@ def main() -> int:
         print(f"\n{'='*60}\n[{label}]  {guide}\n{'='*60}")
         for k in range(args.n):
             print(f"({k+1}/{args.n})", end="")
-            y = record_take(label)
+            y = record_take(device)
             path = os.path.join(outdir, f"{label}_{k:02d}.wav")
             sf.write(path, y, SR)
+            r = rms(y)
+            if r < SILENT_RMS:
+                # 중간에 마이크를 빼앗기는 경우가 있다. 조용히 넘어가면 그 표본이
+                # '못 알아들은 발화'로 둔갑해 결론을 뒤집는다.
+                print(f"      🔴 무음(RMS {r:.5f}) — 이 회차는 버린다")
+                takes.append({"cond": label, "path": path, "score": 0.0,
+                              "rms": r, "silent": True})
+                continue
             s = score(det, y)
             mark = "○" if s >= thr else "✗"
-            print(f"      {mark} 점수 {s:.3f}")
-            takes.append({"cond": label, "path": path, "score": s})
+            print(f"      {mark} 점수 {s:.3f}  (RMS {r:.4f})")
+            takes.append({"cond": label, "path": path, "score": s,
+                          "rms": r, "silent": False})
+
+    live = [t for t in takes if not t["silent"]]
+    if not live:
+        print("\n🔴 전부 무음이라 판정할 수 없다. 봇을 끄고 마이크를 확인한 뒤 다시 하세요.")
+        return 1
+    if len(live) < len(takes):
+        print(f"\n⚠️ {len(takes)-len(live)}회가 무음이라 표에서 뺐다.")
+    takes = live
 
     # ── 전사(대조군): whisper 가 읽으면 음성은 멀쩡하다는 뜻 ──────────────
     if not args.no_stt:
@@ -185,15 +243,25 @@ def main() -> int:
 
     fails = [t for t in takes if t["score"] < thr]
     print("-" * 74)
-    if fails:
+    # 🔴 판정 전에 표본이 판정할 만한 것인지 먼저 본다. 2026-08-12 에 무음 20개를 놓고
+    #    '발음 문제'라는 결론을 내는 사고가 났다 — 결론은 늘 '왜 그렇게 볼 수 있는지'가
+    #    성립할 때만 낸다.
+    voiced = [t for t in takes if t["f0"] > 0]
+    if len(voiced) < len(takes) * 0.5:
+        print(f"🔴 {len(takes)-len(voiced)}/{len(takes)} 건에서 사람 목소리(F0)가 안 잡힌다.")
+        print("   녹음이 제대로 안 됐다는 뜻이라 판정하지 않는다. 마이크부터 확인할 것.")
+    elif not fails:
+        print("➡️ 전부 통과했다. 실패 사례를 더 모아야 한다(더 빠르게·더 흘려서).")
+    else:
         gain = np.median([max(t["up15"], t["up35"]) - t["score"] for t in fails])
         print(f"실패 {len(fails)}건의 피치 상승 이득 중앙값: {gain:+.3f}")
         if gain > 0.15:
             print("➡️ **음역 문제**. 낮은 피치 칸(0.85·0.75)을 격자에 넣고 재학습하면 된다.")
         else:
             print("➡️ **발음 문제**. 피치로는 안 고쳐진다. 축약형 문구 추가 + 실음성 재학습이 답이다.")
-    else:
-        print("➡️ 전부 통과했다. 실패 사례를 더 모아야 한다(더 빠르게·더 흘려서).")
+        if not any(t.get("text") for t in fails):
+            print("   ⚠️ 단, 실패 건의 전사가 전부 비어 있다. whisper 도 못 읽는 소리라면"
+                  " 모델 탓이 아니라 녹음 탓일 수 있으니 wav 를 직접 들어볼 것.")
 
     meta = os.path.join(outdir, "takes.jsonl")
     with open(meta, "w", encoding="utf-8") as f:

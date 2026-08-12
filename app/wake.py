@@ -191,6 +191,7 @@ def make_detector(wcfg: dict, stt, source):
             source=source,
             verifier=make_wake_verifier(vcfg, stt, word),
             verify_cooldown_s=float(vcfg.get("cooldown_s", 1.0)),
+            verify_min_rms=float(vcfg.get("min_rms", 0.005)),
         )
     except Exception as e:
         log.warning("ONNX 호출어 감지기 로드 실패(%s: %s) → STT 감지기로 폴백",

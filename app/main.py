@@ -22,6 +22,25 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("jaeha_bot")
 
+
+def _add_file_log() -> None:
+    """콘솔에만 나가던 로그를 파일에도 남긴다.
+
+    🔴 왜 필요한가 (2026-08-12): 2단계 검증을 켜고 실기를 돌렸는데 **헛깨움이 몇 번
+       났는지 사후에 셀 수가 없었다.** [호출]·[검증] 줄이 터미널에만 있었기 때문이다.
+       임계값·검증컷은 실기 로그로만 정할 수 있는 값이라, 안 남기면 영영 못 고친다.
+    """
+    from datetime import datetime
+    from pathlib import Path
+    d = Path(__file__).resolve().parent.parent / "logs"
+    d.mkdir(parents=True, exist_ok=True)
+    h = logging.FileHandler(d / f"jaeha_{datetime.now():%Y%m%d}.log", encoding="utf-8")
+    h.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+    logging.getLogger().addHandler(h)
+
+
+_add_file_log()
+
 # 되묻기 문구는 configs/prompt_templates.yaml 의 `recovery` 한 곳에서만 온다.
 # 🔴 예전엔 여기 하드코딩과 yaml 이 각자 있어서, yaml 만 고친 변경이 운영에 하나도
 #    반영되지 않았다(yaml 의 유일한 소비처가 app/agent.py 의 터미널 REPL 이었다).

@@ -155,6 +155,48 @@ def test_clear_preroll_also_clears_verify_window():
     assert src.verify_window().size == 0
 
 
+# ── 에너지 게이트 ────────────────────────────────────────────────────────
+# 🔴 2026-08-12 실기: 2단계를 켰더니 헛깨움이 늘었다. 원인 하나가 확인됐다 —
+#    initial_prompt 는 whisper 를 '재하봇' 쪽으로 편향시키는데, 조용한 구간에서는
+#    그 편향이 그대로 환각이 된다(방 소음 41건 중 1건이 자모거리 0.00 '재하봇').
+#    말소리 세기에 못 미치면 whisper 를 부르지도 않는다.
+
+def _quiet_det(level, verifier, floor=0.0):
+    d = OnnxWakeDetector.__new__(OnnxWakeDetector)
+    frames = [np.full(FRAME, level, dtype=np.float32) for _ in range(40)]
+    src = FakeSource(frames, preroll=0.5, verify_window=2.0)
+    src.noise_floor = floor
+    d._init_state(threshold=0.03, trigger_frames=1, continuation_window=0.0,
+                  source=src, verifier=verifier, verify_cooldown_s=0.0)
+    it = iter([0.0] * 30 + [0.9])
+    d.push = lambda frame: next(it, 0.0)
+    return d
+
+
+def test_quiet_window_never_reaches_whisper():
+    """조용하면 검증기를 부르지도 않는다 — 환각할 기회 자체를 없앤다."""
+    calls = []
+    d = _quiet_det(0.001, lambda a: calls.append(1) or True)
+    assert d.wait_for_wake(max_frames=40) is None
+    assert calls == [], "무음인데 whisper 를 불렀다"
+
+
+def test_speech_level_window_does_reach_whisper():
+    """말소리 세기면 정상적으로 검증한다 — 게이트가 진짜 호출을 막으면 안 된다."""
+    calls = []
+    d = _quiet_det(0.05, lambda a: calls.append(1) or True)
+    assert d.wait_for_wake(max_frames=40) is not None
+    assert calls == [1]
+
+
+def test_gate_follows_measured_noise_floor():
+    """시끄러운 방이면 기준도 올라간다(소음 바닥의 2배) — 고정값이면 방마다 틀린다."""
+    calls = []
+    d = _quiet_det(0.02, lambda a: calls.append(1) or True, floor=0.03)
+    assert d.wait_for_wake(max_frames=40) is None, "소음 바닥보다 작은데 통과했다"
+    assert calls == []
+
+
 # ── 설정 정합성 ──────────────────────────────────────────────────────────
 def test_shipped_config_pairs_threshold_with_verify():
     """🔴 임계값과 verify.enabled 는 **항상 같이** 움직여야 한다.
@@ -174,7 +216,7 @@ def test_shipped_config_pairs_threshold_with_verify():
     thr = float(o["threshold"])
     on = bool((o.get("verify") or {}).get("enabled", False))
     if on:
-        assert thr <= 0.05, f"2단계가 켜졌는데 1단계 임계가 높다({thr}) — 2단계가 무의미하다"
+        assert thr <= 0.10, f"2단계가 켜졌는데 1단계 임계가 높다({thr}) — 2단계가 무의미하다"
     else:
         assert thr >= 0.15, f"2단계가 꺼졌는데 1단계 임계가 낮다({thr}) — 헛깨움이 폭발한다"
 

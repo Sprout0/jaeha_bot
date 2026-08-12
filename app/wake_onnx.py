@@ -38,6 +38,14 @@ EMB_DIM = 96
 INT16_SCALE = 32767.0
 
 
+def _peak_rms(audio: np.ndarray, win: int = FRAME) -> float:
+    """구간 안에서 가장 큰 프레임의 RMS. 2초 평균은 앞뒤 무음에 희석되므로 최대를 본다."""
+    if audio.size < win:
+        return float(np.sqrt(np.mean(np.square(audio)))) if audio.size else 0.0
+    return max(float(np.sqrt(np.mean(np.square(audio[i:i + win]))))
+               for i in range(0, audio.size - win + 1, win))
+
+
 @dataclass
 class WakeResult:
     """호출어가 걸렸을 때 상위(main)에 넘기는 것."""
@@ -55,7 +63,8 @@ class OnnxWakeDetector:
                  threshold: float = 0.5, trigger_frames: int = 2,
                  providers=None, source=None,
                  continuation_window: float = 0.5,
-                 verifier=None, verify_cooldown_s: float = 1.0) -> None:
+                 verifier=None, verify_cooldown_s: float = 1.0,
+                 verify_min_rms: float = 0.005) -> None:
         import pathlib
 
         import onnxruntime as ort
@@ -75,10 +84,11 @@ class OnnxWakeDetector:
         log.info("호출어 ONNX 로드: %s (providers=%s)", classifier, providers)
 
         self._init_state(threshold, trigger_frames, continuation_window, source,
-                         verifier, verify_cooldown_s)
+                         verifier, verify_cooldown_s, verify_min_rms)
 
     def _init_state(self, threshold, trigger_frames, continuation_window, source,
-                    verifier=None, verify_cooldown_s: float = 1.0):
+                    verifier=None, verify_cooldown_s: float = 1.0,
+                    verify_min_rms: float = 0.005):
         """__init__ 과 테스트가 공유하는 순수 상태 초기화(ONNX 로드 없음).
 
         ⚠️ 새 상태는 **반드시 여기에** 둔다. __init__ 에만 두면 _init_state 로 만든
@@ -94,6 +104,7 @@ class OnnxWakeDetector:
         # 2단계 검증기: audio(np.float32) -> bool. None 이면 1단계만으로 깨어난다(= 옛 동작).
         self.verifier = verifier
         self.verify_cooldown_s = float(verify_cooldown_s)
+        self.verify_min_rms = float(verify_min_rms)   # 에너지 게이트 하한(튜닝 손잡이)
         self._armed = True       # 히스테리시스: 기각 후에는 점수가 임계 아래로 내려가야 재무장
         self._last_verify = 0.0  # 쿨다운 기준 시각
 
@@ -207,6 +218,24 @@ class OnnxWakeDetector:
         self._armed = False          # 판정 전에 내린다 — 예외가 나도 폭주하지 않게
         self._last_verify = now
         audio = self.source.verify_window()
+
+        # 🔴 에너지 게이트 — whisper 를 부르기 전에 '말소리가 있긴 한가'를 먼저 본다.
+        #    실측(2026-08-12): initial_prompt 는 whisper 를 '재하봇' 쪽으로 편향시키는데,
+        #    조용한 구간에서는 그 편향이 그대로 **환각**이 된다. 방 소음 41건 중 1건이
+        #    자모거리 0.00 인 '재하봇'으로 전사돼 통과했다(힌트를 빼면 0건).
+        #    말소리 세기에 못 미치면 검증할 것도 없다 — 부르지 않고 기각한다.
+        #    기준 = 소음 바닥의 2배, 하한 verify_min_rms(_observe_continuation 과 같은 꼴).
+        #    실측 여유: 진짜 호출 44건의 최대프레임 RMS 는 최소 0.0515 / 중앙 0.1215 라
+        #    하한 0.005 대비 10배 여유가 있다. 방 소음은 중앙 0.0052 로 기준선에 걸쳐 있어
+        #    **이 하한이 그대로 튜닝 손잡이**다 — 로그의 '최대 RMS' 값을 보고 올리면 된다.
+        floor = getattr(self.source, "noise_floor", 0.0)
+        gate = max(floor * 2.0, self.verify_min_rms)
+        loudest = _peak_rms(audio)
+        if loudest < gate:
+            log.info("[검증] 소리가 약해 건너뜀 — 최대 RMS %.4f < %.4f (점수 %.3f)",
+                     loudest, gate, score)
+            return False
+
         try:
             ok = bool(self.verifier(audio))
         except Exception as e:

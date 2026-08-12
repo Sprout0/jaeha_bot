@@ -54,7 +54,8 @@ class OnnxWakeDetector:
     def __init__(self, model_dir, classifier: str = "jaehabot.onnx",
                  threshold: float = 0.5, trigger_frames: int = 2,
                  providers=None, source=None,
-                 continuation_window: float = 0.5) -> None:
+                 continuation_window: float = 0.5,
+                 verifier=None, verify_cooldown_s: float = 1.0) -> None:
         import pathlib
 
         import onnxruntime as ort
@@ -73,10 +74,16 @@ class OnnxWakeDetector:
         self._cls_sess = _load(classifier)
         log.info("호출어 ONNX 로드: %s (providers=%s)", classifier, providers)
 
-        self._init_state(threshold, trigger_frames, continuation_window, source)
+        self._init_state(threshold, trigger_frames, continuation_window, source,
+                         verifier, verify_cooldown_s)
 
-    def _init_state(self, threshold, trigger_frames, continuation_window, source):
-        """__init__ 과 테스트가 공유하는 순수 상태 초기화(ONNX 로드 없음)."""
+    def _init_state(self, threshold, trigger_frames, continuation_window, source,
+                    verifier=None, verify_cooldown_s: float = 1.0):
+        """__init__ 과 테스트가 공유하는 순수 상태 초기화(ONNX 로드 없음).
+
+        ⚠️ 새 상태는 **반드시 여기에** 둔다. __init__ 에만 두면 _init_state 로 만든
+           객체에서 AttributeError 가 난다(실제로 겪었다).
+        """
         self.threshold = float(threshold)
         self.trigger_frames = int(trigger_frames)
         self.continuation_window = float(continuation_window)
@@ -84,6 +91,11 @@ class OnnxWakeDetector:
         self._mel: deque[np.ndarray] = deque(maxlen=MEL_WINDOW)
         self._emb: deque[np.ndarray] = deque(maxlen=EMB_WINDOW)
         self._hits = 0
+        # 2단계 검증기: audio(np.float32) -> bool. None 이면 1단계만으로 깨어난다(= 옛 동작).
+        self.verifier = verifier
+        self.verify_cooldown_s = float(verify_cooldown_s)
+        self._armed = True       # 히스테리시스: 기각 후에는 점수가 임계 아래로 내려가야 재무장
+        self._last_verify = 0.0  # 쿨다운 기준 시각
 
     # ------------------------------------------------------------------ 체인
     def reset(self) -> None:
@@ -91,6 +103,7 @@ class OnnxWakeDetector:
         self._mel.clear()
         self._emb.clear()
         self._hits = 0
+        self._armed = True
 
     def push(self, frame: np.ndarray) -> float | None:
         """80ms 프레임 하나를 넣고 점수를 얻는다. 워밍업 중이면 None."""
@@ -140,6 +153,7 @@ class OnnxWakeDetector:
 
             if score < self.threshold:
                 self._hits = 0
+                self._armed = True   # 점수가 내려왔다 = 다음 상승은 '새 발화'다
                 # 진단: 임계값 튜닝 근거. 대기 중 주기적으로 최고 점수를 남긴다.
                 if n % 250 == 0:   # 250프레임 = 20초
                     log.info("[대기] 최근 20초 최고 점수 %.3f (임계 %.2f)", best, self.threshold)
@@ -148,6 +162,10 @@ class OnnxWakeDetector:
 
             self._hits += 1
             if self._hits < self.trigger_frames:
+                continue
+
+            # ── 1단계 통과 = '후보' ──
+            if self.verifier is not None and not self._verify(score):
                 continue
 
             # ── 깨움 확정 ──
@@ -164,6 +182,44 @@ class OnnxWakeDetector:
             return WakeResult(preroll=audio.astype(np.float32),
                               continued=continued, score=score)
         return None
+
+    def _verify(self, score: float) -> bool:
+        """2단계 — 후보 구간을 검증기에 넘겨 진짜 호출인지 본다.
+
+        1단계 임계를 낮게(0.03) 두는 대신 여기서 헛깨움을 걷어낸다. 실측(2026-08-12,
+        실음성 44건): 1단계만 0.25 -> 재현율 30%, 캐스케이드(0.03+검증) -> **80%**,
+        헛깨움 추정 0.47 -> 0.27회·시간. 둘이 같이 좋아지는 건 재현율과 헛깨움을
+        **서로 다른 손잡이**로 분리했기 때문이다.
+
+        🔴 폭주 방지가 이 함수의 절반이다. 임계 0.03 은 TV 소리 한 문장에도 여러 프레임
+           연속으로 넘는다. 그대로 두면 **초당 12번** whisper 를 부른다. 그래서:
+             ① 히스테리시스 — 기각했으면 점수가 임계 아래로 내려갔다 와야 다시 부른다
+             ② 쿨다운      — 그래도 최소 verify_cooldown_s 는 쉰다
+        """
+        import time
+
+        if not self._armed:
+            return False
+        now = time.monotonic()
+        if now - self._last_verify < self.verify_cooldown_s:
+            return False
+
+        self._armed = False          # 판정 전에 내린다 — 예외가 나도 폭주하지 않게
+        self._last_verify = now
+        audio = self.source.verify_window()
+        try:
+            ok = bool(self.verifier(audio))
+        except Exception as e:
+            # whisper 가 죽어도 봇은 계속 들어야 한다. 안전하게 '기각'으로 본다.
+            log.warning("[검증] 실패(기각 처리): %s: %s", type(e).__name__, e)
+            return False
+        if not ok:
+            # 실기 튜닝의 근거가 되는 줄이다. 실제 가정 소음에서 무엇이 후보로 뜨는지
+            # 이 로그로만 알 수 있다(합성 부정으로는 확인이 안 된다).
+            log.info("[검증] 후보 기각 — 점수 %.3f, 오디오 %.2fs",
+                     score, audio.size / SAMPLE_RATE)
+        self._hits = 0
+        return ok
 
     def _observe_continuation(self) -> tuple[np.ndarray, bool]:
         """감지 직후 잠깐 들어 말이 이어지는지 본다. (읽은 오디오, 이어짐 여부)."""

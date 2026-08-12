@@ -138,6 +138,33 @@ class SttWakeDetector:
         """ONNX 감지기와 인터페이스를 맞추기 위한 no-op."""
 
 
+def make_wake_verifier(vcfg: dict, stt, word: str):
+    """2단계 검증기를 만든다. 꺼져 있으면 None(= 1단계만 쓰는 옛 동작).
+
+    무엇을 하나: 후보 구간(2초)을 whisper 로 전사해 호출어와 자모거리를 잰다.
+    왜 이게 되나: 1단계 ONNX 는 실음성에서 점수가 눌려 있을 뿐 신호는 살아 있다
+      (실측 2026-08-12: 임계 0.25→30% 인데 0.03→82%). 그래서 1단계는 낮게 열어
+      놓치지 않는 데만 쓰고, 헛깨움은 여기서 건다. 캐스케이드 실측 재현율 80%.
+
+    ⚠️ initial_prompt 없이는 whisper 가 '재하봇'을 못 읽는다(41%). 문장형 힌트로 98%.
+       이 힌트는 **검증에만** 쓴다 — 대화 STT 에 쓰면 모든 말이 '재하봇'으로 편향된다.
+    """
+    if not vcfg.get("enabled", False):
+        return None
+    prompt = vcfg.get("initial_prompt") or None
+    max_ratio = float(vcfg.get("max_ratio", 0.45))
+
+    def verify(audio) -> bool:
+        text, _ = stt.transcribe(audio, initial_prompt=prompt)
+        ratio = best_wake_ratio(text or "", word)
+        log.info("[검증] '%s' 자모거리 %.2f (컷 %.2f) → %s",
+                 (text or "")[:24], ratio, max_ratio,
+                 "통과" if ratio <= max_ratio else "기각")
+        return ratio <= max_ratio
+
+    return verify
+
+
 def make_detector(wcfg: dict, stt, source):
     """설정에 따라 감지기를 고른다. ONNX 로드 실패 시 STT 로 폴백한다.
 
@@ -154,6 +181,7 @@ def make_detector(wcfg: dict, stt, source):
     ocfg = wcfg.get("onnx", {}) or {}
     try:
         from .wake_onnx import OnnxWakeDetector
+        vcfg = ocfg.get("verify", {}) or {}
         return OnnxWakeDetector(
             model_dir=ocfg.get("model_dir", "models/wake"),
             classifier=ocfg.get("classifier", "jaehabot.onnx"),
@@ -161,6 +189,8 @@ def make_detector(wcfg: dict, stt, source):
             trigger_frames=int(ocfg.get("trigger_frames", 2)),
             providers=ocfg.get("providers"),
             source=source,
+            verifier=make_wake_verifier(vcfg, stt, word),
+            verify_cooldown_s=float(vcfg.get("cooldown_s", 1.0)),
         )
     except Exception as e:
         log.warning("ONNX 호출어 감지기 로드 실패(%s: %s) → STT 감지기로 폴백",

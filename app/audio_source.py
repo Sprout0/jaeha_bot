@@ -26,14 +26,23 @@ class AudioSource:
 
     preroll: 최근 이 시간(초)만큼의 프레임을 링버퍼에 보관한다. 호출어가 걸린 순간
              직전 음성을 STT 로 넘겨 '재하봇 이거 뭐야?' 의 뒷말이 안 잘리게 한다.
+    verify_window: 2단계 검증(whisper 재확인)에 넘길 최근 오디오 길이(초).
+
+    ⚠️ **왜 링버퍼를 두 개 두는가** — 용도가 다르기 때문이다.
+      preroll 0.5초는 Alexa 와 같은 값이고, 늘리면 호출 직전 TV·부모 말소리가 섞여
+      whisper 가 환각한다(그래서 0.5 로 정했다). 반면 2단계 검증은 호출어 **전체**
+      (약 1초)를 봐야 하므로 2.0초가 필요하다. 하나를 늘려 둘 다 쓰면 한쪽이 반드시
+      망가진다. [[jaeha-bot-progress]]
     """
 
     def __init__(self, samplerate: int = SAMPLE_RATE, frame: int = FRAME,
-                 preroll: float = 0.5) -> None:
+                 preroll: float = 0.5, verify_window: float = 2.0) -> None:
         self.samplerate = samplerate
         self.frame = frame
         self.preroll_frames = max(1, int(preroll * samplerate / frame))
+        self.verify_frames = max(1, int(verify_window * samplerate / frame))
         self._ring: deque[np.ndarray] = deque(maxlen=self.preroll_frames)
+        self._verify_ring: deque[np.ndarray] = deque(maxlen=self.verify_frames)
         self._stream = None
         self.noise_floor = 0.0
 
@@ -84,9 +93,10 @@ class AudioSource:
         return int(getattr(self._stream, "read_available", 0))
 
     def read(self) -> np.ndarray:
-        """프레임 하나를 읽고 프리롤 링버퍼에도 넣는다."""
+        """프레임 하나를 읽고 두 링버퍼(프리롤·검증창)에도 넣는다."""
         f = self._read_frame()
         self._ring.append(f)
+        self._verify_ring.append(f)
         return f
 
     # --------------------------------------------------------------- 프리롤
@@ -96,8 +106,19 @@ class AudioSource:
             return np.zeros(0, dtype=np.float32)
         return np.concatenate(list(self._ring)).astype(np.float32)
 
+    def verify_window(self) -> np.ndarray:
+        """2단계 검증용 — 최근 verify_window 초를 이어붙여 돌려준다.
+
+        호출어가 걸린 '순간'을 끝점으로 하는 구간이라 호출어 전체가 들어온다.
+        """
+        if not self._verify_ring:
+            return np.zeros(0, dtype=np.float32)
+        return np.concatenate(list(self._verify_ring)).astype(np.float32)
+
     def clear_preroll(self) -> None:
+        """두 버퍼를 함께 비운다 — 낡은 오디오를 검증에 쓰면 안 된다."""
         self._ring.clear()
+        self._verify_ring.clear()
 
     # ----------------------------------------------------------------- 비우기
     def drain(self) -> int:
@@ -115,6 +136,7 @@ class AudioSource:
             self._read_frame()
             dropped += self.frame
         self._ring.clear()
+        self._verify_ring.clear()
         if dropped:
             log.debug("입력 버퍼 %d샘플(%.2fs) 버림", dropped, dropped / self.samplerate)
         return dropped

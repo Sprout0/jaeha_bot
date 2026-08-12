@@ -93,10 +93,18 @@ class STTModule:
         return self._model
 
     # -------------------------------------------------------------- 인식(STT)
-    def transcribe(self, audio) -> tuple[str, float]:
+    def transcribe(self, audio, initial_prompt: str | None = None) -> tuple[str, float]:
         """오디오(float32 numpy [-1,1] 또는 wav 경로) -> (텍스트, 처리시간초).
 
         빈 입력/잡음은 '' 반환하고 복구는 상위(main)에서 처리한다.
+
+        initial_prompt: 이 호출에만 쓰는 디코딩 힌트. None 이면 인스턴스 기본값.
+          🔴 호출어 2단계 검증에 필수다. 실측(2026-08-12, 실음성 44건, 자모컷 0.45):
+             힌트 없음 41% / '재하봇' 64% / **"재하봇아, 재하봇이, 재하봇 불러." 98%**
+             (긍정 자모거리 중앙 0.00 / 부정 0.86). 부정 통과는 2% 로 유지된다.
+          ⚠️ **대화용 STT 에는 절대 쓰지 말 것.** 아이가 무슨 말을 하든 '재하봇' 쪽으로
+             편향된다. 그래서 인스턴스 고정값이 아니라 호출별 인자로 받는다.
+             (모델을 두 벌 올리는 건 불가 — turbo 적재 후 여유가 2GB 뿐이다.)
         """
         model = self.load()
         self.last_rejected = False
@@ -124,7 +132,9 @@ class STTModule:
             # 2단계로 캡을 씌워 최악을 ~2.6s 로 묶는다(깨끗한 한국어는 첫 시도에 성공해 무영향).
             temperature=[0.0, 0.2],
             condition_on_previous_text=False,  # 턴제 대화라 이전 문맥 이월/반복 방지
-            initial_prompt=self.initial_prompt,  # None 이면 무영향. 고유명사 원천 보정용 힌트.
+            # 호출별 인자가 있으면 그것을, 없으면 인스턴스 기본값을 쓴다.
+            initial_prompt=(initial_prompt if initial_prompt is not None
+                            else self.initial_prompt),
         )
         text = " ".join(s.text for s in segments).strip()
         # ① 반복 환각 제거(같은 구절 무한반복) — 실아동 음성서 유일 치명오류(24%). 모델무관 후처리.

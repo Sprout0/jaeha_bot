@@ -144,7 +144,7 @@ class LLMAgent:
         model_path: str,
         system_prompt: str,
         *,
-        n_ctx: int = 2048,
+        n_ctx: int = 4096,   # 프롬프트 2356토큰 + 이력 + 답변. 근거는 configs/model_paths.yaml
         n_threads: int = 4,
         n_gpu_layers: int = 0,
         seed: int | None = None,    # 샘플링 시드. None 이면 llama.cpp 가 매 실행 랜덤으로 잡는다
@@ -165,11 +165,16 @@ class LLMAgent:
         # 원격이어도 GGUF 경로는 남긴다 — 네트워크가 끊기면 그대로 폴백해야 하기 때문.
         backend: str = "local",
         api_model: str = "gpt-4o-mini",
-        # 실측 p95 2.25s / 최대 2.28s(28회). 3초를 넘는 건 정상 범위가 아니다.
+        # 🔴 2026-08-18 3.0 -> 5.0. **3.0 은 타임아웃이 아니라 지연 증폭기였다.**
+        #    3.0 은 08-10 의 p95 1.72s 를 보고 정한 값인데, 08-18 실측 p95 는 3.757s /
+        #    최대 4.444s 다(회선 왕복이 2배가 됐다). 타임아웃이 정상 분산 안으로 들어와
+        #    평범한 호출이 매번 문턱을 스쳤고, 스칠 때마다 아래 max_retries 로 3배가 됐다.
+        #      재시도 켜짐 중앙 2.580s / p95 13.233s   ->   끔 중앙 1.610s / p95 3.757s
+        #    5.0 은 관측 최대(4.444s) 바로 위다 — 정상 호출은 안 자르고 진짜 멈춤만 잡는다.
         # 🔴 이 값은 '네트워크가 죽었을 때 아이가 견디는 침묵'과 같다 —
         #    타임아웃 후에 로컬이 1.7초를 더 쓰므로 총 침묵 = api_timeout + 1.7s.
-        #    올리면 헛폴백이 줄고, 내리면 장애 시 침묵이 짧아진다.
-        api_timeout: float = 3.0,
+        #    (로컬 1.7s 는 2026-08-18 n_ctx 4096 에서 재확인: 중앙 1.701s / 최대 1.759s)
+        api_timeout: float = 5.0,
     ) -> None:
         self.model_path = model_path
         self.system_prompt = system_prompt
@@ -292,7 +297,11 @@ class LLMAgent:
         if self._oa is None:
             from openai import OpenAI
 
-            self._oa = OpenAI(timeout=self.api_timeout)
+            # 🔴 max_retries=0 은 필수다. SDK 기본값(2)이면 타임아웃된 호출을 **처음부터
+            #    두 번 더** 쳐서 p95 가 13.2s 까지 부푼다(2026-08-18 실측). 느린 호출은
+            #    다시 치는 게 아니라 로컬로 내려가야 한다 — 그래야 위 '침묵 = 타임아웃 +
+            #    1.7s' 계산이 성립한다. 재시도는 SDK 가 아니라 우리가 정한다.
+            self._oa = OpenAI(timeout=self.api_timeout, max_retries=0)
         return self._oa
 
     def _complete_local(self, messages: list[dict]) -> str:

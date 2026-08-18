@@ -275,24 +275,61 @@ class TTSModule:
             log.warning("요청한 프로바이더가 붙지 않음: %s — CPU 로 동작 중", missed)
 
     # ---------------------------------------------------- 보이스 스타일 해석(+블렌딩)
-    def _resolve_style(self, voice: str):
-        """voice 문자열 -> Style. 'F1+F4' 처럼 '+' 로 이으면 프리셋들을 균등 블렌딩.
+    def _parse_blend(self, spec: str) -> list[tuple[str, float]]:
+        """'F1:0.7+F4:0.3' -> [('F1', 0.7), ('F4', 0.3)]. 가중치는 합이 1 이 되게 정규화.
 
-        Supertonic 의 voice style 은 numpy 벡터 2개(ttl=음색, dp=리듬)일 뿐이라
-        선형 평균으로 새 화자를 만들 수 있다(style latent 는 연속·보간 가능 공간).
-        F1+F4 블렌드가 유아용으로 가장 밝고 자연스러워 채택(청취 비교, speed 1.05).
-        단일 이름이면 그대로 프리셋 로드. [[jaeha-bot-progress]] 참고.
+        정규화하는 이유: 'F1:3+F4:1'(3:1 비율)처럼 쓰는 게 사람에게 자연스럽다.
+        가중치를 안 적으면 1.0 으로 보므로 'F1+F4' 는 그대로 균등이 된다.
+        """
+        parts: list[tuple[str, float]] = []
+        for term in spec.split("+"):
+            term = term.strip()
+            if not term:
+                continue
+            name, _, w = term.partition(":")
+            parts.append((name.strip(), float(w) if w.strip() else 1.0))
+        if not parts:
+            raise ValueError(f"목소리 지정이 비었다: {spec!r}")
+        total = sum(w for _, w in parts)
+        if total <= 0:
+            raise ValueError(f"가중치 합이 0 이다: {spec!r}")
+        return [(n, w / total) for n, w in parts]
+
+    def _resolve_style(self, voice: str):
+        """voice 문자열 -> Style.
+
+        Supertonic 의 voice style 은 numpy 벡터 2개일 뿐이라 선형 평균으로 새 화자를
+        만들 수 있다(style latent 는 연속·보간 가능 공간):
+            ttl = 음색(50x256)   dp = 리듬·발화 속도감(8x16)
+        이 둘이 **따로** 있다는 게 중요하다. 묶어서 평균내면 '밝은 음색'을 가져올 때
+        '촐랑거리는 리듬'까지 딸려온다 — 2세에겐 그게 알아듣기 어렵다.
+
+        문법:
+            F1                  단일 프리셋 (M1~M5 / F1~F5)
+            F1+F4               균등 블렌드
+            F1:0.7+F4:0.3       가중 블렌드 (비율이라 'F1:3+F4:1' 도 같은 뜻)
+            F1|F4               음색 F1, 리듬 F4
+            F1:0.7+F2:0.3|F4    가중 음색 + 리듬 F4
+
+        후보를 귀로 고르는 도구는 tools/voice_tournament.py.
+        🔴 반드시 젯슨 실기로 들을 것 — 파일 청취로 고르면 08-10 을 반복한다.
         """
         from supertonic.core import Style
 
-        names = [n.strip() for n in str(voice).split("+") if n.strip()]
-        if len(names) <= 1:
-            return self._tts.get_voice_style(names[0] if names else voice)
-        styles = [self._tts.get_voice_style(n) for n in names]
-        w = 1.0 / len(styles)
-        ttl = sum(w * s.ttl for s in styles).astype(np.float32)
-        dp = sum(w * s.dp for s in styles).astype(np.float32)
-        return Style(ttl, dp)
+        spec = str(voice)
+        timbre_spec, sep, rhythm_spec = spec.partition("|")
+        if not sep:
+            rhythm_spec = timbre_spec
+
+        timbre = self._parse_blend(timbre_spec)
+        rhythm = self._parse_blend(rhythm_spec)
+        # 단일 프리셋이고 분리도 없으면 프리셋을 그대로 쓴다(부동소수 오차 0).
+        if not sep and len(timbre) == 1:
+            return self._tts.get_voice_style(timbre[0][0])
+
+        ttl = sum(w * self._tts.get_voice_style(n).ttl for n, w in timbre)
+        dp = sum(w * self._tts.get_voice_style(n).dp for n, w in rhythm)
+        return Style(np.asarray(ttl, dtype=np.float32), np.asarray(dp, dtype=np.float32))
 
     # ---------------------------------------------------------- 합성(-> numpy)
     def _infer(self, text: str) -> np.ndarray:

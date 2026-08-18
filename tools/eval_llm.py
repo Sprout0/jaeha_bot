@@ -16,6 +16,7 @@
   python tools/eval_llm.py --models gpt-5.6-luna
   python tools/eval_llm.py --models gpt-5.6-luna,gpt-5.6-terra --repeat 2
   python tools/eval_llm.py --models local          # 로컬 EXAONE 기준선
+  python tools/eval_llm.py --models HCX-DASH-002   # 하이퍼클로바X(국내 서버)
 """
 from __future__ import annotations
 
@@ -96,9 +97,34 @@ def _max_sentences() -> int:
 # 새 제공사를 붙일 때 여기만 늘리면 되고 지표·리포트는 그대로 쓴다.
 # 🔴 새 백엔드도 반드시 spoken() 을 통과시킬 것 — 위 주석의 이유.
 
+# 모델 이름 -> 필요한 환경변수. 새 제공사를 붙일 때 여기도 같이 늘린다.
+# 🔴 키 확인을 빠뜨리면 '켰다고 믿는데 안 켜진' 상태가 된다(08-10 에 실제로 겪음).
+def required_key(model: str) -> str | None:
+    if model == "local":
+        return None
+    if model.startswith("HCX-"):
+        return "CLOVA_STUDIO_KEY"
+    if model.startswith("gemini"):
+        return "GEMINI_API_KEY"
+    return "OPENAI_API_KEY"
+
+
+# CLOVA Studio(하이퍼클로바X)는 OpenAI 호환 엔드포인트를 준다. 그래서 어댑터를 새로
+# 쓰지 않고 base_url·키만 바꿔 끼운다 — 채점·날조·안전 판정이 그대로 재사용된다.
+CLOVA_BASE_URL = "https://clovastudio.stream.ntruss.com/v1/openai"
+
+
 def make_openai(model: str, system: str, max_tokens: int):
     from openai import OpenAI
-    client = OpenAI()
+    if model.startswith("HCX-"):
+        key = os.environ.get("CLOVA_STUDIO_KEY")
+        if not key:
+            print("CLOVA_STUDIO_KEY 가 없습니다. .env 에 넣으세요"
+                  " (CLOVA Studio > 테스트 앱 > API 키. CLOVA Voice 키와 다릅니다).")
+            sys.exit(1)
+        client = OpenAI(base_url=CLOVA_BASE_URL, api_key=key)
+    else:
+        client = OpenAI()
 
     def ask(text: str) -> tuple[str, int]:
         r = client.chat.completions.create(
@@ -336,8 +362,8 @@ def main() -> None:
     print(f"평가셋 {len(rows)}문항 × {args.repeat}회 | 시스템 프롬프트 {len(system)}자")
 
     names = [m.strip() for m in args.models.split(",") if m.strip()]
-    for name, var in (("gpt", "OPENAI_API_KEY"), ("gemini", "GEMINI_API_KEY")):
-        if any(n.startswith(name) for n in names) and not os.environ.get(var):
+    for var in sorted({k for n in names if (k := required_key(n))}):
+        if not os.environ.get(var):
             print(f"\n⚠️ {var} 가 없습니다. 프로젝트 루트 .env 에 한 줄 넣거나,")
             print("   setx 로 등록한 뒤 터미널(또는 앱)을 새로 띄우세요.")
             sys.exit(1)

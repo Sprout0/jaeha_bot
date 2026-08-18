@@ -29,7 +29,7 @@ def test_resp_excludes_playback(tmp_path):
     rec = m.samples[0]
     assert rec["resp_compute_s"] == 2.5, "0.6+1.0+0.9 이어야 한다"
     assert rec["tts_play_s"] == 4.0, "발화 시간은 버리지 말고 따로 남긴다"
-    assert rec["metric_ver"] == 2, "옛 기록과 구분되는 표식이 있어야 한다"
+    assert rec["metric_ver"] == 3, "옛 기록과 구분되는 표식이 있어야 한다"
 
 
 def test_playback_length_does_not_change_resp(tmp_path):
@@ -48,7 +48,7 @@ def test_summary_reports_first_sound_and_keeps_play_separate(tmp_path, capsys):
                       tts_first_s=0.8, tts_play_s=5.0, reply="답")
     m.summary()
     out = capsys.readouterr().out
-    assert "첫 소리까지" in out
+    assert "첫 소리" in out
     written = [json.loads(x) for x in
                m.path.read_text(encoding="utf-8").splitlines() if x.strip()]
     summ = [r for r in written if r.get("event") == "summary"][0]

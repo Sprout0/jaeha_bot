@@ -77,6 +77,11 @@ class STTModule:
         # 직전 transcribe 가 '환각이라 버림'이었는지. main 이 이걸 봐야 '말이 없었다'와
         # 구분해 되물을 수 있다(빈 문자열만으로는 구분 불가 → 침묵하게 된다).
         self.last_rejected = False
+        # 직전 녹음의 'VAD 꼬리' — 마지막 말소리부터 녹음 종료까지(초).
+        # 아이가 순전히 기다리는 구간이라 지연 예산에서 따로 봐야 한다.
+        # 🔴 silence_duration 을 그대로 쓰면 안 된다. quiet 카운터가 말소리에서
+        #    감쇠하므로 실제 꼬리는 설정값보다 짧을 수도 길 수도 있다.
+        self.last_vad_tail_s = 0.0
         self._model = None
 
     # ------------------------------------------------------------------ 모델
@@ -175,6 +180,7 @@ class STTModule:
 
         반환: float32 numpy 오디오(모노, 16kHz). 말이 없으면 빈 배열.
         """
+        self.last_vad_tail_s = 0.0   # 이전 턴 값이 새 턴에 새지 않게
         if source is None:
             return self._record_own_stream(verbose)
         return self._record_from_source(source, verbose, prefix)
@@ -239,6 +245,7 @@ class STTModule:
         total_samples = sum(int(np.asarray(b).size) for b in collected)
         quiet = 0
         speech_peak = threshold
+        last_loud_samples = total_samples   # 마지막 말소리까지 모인 양(꼬리 계산 기준)
         while total_samples < max_samples:
             try:
                 block = source.read()
@@ -254,6 +261,8 @@ class STTModule:
                     break
             else:
                 quiet = max(0, quiet - 1)
+                last_loud_samples = total_samples
+        self.last_vad_tail_s = (total_samples - last_loud_samples) / SAMPLE_RATE
 
         if not collected:
             return np.zeros(0, dtype=np.float32)
@@ -313,6 +322,7 @@ class STTModule:
             #    - loud 프레임엔 카운터를 0으로 리셋하지 않고 조금만 감산(블립에 관대).
             quiet = 0
             speech_peak = threshold
+            last_loud_frames = len(collected)
             while len(collected) < max_frames:
                 block, _ = stream.read(frame)
                 collected.append(block)
@@ -325,6 +335,9 @@ class STTModule:
                         break
                 else:
                     quiet = max(0, quiet - 3)
+                    last_loud_frames = len(collected)
+            self.last_vad_tail_s = ((len(collected) - last_loud_frames)
+                                    * frame / SAMPLE_RATE)
 
         audio = np.concatenate(collected).astype(np.float32).flatten()
         return _normalize(audio)

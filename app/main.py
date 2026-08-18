@@ -284,7 +284,10 @@ def main() -> None:
             # 스스로 나눠 돌려준다 — 바깥에서 재면 둘이 합쳐져 지연이 부풀려진다.
             tm = tts.speak(reply)
             last_active = time.time()  # 마지막 상호작용 시각(잠들기 타이머 기준)
+            # vad_tail = 말끝부터 녹음이 끊길 때까지. stt_wait 안에 아이가 말한
+            # 시간과 섞여 있어 따로 못 보던 구간이다 — 이게 지연 예산의 첫 조각이다.
             metrics.record_turn(stt_wait_s=stt_wait, stt_rec_s=tr_dt,
+                                vad_tail_s=stt.last_vad_tail_s,
                                 think_s=think_s, think_kind=kind,
                                 tts_first_s=tm.first_audio_s,
                                 tts_play_s=tm.play_s, reply=reply,

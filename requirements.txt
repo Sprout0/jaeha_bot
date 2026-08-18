@@ -53,3 +53,4 @@ python-dotenv>=1.0.0      # .env 에서 API 키 읽기(앱 재시작 불필요)
 # --- PC 개발용에서만 (Jetson 베이스 이미지엔 이미 포함) ---
 # torch>=2.2
 # torchvision>=0.17
+psutil>=5.9        # app/metrics.py 자원 계측(없으면 RSS·CPU 가 조용히 null 이 된다)

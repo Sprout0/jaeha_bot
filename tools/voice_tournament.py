@@ -82,14 +82,15 @@ def build_explore(rnd: int, base: str, s: dict) -> tuple[str, list[dict]]:
     names = [p[0] for p in parts]
 
     if rnd == 1:
-        specs = [base]                                   # 대조군: 지금 고른 것
-        if len(names) == 2:
-            a, b = names
-            for wa in (0.15, 0.2, 0.4):                  # 이웃 비율(2단계는 0.3/0.5/0.7 만 들었다)
-                specs.append(f"{a}:{wa}+{b}:{round(1 - wa, 2)}")
-            for wa in (-0.2, -0.4):                      # 외삽: b 쪽으로 더 밀기
-                specs.append(f"{a}:{wa}+{b}:{round(1 - wa, 2)}")
-        return mk(specs, f"탐색1 · 더 밀어붙이기 — [{base}] 의 비율을 넓히고 프리셋 밖까지. "
+        # 🔴 고정 비율(0.15/0.2/0.4)로 만들면 안 된다. 기준이 'F3:-0.2+F1:1.2' 처럼
+        #    외삽 지점일 때 0.3 근처를 훑게 되고, 그건 우승한 자리에서 **멀어지는** 쪽만
+        #    들려주는 것이다. 주변 탐색은 언제나 '지금 값에서 ±' 여야 한다.
+        from tools.voice_try import neighbors
+
+        specs = [base] + neighbors(base, (-0.45, -0.15, 0.15, 0.45))  # 1번은 대조군
+        # 폭을 0.45 까지 잡는 이유: 기준이 안쪽(예: 0.3)일 때도 한 칸은 **프리셋 밖으로**
+        # 넘어가야 한다. 좁게만 잡으면 사이만 훑다 끝난다.
+        return mk(specs, f"탐색1 · 더 밀어붙이기 — [{base}] 의 비율을 좌우로 넓힌다. "
                          "음수 가중치 = 그 성분을 빼는 방향이라 더 극단적인 목소리가 나온다")
 
     if rnd == 2:

@@ -102,3 +102,14 @@ def test_explore_varies_nothing_but_voice():
 def test_unknown_explore_round_refuses():
     with pytest.raises(SystemExit):
         build_explore(9, "F1+F4", {})
+
+
+def test_explore1_is_centred_on_the_given_base():
+    """외삽 지점이 기준일 때 0.3 근처를 훑으면 우승한 자리에서 멀어지기만 한다."""
+    from app.tts_module import TTSModule
+
+    _, c = build_explore(1, "F3:-0.2+F1:1.2", {})
+    got = [dict(TTSModule()._parse_blend(x["voice"]))["F3"] for x in c[1:]]
+
+    assert all(abs(w - (-0.2)) <= 0.45 + 1e-9 for w in got), f"기준에서 멀다: {got}"
+    assert min(got) < -0.2 < max(got), "한쪽으로만 움직였다"

@@ -56,6 +56,51 @@ def save_state(s: dict) -> None:
     STATE.write_text(json.dumps(s, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def build_explore(rnd: int, base: str, s: dict) -> tuple[str, list[dict]]:
+    """2단계에서 고른 후보 **주변**을 더 넓게 듣는다. 라운드마다 한 축만 바꾼다.
+
+    2단계는 고른 프리셋들 사이의 '중간 지점'만 훑는다. 그런데 정답이 그 사이에 없고
+    **바깥**에 있을 수 있다 — 스타일이 선형 공간이라 프리셋 밖으로 나가는 게 가능하다.
+
+      라운드 1  같은 두 목소리를 더 밀어붙인다(미세 비율 + 외삽)
+      라운드 2  제3의 목소리를 소량 섞는다(F 나머지 + M 계열)
+
+    🔴 외삽이란: 'F1:-0.2+F4:1.2' 는 F4 에서 F1 성분을 **빼는** 방향이라
+       **어떤 프리셋보다도 더 F4 다운** 목소리가 나온다. 더 높고 더 아이 같은 쪽으로
+       밀어붙일 때 쓴다. 다만 과하면 소리가 깨지므로 조금씩 늘려 본다.
+    🔴 M 을 섞는 건 남성 목소리를 쓰자는 게 아니다. F 프리셋끼리는 다 얇아서
+       안 나오는 '두께'가 소량(15~20%)에서 생긴다.
+    """
+    seed = s.get("seed", settings.models["tts"].get("seed", 777))
+    speed = s.get("speed", settings.models["tts"].get("speed", 1.05))
+
+    def mk(specs, desc):
+        return (desc, [{"label": v, "voice": v, "seed": seed, "speed": speed}
+                       for v in specs])
+
+    parts = [p.split(":") for p in base.split("|")[0].split("+")]
+    names = [p[0] for p in parts]
+
+    if rnd == 1:
+        specs = [base]                                   # 대조군: 지금 고른 것
+        if len(names) == 2:
+            a, b = names
+            for wa in (0.15, 0.2, 0.4):                  # 이웃 비율(2단계는 0.3/0.5/0.7 만 들었다)
+                specs.append(f"{a}:{wa}+{b}:{round(1 - wa, 2)}")
+            for wa in (-0.2, -0.4):                      # 외삽: b 쪽으로 더 밀기
+                specs.append(f"{a}:{wa}+{b}:{round(1 - wa, 2)}")
+        return mk(specs, f"탐색1 · 더 밀어붙이기 — [{base}] 의 비율을 넓히고 프리셋 밖까지. "
+                         "음수 가중치 = 그 성분을 빼는 방향이라 더 극단적인 목소리가 나온다")
+
+    if rnd == 2:
+        third = [p for p in PRESETS if p not in names] + ["M1", "M2", "M3", "M4", "M5"]
+        specs = [base] + [f"{base}+{v}:0.2" for v in third]
+        return mk(specs, f"탐색2 · 제3의 목소리 소량 섞기 — [{base}] 에 20%씩. "
+                         "M 계열은 남성 목소리가 아니라 없던 '두께'를 얻으려는 것이다")
+
+    raise SystemExit(f"탐색 라운드는 1~2 다: {rnd}")
+
+
 def build_stage(stage: int, s: dict) -> tuple[str, list[dict]]:
     """(단계 설명, 후보 목록). 후보는 {label, voice, seed, speed}."""
     base_seed = s.get("seed", settings.models["tts"].get("seed", 777))
@@ -119,6 +164,10 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--stage", type=int, default=1)
+    ap.add_argument("--explore", type=int, metavar="N",
+                    help="2단계 후보 '주변'을 더 넓게 듣는다(1=비율·외삽, 2=제3의 목소리)")
+    ap.add_argument("--from", dest="base", metavar="SPEC",
+                    help="탐색 기준이 될 목소리(예: 'F1:0.3+F4:0.7'). 없으면 저장된 2단계 결과")
     ap.add_argument("--text", default=DEFAULT_TEXT)
     ap.add_argument("--blind", action="store_true",
                     help="이름을 감추고 순서도 섞는다 — 'F1 이 좋다더라'는 선입견을 없앤다")
@@ -129,7 +178,13 @@ def main() -> None:
     _setup_audio_device()
 
     s = load_state()
-    desc, cands = build_stage(args.stage, s)
+    if args.explore:
+        base = args.base or s.get("stage2")
+        if not base:
+            raise SystemExit("탐색 기준이 없다. --from 'F1:0.3+F4:0.7' 처럼 줄 것")
+        desc, cands = build_explore(args.explore, base, s)
+    else:
+        desc, cands = build_stage(args.stage, s)
     if args.blind:
         random.shuffle(cands)
 
@@ -166,6 +221,12 @@ def main() -> None:
                 continue
             for c in chosen:
                 print(f"    고름: {c['label']}  (voice={c['voice']} seed={c['seed']} speed={c['speed']})")
+            if args.explore:
+                s["stage2"] = chosen[0]["voice"]
+                save_state(s)
+                print(f"  저장됨 -> {STATE}")
+                print("  더 넓게: --explore 2   /  이대로 진행: --stage 3")
+                return
             if args.stage == 1:
                 s["stage1"] = [c["voice"] for c in chosen]
             elif args.stage == 2:

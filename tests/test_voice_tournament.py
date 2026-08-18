@@ -6,7 +6,7 @@
 """
 import pytest
 
-from tools.voice_tournament import PRESETS, build_stage
+from tools.voice_tournament import PRESETS, build_explore, build_stage
 
 
 def test_stage1_is_plain_presets():
@@ -64,3 +64,41 @@ def test_stage5_varies_speed_only_and_keeps_earlier_picks():
 def test_unknown_stage_refuses():
     with pytest.raises(SystemExit):
         build_stage(9, {})
+
+
+def test_explore1_keeps_current_pick_as_control():
+    """더 밀어붙인 게 오히려 나쁠 수 있다. 기준이 없으면 그걸 모른다."""
+    _, c = build_explore(1, "F1:0.3+F4:0.7", {})
+
+    assert c[0]["voice"] == "F1:0.3+F4:0.7"
+
+
+def test_explore1_goes_outside_the_presets():
+    """외삽(음수 가중치)이 없으면 프리셋 '사이'만 뒤지게 된다."""
+    _, c = build_explore(1, "F1:0.3+F4:0.7", {})
+    voices = [x["voice"] for x in c]
+
+    assert any(":-" in v for v in voices), "프리셋 밖으로 나가는 후보가 없다"
+    assert len({x["voice"] for x in c}) == len(c), "후보가 중복이다"
+
+
+def test_explore2_adds_a_third_voice_including_male():
+    _, c = build_explore(2, "F1:0.3+F4:0.7", {})
+    added = [x["voice"].rsplit("+", 1)[-1] for x in c[1:]]
+
+    assert any(a.startswith("M") for a in added), "M 계열이 빠졌다(두께를 못 얻는다)"
+    assert all(a.endswith(":0.2") for a in added), "제3의 목소리는 소량이어야 한다"
+    assert not any(a.startswith(("F1:", "F4:")) for a in added), \
+        "이미 들어 있는 목소리를 또 더하고 있다"
+
+
+def test_explore_varies_nothing_but_voice():
+    for rnd in (1, 2):
+        _, c = build_explore(rnd, "F1:0.3+F4:0.7", {})
+        assert len({x["seed"] for x in c}) == 1
+        assert len({x["speed"] for x in c}) == 1
+
+
+def test_unknown_explore_round_refuses():
+    with pytest.raises(SystemExit):
+        build_explore(9, "F1+F4", {})

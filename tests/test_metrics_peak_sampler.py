@@ -52,3 +52,25 @@ def test_pop_starts_a_fresh_window_for_the_next_turn():
 
 def test_pop_on_an_empty_window_is_empty_not_an_error():
     assert _PeakSampler().pop() == {}
+
+
+# ── TTS 내역 ─────────────────────────────────────────────────────────────────
+
+def test_turn_record_splits_tts_into_synth_and_start(tmp_path):
+    """🔴 2026-08-19: 첫 소리 1.12s 인데 격리 측정은 0.63s 다. 0.5초의 출처를 모른다.
+
+    가설 넷(GPU 경합·메모리 압박·입력 스트림·측정 낙관)을 젯슨에서 전부 기각했다.
+    다섯 번째를 지어내는 대신 **실제 세션에서 증거를 받는다** — 합성(synth_s)만
+    따로 남기면 0.5초가 합성 쪽인지 재생 시작 쪽인지 다음 세션에서 갈린다.
+    SpeakTiming 은 이미 synth_s 를 갖고 있었는데 계측이 안 받아 적고 있었다.
+    """
+    from app.metrics import MetricsLogger
+
+    m = MetricsLogger(log_dir=str(tmp_path))
+    m.record_turn(stt_wait_s=2.0, stt_rec_s=0.2, think_s=0.8, think_kind="llm",
+                  tts_first_s=1.12, tts_synth_s=0.48, tts_play_s=3.3,
+                  reply="응 좋아", child_text="안녕", vad_tail_s=1.2)
+
+    rec = m.samples[-1]
+    assert rec["tts_synth_s"] == 0.48
+    assert rec["tts_first_s"] - rec["tts_synth_s"] > 0, "재생 시작 몫이 음수다"

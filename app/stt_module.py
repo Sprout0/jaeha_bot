@@ -15,6 +15,7 @@ REPL 테스트: python -m app.stt_module
 from __future__ import annotations
 
 import logging
+import threading
 import time
 
 import numpy as np
@@ -25,6 +26,85 @@ from .text_norm import correct_stt, dedupe_repeats
 log = logging.getLogger("jaeha_bot.stt")
 
 SAMPLE_RATE = 16000  # faster-whisper 표준 입력
+
+
+class _Speculation:
+    """VAD 꼬리 동안 인식을 미리 돌려 두는 장치.
+
+    🔴 왜 되는가 (2026-08-19):
+       말이 끝났다고 판단하려면 silence_duration(1.2s) 만큼 더 들어야 하는데,
+       **그 1.2초는 정의상 무음이다.** 즉 마지막 말소리 프레임에서 이미 발화 전체를
+       손에 쥐고 있다. 그때부터 인식을 돌리면 꼬리가 끝날 무렵 답이 나와 있다.
+       게다가 transcribe() 는 _trim_edges 로 앞뒤 무음을 어차피 잘라내므로,
+       꼬리를 포함해 넣든 안 넣든 **whisper 가 보는 입력이 같다** — 답이 안 달라진다.
+       젯슨 실측(08-19 세션 14턴): 꼬리 1.20s · 인식 1.41s -> 인식이 0.21s 가 된다.
+
+    ⚠️ 아이가 다시 말하면 그 추측은 버린다. 손해는 GPU 한 번이고 **지연은 0** 이다
+       (어차피 기다리는 중이었다). 버린 뒤 새 키로 다시 추측하므로 재개해도 손해가 없다.
+    🔴 키는 '마지막 말소리까지 모인 샘플 수'다. 아이가 다시 말하면 이 값이 커지므로
+       **옛 추측이 새 발화의 답으로 쓰이는 일이 구조적으로 불가능하다.**
+    ⚠️ 인식은 한 번에 하나만 돈다(작업 스레드 1개). whisper 모델을 두 스레드가
+       동시에 부르지 않게 하려는 것이다.
+    """
+
+    def __init__(self, work) -> None:
+        self._work = work                 # callable(audio) -> (text, 처리시간)
+        self._cv = threading.Condition()
+        self._pending: tuple | None = None    # 아직 시작 안 한 요청
+        self._busy_key = None                 # 지금 돌고 있는 키
+        self._done: dict = {}                 # key -> (text, 처리시간)
+        self._thread: threading.Thread | None = None
+
+    def reset(self) -> None:
+        """새 녹음을 시작할 때. 지난 턴의 찌꺼기가 넘어오지 않게 한다."""
+        with self._cv:
+            self._pending = None
+            self._done.clear()
+
+    def submit(self, audio, key) -> None:
+        with self._cv:
+            if key == self._busy_key or key in self._done:
+                return                    # 같은 오디오를 두 번 인식하지 않는다
+            self._pending = (audio, key)
+            if self._thread is None or not self._thread.is_alive():
+                self._thread = threading.Thread(target=self._run, daemon=True,
+                                                name="stt-speculation")
+                self._thread.start()
+            self._cv.notify_all()
+
+    def _run(self) -> None:
+        while True:
+            with self._cv:
+                if self._pending is None:
+                    self._busy_key = None
+                    self._cv.notify_all()
+                    return
+                audio, key = self._pending
+                self._pending = None
+                self._busy_key = key
+            try:
+                out = self._work(audio)
+            except Exception as e:      # 최적화가 본 기능을 죽이면 안 된다
+                log.warning("선행 인식 실패(무시하고 평소 경로로): %s", e)
+                out = None
+            with self._cv:
+                if out is not None:
+                    self._done[key] = out
+                self._busy_key = None
+                self._cv.notify_all()
+
+    def take(self, key, timeout: float = 10.0):
+        """그 키의 결과를 (돌고 있으면 기다렸다) 돌려준다. 아무도 안 하고 있으면 None."""
+        deadline = time.perf_counter() + timeout
+        with self._cv:
+            while True:
+                if key in self._done:
+                    return self._done.pop(key)
+                pending_key = self._pending[1] if self._pending else None
+                if self._busy_key != key and pending_key != key:
+                    return None
+                if not self._cv.wait(timeout=max(0.0, deadline - time.perf_counter())):
+                    return None
 
 
 class STTModule:
@@ -83,6 +163,10 @@ class STTModule:
         #    감쇠하므로 실제 꼬리는 설정값보다 짧을 수도 길 수도 있다.
         self.last_vad_tail_s = 0.0
         self._model = None
+        # 선행 인식: 꼬리를 기다리는 동안 미리 돌려 둔다. 자세한 이유는 _Speculation.
+        # 람다로 감싸는 건 transcribe 를 **호출 시점에** 찾기 위해서다(테스트가 갈아끼운다).
+        self._spec = _Speculation(lambda a: self.transcribe(a))
+        self._spec_key = None
 
     # ------------------------------------------------------------------ 모델
     def load(self):
@@ -181,6 +265,8 @@ class STTModule:
         반환: float32 numpy 오디오(모노, 16kHz). 말이 없으면 빈 배열.
         """
         self.last_vad_tail_s = 0.0   # 이전 턴 값이 새 턴에 새지 않게
+        self._spec.reset()           # 지난 턴의 선행 인식 찌꺼기를 넘기지 않는다
+        self._spec_key = None
         if source is None:
             return self._record_own_stream(verbose)
         return self._record_from_source(source, verbose, prefix)
@@ -239,6 +325,9 @@ class STTModule:
         #    지우는 무음 예산이 2.67배로 뛰어, 말끝을 흘리는 아이의 녹음이 quiet
         #    카운터로 못 끊기고 max_duration 캡까지 끌려간다(예전에 고쳤던 실패 재발).
         quiet_needed = max(1, int(self.silence_duration * SAMPLE_RATE / frame_size))
+        # 선행 인식 발동 시점. 너무 이르면 말소리 사이 블립마다 GPU 를 돌리고,
+        # 너무 늦으면 겹칠 꼬리가 남지 않는다. 0.16s = 80ms 프레임 2개.
+        spec_after = max(1, int(0.16 * SAMPLE_RATE / frame_size))
         # 샘플 수 기준 상한: prefix 가 여러 프레임을 하나의 배열로 합쳐 넘길 수 있어
         # (예: AudioSource 의 preroll) 리스트 길이로 세면 캡이 밀린다.
         max_samples = int(self.max_duration * SAMPLE_RATE)
@@ -257,12 +346,17 @@ class STTModule:
             speech_peak = max(speech_peak, r)
             if r < max(threshold, speech_peak * 0.12):
                 quiet += 1
+                # 말이 잠깐 그친 게 확실해지면(블립 하나는 거른다) 그때까지의 발화를
+                # 백그라운드로 인식시킨다. 남은 꼬리가 그 연산을 덮는다.
+                if quiet == spec_after:
+                    self._spec.submit(_snapshot(collected), key=last_loud_samples)
                 if quiet >= quiet_needed:
                     break
             else:
                 quiet = max(0, quiet - 1)
                 last_loud_samples = total_samples
         self.last_vad_tail_s = (total_samples - last_loud_samples) / SAMPLE_RATE
+        self._spec_key = last_loud_samples
 
         if not collected:
             return np.zeros(0, dtype=np.float32)
@@ -353,7 +447,17 @@ class STTModule:
             # 거부가 남아 main 이 무음 턴마다 되묻고, 영영 잠들지 않는다.
             self.last_rejected = False
             return "", 0.0
-        text, tr_dt = self.transcribe(audio)
+        # 🔴 돌려주는 두 번째 값은 **아이가 녹음 종료 뒤 더 기다린 시간**이다(연산시간이
+        #    아니다). 선행 인식이 꼬리 안에서 끝났으면 이 값은 0 에 가깝고, 그게 실제로
+        #    아이가 겪은 것이다. 연산시간을 그대로 찍으면 개선이 지표에 안 나타난다.
+        t_wait = time.perf_counter()
+        got = self._spec.take(self._spec_key) if self._spec_key is not None else None
+        if got is not None:
+            text = got[0]
+            tr_dt = time.perf_counter() - t_wait
+        else:
+            text, _compute = self.transcribe(audio)
+            tr_dt = time.perf_counter() - t_wait
         if verbose:
             # '말끝 흘림→지연/미인식' 진단용: 녹음대기 vs 오디오길이 vs 트림후길이 vs 인식.
             # 짧게 말했는데 오디오가 길면(예: 10s) VAD 종료 늦음. 트림후가 너무 짧으면 끝말 잘림.
@@ -394,6 +498,18 @@ def _trim_edges(audio: np.ndarray, pad: float = 0.1) -> np.ndarray:
     start = max(0, int(nz[0]) - int(pad * SAMPLE_RATE))
     end = min(audio.size, int(nz[-1]) + int(pad * SAMPLE_RATE))
     return audio[start:end]
+
+
+def _snapshot(collected: list) -> np.ndarray:
+    """지금까지 모은 프레임을 **최종 반환과 똑같은 모양**으로 만든다(선행 인식 입력).
+
+    같은 방식으로 만들어야 추측한 답과 실제 답이 갈리지 않는다. 꼬리가 덜 붙어 있어도
+    무해하다 — transcribe() 가 _trim_edges 로 앞뒤 무음을 어차피 잘라내고, _normalize
+    의 기준인 최대 진폭은 말소리 쪽에 있어 무음이 더 붙든 말든 안 변한다.
+    """
+    if not collected:
+        return np.zeros(0, dtype=np.float32)
+    return _normalize(np.concatenate(collected).astype(np.float32).reshape(-1))
 
 
 def _normalize(audio: np.ndarray, peak: float = 0.95) -> np.ndarray:

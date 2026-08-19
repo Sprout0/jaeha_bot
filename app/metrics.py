@@ -227,6 +227,7 @@ class MetricsLogger:
 
     def record_turn(self, *, stt_wait_s: float, stt_rec_s: float,
                     think_s: float, think_kind: str, tts_first_s: float,
+                    tts_synth_s: float = 0.0,
                     tts_play_s: float = 0.0, reply: str = "",
                     child_text: str = "", vad_tail_s: float = 0.0) -> None:
         """한 턴의 단계 지연을 기록한다.
@@ -275,6 +276,10 @@ class MetricsLogger:
             "think_s": round(think_s, 3),
             "think_kind": think_kind,
             "tts_first_s": round(tts_first_s, 3),   # 첫 소리까지(체감)
+            # 🔴 첫 소리 = 합성 + 재생 시작. 나눠 두지 않으면 어디가 느린지 못 찾는다.
+            #    08-19 에 실제로 막혔다 — 세션 1.12s 인데 격리 측정 0.63s 였고, 가설
+            #    넷(GPU 경합·메모리·입력 스트림·측정 낙관)을 다 기각해도 출처를 못 찾았다.
+            "tts_synth_s": round(tts_synth_s, 3),
             "tts_play_s": round(tts_play_s, 3),     # 봇이 말하는 시간(지연 아님)
             "resp_compute_s": resp,           # 연산만(꼬리 제외). 옛 기록과 이어보기용
             "resp_felt_s": felt,              # ★ 아이가 겪는 시간 = 꼬리 + 연산

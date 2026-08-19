@@ -290,6 +290,7 @@ def main() -> None:
                                 vad_tail_s=stt.last_vad_tail_s,
                                 think_s=think_s, think_kind=kind,
                                 tts_first_s=tm.first_audio_s,
+                                tts_synth_s=tm.synth_s,
                                 tts_play_s=tm.play_s, reply=reply,
                                 child_text=text)
             time.sleep(ECHO_COOLDOWN)

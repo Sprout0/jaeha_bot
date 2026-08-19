@@ -109,6 +109,28 @@ def list_models(prefix: str) -> None:
             print(" ", m)
 
 
+def build_arms(models: list[str], system: str,
+               with_floor: bool) -> list[tuple[str, str, str]]:
+    """팔 = (라벨, 모델, 시스템 프롬프트).
+
+    🔴 **local 에는 [바닥] 팔을 붙이지 않는다.** 2026-08-19 에 붙였다가 크게 틀렸다:
+         팔 교차(바닥 42자 ↔ 실제 4185자)   중앙 6.277s
+         프롬프트 고정                      중앙 2.097s
+       llama.cpp 는 같은 시스템 프롬프트가 이어지면 접두 KV 캐시를 재사용한다.
+       두 프롬프트를 번갈아 치면 매 호출 2,356토큰 prompt eval 을 처음부터 다시 낸다.
+       운영은 프롬프트가 고정이라 그 4.2초를 안 낸다 — **잰 값이 운영에 없는 값이었다.**
+       ⚠️ 원격 팔이 사이에 끼는 건 무해하다(llama 컨텍스트를 안 건드린다).
+          깨뜨리는 건 오직 '로컬의 두 번째 프롬프트'다.
+       그리고 [바닥] 은 정의상 '그 서버까지의 왕복 하한'인데 local 은 갈 서버가 없다.
+    """
+    arms: list[tuple[str, str, str]] = []
+    for m in models:
+        if with_floor and m != "local":
+            arms.append((f"{m} [바닥]", m, FLOOR_SYSTEM))
+        arms.append((m, m, system))
+    return arms
+
+
 def p95(v: list[float]) -> float:
     s = sorted(v)
     return s[min(len(s) - 1, int(round(0.95 * (len(s) - 1))))]
@@ -135,12 +157,7 @@ def main() -> None:
                              load_fewshot(settings.models["llm"].get("fewshot_path")))
     rows = load_eval_set(BASE / args.eval_set)
 
-    # 팔 = (라벨, 모델, 프롬프트). floor 는 같은 서버까지의 왕복 하한이다.
-    arms = []
-    for m in models:
-        if not args.no_floor:
-            arms.append((f"{m} [바닥]", m, FLOOR_SYSTEM))
-        arms.append((m, m, system))
+    arms = build_arms(models, system, with_floor=not args.no_floor)
 
     clients = {m: make_client(m) for m in models}
     for m, c in clients.items():   # 커넥션·TLS 예열(첫 호출은 언제나 이상치다)

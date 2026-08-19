@@ -144,3 +144,43 @@ def test_local_needs_no_api_key(monkeypatch):
 
     from tools.bench_llm_latency import required_key
     assert required_key("local") is None
+
+
+# ── 팔 구성 ──────────────────────────────────────────────────────────────────
+# 🔴 2026-08-19 실측으로 드러난 함정. local 에 [바닥] 팔을 붙였더니 중앙 **6.277s**
+#    가 나왔다. 프롬프트를 고정해 다시 재니 **2.097s**. 4.2초가 측정 방식 탓이었다.
+#    llama.cpp 는 같은 시스템 프롬프트가 이어지면 접두 KV 캐시를 재사용한다.
+#    42자 바닥 프롬프트와 4185자 실제 프롬프트를 번갈아 치면 매 호출 2,356토큰
+#    prompt eval 을 처음부터 다시 낸다. 운영은 프롬프트가 고정이라 그 값을 안 낸다.
+#    ⚠️ 원격 팔이 사이에 끼는 건 무해하다 — llama 컨텍스트를 건드리지 않는다.
+#       깨뜨리는 건 오직 '로컬의 두 번째 프롬프트'다.
+#    게다가 [바닥]='그 서버까지의 왕복 하한'인데 local 은 갈 서버가 없다. 뜻도 없다.
+
+from tools.bench_llm_latency import FLOOR_SYSTEM, build_arms  # noqa: E402
+
+
+def test_local_gets_no_floor_arm():
+    arms = build_arms(["local"], "실제 프롬프트", with_floor=True)
+
+    prompts = {sysp for _, _, sysp in arms}
+    assert prompts == {"실제 프롬프트"}, "local 팔의 프롬프트가 두 종류다 — KV 캐시가 깨진다"
+    assert len(arms) == 1
+
+
+def test_remote_models_still_get_their_floor_arm():
+    arms = build_arms(["gpt-4o-mini"], "실제 프롬프트", with_floor=True)
+
+    assert [a[0] for a in arms] == ["gpt-4o-mini [바닥]", "gpt-4o-mini"]
+    assert arms[0][2] == FLOOR_SYSTEM
+
+
+def test_mixed_run_keeps_one_prompt_for_local_and_two_for_remote():
+    arms = build_arms(["gpt-4o-mini", "local"], "실제 프롬프트", with_floor=True)
+
+    assert [a[0] for a in arms] == ["gpt-4o-mini [바닥]", "gpt-4o-mini", "local"]
+
+
+def test_no_floor_drops_every_floor_arm():
+    arms = build_arms(["gpt-4o-mini", "local"], "실제 프롬프트", with_floor=False)
+
+    assert [a[0] for a in arms] == ["gpt-4o-mini", "local"]

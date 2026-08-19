@@ -160,7 +160,10 @@ def test_render_also_uses_api(fake_llama, fake_openai):
 def test_warm_preloads_local_model_when_backend_is_remote(fake_llama, fake_openai):
     # 폴백이 차가우면 그 순간 6초를 쓴다(2026-08-10 젯슨 실측).
     # 아이 앞에서 6초 침묵은 폴백이 아니라 실패다.
-    agent = _agent(fake_llama, backend="openai")
+    # ⚠️ 2026-08-19 부터 이 예열은 **기본값이 아니라 선택**이다(GGUF 2,319MB 절약).
+    #    언제 올리고 언제 안 올리는지는 tests/test_llm_lazy_fallback.py 가 정한다.
+    #    여기서는 '올리기로 했으면 제대로 올린다'만 본다.
+    agent = _agent(fake_llama, backend="openai", preload_local=True)
 
     agent.warm()
 
@@ -171,7 +174,7 @@ def test_warm_runs_a_real_inference_not_just_load(fake_llama, fake_openai):
     # 🔴 로드만 데우면 안 된다 — 젯슨 실측에서 로드는 1.84s 인데 첫 폴백은 7.18s 였다.
     # 비용의 대부분은 2165자 시스템 프롬프트의 prompt eval + CUDA 커널 초기화라,
     # 실제로 한 번 추론을 돌려야 그게 사라진다.
-    agent = _agent(fake_llama, backend="openai")
+    agent = _agent(fake_llama, backend="openai", preload_local=True)
 
     agent.warm()
 
@@ -220,7 +223,7 @@ def test_warm_does_not_pollute_history(fake_llama, fake_openai):
 
 
 def test_warm_is_idempotent(fake_llama, fake_openai):
-    agent = _agent(fake_llama, backend="openai")
+    agent = _agent(fake_llama, backend="openai", preload_local=True)
 
     agent.warm()
     agent.warm()

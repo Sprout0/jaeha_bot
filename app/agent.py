@@ -175,7 +175,12 @@ class LLMAgent:
         #    타임아웃 후에 로컬이 1.7초를 더 쓰므로 총 침묵 = api_timeout + 1.7s.
         #    (로컬 1.7s 는 2026-08-18 n_ctx 4096 에서 재확인: 중앙 1.701s / 최대 1.759s)
         api_timeout: float = 5.0,
+        # 🔴 기동 때 폴백 GGUF 를 미리 올릴지. 기본은 **안 올린다**(젯슨 2,319MB 절약).
+        #    원격 예열이 실패하면 이 값과 무관하게 올린다 — 자세한 규칙은 warm().
+        #    메모리가 넉넉한 기계에서만 True 로 되돌릴 것.
+        preload_local: bool = False,
     ) -> None:
+        self.preload_local = preload_local
         self.model_path = model_path
         self.system_prompt = system_prompt
         self.n_ctx = n_ctx
@@ -229,17 +234,41 @@ class LLMAgent:
         return self._llm
 
     def warm(self) -> None:
-        """로컬 경로를 기동 때 한 번 돌려 둔다(폴백을 차갑게 두지 않기 위해).
+        """기동 예열. **로컬을 올릴지 말지는 원격이 살아 있는지로 정한다.**
+
+        🔴 2026-08-19: 예전엔 무조건 로컬을 데웠다. 그런데 젯슨 실측에서 앱 RSS
+           6,259MB 중 **EXAONE GGUF 가 2,319MB(37%)** 였고, `backend: openai` 라
+           網이 죽지 않는 한 한 번도 안 쓰인다. 시스템 메모리가 7,348/7,607MB(96.6%)
+           까지 차서 다음 최적화를 넣을 자리가 없었다.
+             whisper medium 1,881MB / Supertonic 1,321MB / **EXAONE 2,319MB**
+
+        그래서 규칙을 이렇게 둔다:
+          - backend=local        → 본진이므로 언제나 데운다
+          - 원격 예열 성공        → **로컬을 안 올린다**(2.3GB 절약). 운영 중 원격이
+                                   실패하는 첫 턴에만 콜드 로드를 문다
+          - 원격 예열 실패        → 網 없이 켜졌다는 뜻이다. **폴백이 곧 필요하므로
+                                   지금 올린다.** 미루면 아이의 첫 질문이 7초를 문다
+          - preload_local=True   → 메모리가 넉넉한 기계용 강제 옵션
 
         🔴 **로드만으로는 부족하다.** 2026-08-10 젯슨 실측:
              GGUF 로드 1.84s → 그런데 첫 폴백은 여전히 7.18s
-           비용의 대부분은 2165자 시스템 프롬프트의 prompt eval 과 CUDA 커널 초기화라,
-           실제 추론을 한 번 돌려야 사라진다(이후 1.7s 대). 아이 앞에서 7초 침묵은
-           폴백이 아니라 실패다.
-        덤으로 backend=local 일 때도 **첫 턴**이 빨라진다 — 지연을 기동 쪽으로 옮길 뿐이다.
+           비용의 대부분은 시스템 프롬프트의 prompt eval 과 CUDA 커널 초기화라,
+           실제 추론을 한 번 돌려야 사라진다(이후 1.7s 대). 그래서 데울 때는 반드시
+           추론까지 한 번 돌린다.
         실패해도 예외를 올리지 않는다(모델 파일 없는 기계에서도 원격 백엔드는 돌아야 한다).
         이력은 건드리지 않는다 — 예열 대화가 남으면 첫 답변의 맥락이 오염된다.
         """
+        if self.backend != "openai":
+            self._warm_local()
+            return
+        api_ok = self._warm_api()
+        if api_ok and not self.preload_local:
+            log.info("로컬 폴백은 올리지 않는다(원격 정상 — 메모리 약 2.3GB 절약). "
+                     "원격이 실패하는 첫 턴에 그때 올라온다.")
+            return
+        self._warm_local()
+
+    def _warm_local(self) -> None:
         try:
             self._complete_local([
                 {"role": "system", "content": self.system_prompt},
@@ -248,10 +277,8 @@ class LLMAgent:
         except Exception as e:
             log.warning("로컬 폴백 예열 실패(%s: %s) — 원격이 끊기면 응답이 늦어진다",
                         type(e).__name__, str(e)[:120])
-        if self.backend == "openai":
-            self._warm_api()
 
-    def _warm_api(self) -> None:
+    def _warm_api(self) -> bool:
         """API 커넥션(DNS·TCP·TLS)을 미리 맺어 둔다.
 
         🔴 젯슨 실측: 첫 호출 3.1~3.6초, 그 다음부터 0.5~0.6초. 차이는 순전히 최초 연결이다.
@@ -263,9 +290,11 @@ class LLMAgent:
                 model=self.api_model, max_completion_tokens=1,
                 messages=[{"role": "user", "content": "안녕"}],
             )
+            return True
         except Exception as e:   # 네트워크 없이 켜질 수도 있다. 기동을 막지 않는다.
-            log.warning("API 커넥션 예열 실패(%s: %s) — 첫 턴이 느려질 뿐 동작에는 지장 없다",
+            log.warning("API 커넥션 예열 실패(%s: %s) — 폴백을 지금 올린다",
                         type(e).__name__, str(e)[:120])
+            return False
 
     # ------------------------------------------------------------ 완성(백엔드 선택)
     def _complete(self, messages: list[dict]) -> str:

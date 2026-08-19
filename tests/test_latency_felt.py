@@ -9,7 +9,7 @@
 """
 import json
 
-from app.metrics import MetricsLogger, _sys_stats
+from app.metrics import MetricsLogger, _sys_stats_now
 
 
 def _rec(m, **kw):
@@ -73,7 +73,7 @@ def test_fast_turn_counts_toward_both_targets(tmp_path):
 
 def test_sys_stats_never_raises_and_has_keys():
     """자원 계측은 젯슨에만 있는 값을 읽는다. 노트북에서는 None 이어도 죽지 않아야 한다."""
-    s = _sys_stats()
+    s = _sys_stats_now()
     for k in ("cpu_pct", "sys_mem_used_mb", "gpu_pct", "temp_c"):
         assert k in s, f"{k} 가 없다"
 

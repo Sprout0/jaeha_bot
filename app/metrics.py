@@ -16,6 +16,7 @@ import json
 import logging
 import re
 import statistics
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -78,14 +79,17 @@ def _temp_c() -> float | None:
         return None
 
 
-def _sys_stats() -> dict:
-    """CPU·시스템 메모리·GPU·온도. **없는 값은 None 이고 절대 예외를 내지 않는다.**
+def _sys_stats_now() -> dict:
+    """**지금 이 순간**의 RSS·CPU·시스템 메모리·GPU·온도. 없는 값은 None, 예외는 안 낸다.
+
+    ⚠️ 이건 스냅샷 한 장이다. 턴 요약의 '최대'로 쓰면 안 된다 — 그러다 GPU 0% 오진이
+       났다. 구간 최댓값은 _PeakSampler 가 만든다.
 
     🔴 프로세스 RSS(`_rss_mb`)와 시스템 메모리는 다른 숫자다. 8GB 예산은 보드 전체
        기준이라 다른 프로세스(브라우저·빌드)가 먹은 것도 봐야 한다. RSS 만 보다가
        "여유 3.3GB" 라고 판단하면 틀릴 수 있다.
     """
-    out: dict = {"cpu_pct": None, "sys_mem_used_mb": None,
+    out: dict = {"rss_mb": _rss_mb(), "cpu_pct": None, "sys_mem_used_mb": None,
                  "sys_mem_total_mb": None, "gpu_pct": _gpu_pct(),
                  "temp_c": _temp_c()}
     if _PROC is not None:
@@ -98,6 +102,66 @@ def _sys_stats() -> dict:
         except Exception:
             pass
     return out
+
+
+class _PeakSampler:
+    """자원을 주기적으로 훑어 **구간 최댓값**을 남긴다. 스냅샷 한 장이 아니라.
+
+    🔴 왜 필요한가 (2026-08-19 젯슨에서 겪은 오진):
+       예전엔 record_turn() 안에서 _sys_stats() 를 한 번 읽었다. 그런데 record_turn()
+       은 **턴이 다 끝난 뒤** 호출된다(같은 기록에 tts_play_s 가 있다 = 재생까지 끝났다).
+       즉 그 턴에서 **가장 조용한 순간**을 찍고 그걸 '최대'라고 불렀다.
+       그 결과 요약에 `GPU 0%` 가 찍혔고 "GPU 를 안 쓰는구나" 라는 정반대 결론이 나왔다.
+       같은 시각 sysfs 를 직접 훑으니 추론 중 **874~999 per-mille(87~100%)** 였다.
+       CPU 도 같은 병이었다 — psutil 은 '직전 호출 이후 평균'이라, 한 턴에 한 번 부르면
+       아이가 말하기를 기다린 시간까지 섞여 희석된다. 여기서 0.2초마다 부르면
+       그 구간의 진짜 CPU 가 된다.
+
+    ⚠️ 이 종류의 오류는 숫자가 그럴듯해서 안 보인다. 0% 가 아니라 40% 였다면
+       아무도 의심하지 않았을 것이다. 자원 지표를 새로 붙일 때는 '언제 재는가'부터 정할 것.
+    """
+
+    def __init__(self, period_s: float = 0.2) -> None:
+        self._period = period_s
+        self._lock = threading.Lock()
+        self._peak: dict[str, float] = {}
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        if self._thread is not None:
+            return
+        self._thread = threading.Thread(target=self._run, daemon=True,
+                                        name="metrics-peak")
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    def _run(self) -> None:
+        while not self._stop.wait(self._period):
+            try:
+                self._observe(_sys_stats_now())
+            except Exception:   # 계측이 본 기능을 절대 죽이지 않는다
+                pass
+
+    def _observe(self, sample: dict) -> None:
+        with self._lock:
+            for k, v in sample.items():
+                if v is None:           # 노트북엔 GPU sysfs 가 없다. None 이 최댓값을 지우면 안 된다
+                    continue
+                cur = self._peak.get(k)
+                if cur is None or v > cur:
+                    self._peak[k] = v
+
+    def pop(self) -> dict:
+        """구간 최댓값을 돌려주고 **비운다** — 다음 턴은 새 구간이다.
+
+        안 비우면 첫 턴의 최고치가 세션 내내 따라다녀서 턴별 비교가 무의미해진다.
+        """
+        with self._lock:
+            peak, self._peak = self._peak, {}
+        return peak
 
 
 def _p90(xs: list[float]) -> float:
@@ -139,6 +203,9 @@ class MetricsLogger:
             base = Path(__file__).resolve().parent.parent / base
         base.mkdir(parents=True, exist_ok=True)
         self.path = base / f"metrics_{datetime.now():%Y%m%d}.jsonl"
+        self._sampler = _PeakSampler()
+        if enabled:
+            self._sampler.start()
 
     def _write(self, rec: dict) -> None:
         try:
@@ -212,8 +279,11 @@ class MetricsLogger:
             "resp_compute_s": resp,           # 연산만(꼬리 제외). 옛 기록과 이어보기용
             "resp_felt_s": felt,              # ★ 아이가 겪는 시간 = 꼬리 + 연산
             "metric_ver": 3,                  # 1 = tts 재생시간 혼입 / 2 = 꼬리 누락
-            "rss_mb": _rss_mb(),
-            **_sys_stats(),
+            # 🔴 자원은 **구간 최댓값**이다. 여기서 한 번 읽으면 턴이 끝나 조용해진
+            #    순간을 찍게 되고, 그게 2026-08-19 의 'GPU 0%' 오진이었다.
+            #    표본이 하나도 없는 아주 짧은 턴만 지금 값으로 채운다.
+            **_sys_stats_now(),
+            **self._sampler.pop(),
             "reply_len": len(reply or ""),
             "expansion_delta": (len(_words(reply)) - len(child_words)
                                 if child_words else None),

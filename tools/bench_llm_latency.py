@@ -27,6 +27,7 @@ import statistics
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 BASE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE))
@@ -45,12 +46,48 @@ from tools.eval_llm import CLOVA_BASE_URL, load_eval_set, required_key  # noqa: 
 FLOOR_SYSTEM = "너는 다섯 살 아이의 친구 로봇 재하봇이야. 밝은 반말로 한두 문장만 말해."
 
 
+class LocalClient:
+    """로컬 EXAONE 을 OpenAI 클라이언트 모양으로 감싼다.
+
+    측정 루프를 백엔드마다 갈라 쓰지 않으려는 것이다 — 갈라 쓰면 '어느 쪽에만 적용된
+    조건'이 생기고, 그게 곧 모델 차이로 둔갑한다.
+
+    🔴 **backend 를 local 로 강제한다.** 설정이 `backend: openai` 인 기계에서 이걸
+       빠뜨리면 표에는 'local' 이라 찍히면서 실제로는 gpt 를 잰 값이 들어간다.
+       조용히 틀리는 종류의 오류라 테스트로 못 박아 뒀다.
+    ⚠️ respond() 가 아니라 `_complete_local` 을 직접 부른다. 이유 둘:
+       - 팔마다 시스템 프롬프트가 다르다([바닥] vs 실제). respond() 는 생성자에
+         박힌 프롬프트만 쓴다.
+       - respond() 는 대화 이력을 쌓는다. 뒤 문항일수록 프롬프트가 길어져서
+         '나중 문항이 느리다'가 되는데, 그건 모델 성질이 아니라 우리가 만든 기울기다.
+       원격 팔도 후처리 전 원문을 재므로 잣대는 같다(품질 채점은 eval_llm.py 담당).
+    """
+
+    def __init__(self):
+        from app.agent import LLMAgent
+
+        cfg = dict(settings.models["llm"])
+        cfg["backend"] = "local"
+        self._agent = LLMAgent(model_path=cfg.pop("model_path"),
+                               system_prompt=settings.prompts["system"], **cfg)
+        self.chat = SimpleNamespace(completions=self)
+
+    def create(self, *, model: str, max_completion_tokens: int, messages: list[dict]):
+        self._agent.max_tokens = max_completion_tokens
+        text = self._agent._complete_local(messages)
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=text))])
+
+
 def make_client(model: str):
     """모델 이름으로 어느 서버에 붙을지 정한다. eval_llm.py 와 같은 규칙을 쓴다.
 
     🔴 max_retries=0 은 이 도구의 존재 이유와 직결된다 — 재시도가 켜져 있으면
        '느린 호출'과 '세 번 친 호출'을 구분할 수 없다.
     """
+    if model == "local":
+        return LocalClient()   # 서버가 없다. openai 를 import 조차 하지 않는다.
+
     from openai import OpenAI
 
     key_name = required_key(model)
@@ -142,8 +179,12 @@ def main() -> None:
         print(f"{label:28} {len(v):4} {statistics.median(v):7.3f}s {statistics.mean(v):7.3f}s "
               f"{p95(v):7.3f}s {max(v):7.3f}s {statistics.median(lens[label]):5.0f}자 {fail[label]:5}")
 
-    print("\n  '[바닥]' = 42자 프롬프트로 \"안녕\"만 물은 값 = 그 서버까지의 왕복 하한.")
-    print("  프롬프트·모델을 손봐도 이 아래로는 못 내려간다. 여기가 크면 서버를 옮기는 수밖에 없다.")
+    print()
+    print("  '[바닥]' = 42자 프롬프트로 \"안녕\"만 물은 값.")
+    print("  원격 팔 = 그 서버까지의 왕복 하한. 프롬프트·모델을 손봐도 이 아래로는 못 내려간다.")
+    print("           여기가 크면 서버를 옮기는 수밖에 없다.")
+    print("  local 팔 = 왕복이 없으니 **프롬프트 길이의 대가**만 남는다. 원격은 길이가")
+    print("           지연과 무관했지만(08-18 A/B) 로컬은 prompt eval 을 직접 치른다.")
 
 
 if __name__ == "__main__":

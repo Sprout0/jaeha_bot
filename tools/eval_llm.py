@@ -115,6 +115,12 @@ CLOVA_BASE_URL = "https://clovastudio.stream.ntruss.com/v1/openai"
 
 
 def make_openai(model: str, system: str, max_tokens: int):
+    """🔴 max_retries=0. SDK 자동 재시도(기본 2)는 create() **안에서** 일어나므로
+       실패한 시도와 백오프가 측정 지연에 통째로 들어간다. 2026-08-19 에 같은 날
+       같은 gpt-4o-mini 가 두 도구에서 1.668s / 3.885s 로 갈렸던 원인이다.
+       명시적 재시도(_ask_with_retry)는 그대로 둔다 — 그건 대기를 빼고 마지막
+       시도만 재므로 측정을 오염시키지 않는다. 끄는 것은 **숨은** 재시도다.
+    """
     from openai import OpenAI
     if model.startswith("HCX-"):
         key = os.environ.get("CLOVA_STUDIO_KEY")
@@ -122,9 +128,9 @@ def make_openai(model: str, system: str, max_tokens: int):
             print("CLOVA_STUDIO_KEY 가 없습니다. .env 에 넣으세요"
                   " (CLOVA Studio > 테스트 앱 > API 키. CLOVA Voice 키와 다릅니다).")
             sys.exit(1)
-        client = OpenAI(base_url=CLOVA_BASE_URL, api_key=key)
+        client = OpenAI(base_url=CLOVA_BASE_URL, api_key=key, max_retries=0)
     else:
-        client = OpenAI()
+        client = OpenAI(max_retries=0)
 
     def ask(text: str) -> tuple[str, int]:
         r = client.chat.completions.create(

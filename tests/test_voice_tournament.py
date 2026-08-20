@@ -113,3 +113,36 @@ def test_explore1_is_centred_on_the_given_base():
 
     assert all(abs(w - (-0.2)) <= 0.45 + 1e-9 for w in got), f"기준에서 멀다: {got}"
     assert min(got) < -0.2 < max(got), "한쪽으로만 움직였다"
+
+
+# ── --from 을 3~5단계에도 ─────────────────────────────────────────────────────
+# 🔴 2026-08-19: 블라인드 토너먼트(voice_knockout)로 우승자를 뽑고 나면, 그 값은
+#    이 도구의 상태 파일에 없다. 그런데 시드·속도 단계는 저장된 stage2/stage3 만
+#    보고 있어서 우승자를 넘길 방법이 없었다 — 손으로 상태 파일을 고치는 수밖에.
+#    `--from` 은 이미 있는데 --explore 에만 걸려 있었다. 뜻 그대로 '기준 목소리'다.
+
+def test_stage3_can_take_an_explicit_base():
+    _, c = build_stage(3, {"stage2": "저장된값"}, base="F2")
+
+    assert all(x["voice"].startswith("F2") for x in c), "--from 을 무시하고 저장값을 썼다"
+
+
+def test_stage4_can_take_an_explicit_base():
+    _, c = build_stage(4, {"stage3": "저장된값"}, base="F2:0.85+F5:0.15")
+
+    assert {x["voice"] for x in c} == {"F2:0.85+F5:0.15"}
+    assert len({x["seed"] for x in c}) == len(c), "시드 단계인데 시드가 안 흔들린다"
+
+
+def test_stage5_can_take_an_explicit_base():
+    _, c = build_stage(5, {"stage3": "저장된값"}, base="F2|F1")
+
+    assert {x["voice"] for x in c} == {"F2|F1"}
+    assert len({x["speed"] for x in c}) == len(c), "속도 단계인데 속도가 안 흔들린다"
+
+
+def test_saved_state_is_still_used_when_no_base_given():
+    """--from 을 안 주면 예전처럼 저장된 결과를 따라간다."""
+    _, c = build_stage(4, {"stage3": "F2|F4"})
+
+    assert {x["voice"] for x in c} == {"F2|F4"}

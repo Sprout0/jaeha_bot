@@ -102,8 +102,13 @@ def build_explore(rnd: int, base: str, s: dict) -> tuple[str, list[dict]]:
     raise SystemExit(f"탐색 라운드는 1~2 다: {rnd}")
 
 
-def build_stage(stage: int, s: dict) -> tuple[str, list[dict]]:
-    """(단계 설명, 후보 목록). 후보는 {label, voice, seed, speed}."""
+def build_stage(stage: int, s: dict, base: str | None = None) -> tuple[str, list[dict]]:
+    """(단계 설명, 후보 목록). 후보는 {label, voice, seed, speed}.
+
+    `base` 를 주면 3~5단계가 저장된 결과 대신 그 목소리를 기준으로 삼는다.
+    블라인드 토너먼트(voice_knockout.py)로 우승자를 뽑았을 때 그 값은 이 도구의
+    상태 파일에 없기 때문이다 — 없으면 상태 파일을 손으로 고치는 수밖에 없었다.
+    """
     base_seed = s.get("seed", settings.models["tts"].get("seed", 777))
     base_speed = s.get("speed", settings.models["tts"].get("speed", 1.05))
 
@@ -126,7 +131,7 @@ def build_stage(stage: int, s: dict) -> tuple[str, list[dict]]:
                  for c in cands])
 
     if stage == 3:
-        win = s.get("stage2") or s.get("stage1", ["F1"])[0]
+        win = base or s.get("stage2") or s.get("stage1", ["F1"])[0]
         timbre = win.split("|")[0]
         return (f"3단계 · 리듬 바꾸기 — 음색은 [{timbre}] 그대로, 말의 리듬만 바꾼다\n"
                 "        (밝은 음색은 좋은데 말이 촐랑거린다 싶으면 여기서 잡힌다)",
@@ -135,13 +140,13 @@ def build_stage(stage: int, s: dict) -> tuple[str, list[dict]]:
                  for r in [timbre] + [p for p in PRESETS if p != timbre]])
 
     if stage == 4:
-        win = s.get("stage3") or s.get("stage2") or "F1"
+        win = base or s.get("stage3") or s.get("stage2") or "F1"
         return (f"4단계 · 시드 — 같은 스타일인데 캐릭터가 달라진다 (voice={win})",
                 [{"label": f"seed {sd}", "voice": win, "seed": sd, "speed": base_speed}
                  for sd in (777, 1234, 42, 7, 2024)])
 
     if stage == 5:
-        win = s.get("stage3") or s.get("stage2") or "F1"
+        win = base or s.get("stage3") or s.get("stage2") or "F1"
         sd = s.get("stage4_seed", base_seed)
         return (f"5단계 · 속도 — 2세는 빠르면 못 알아듣는다 (voice={win}, seed={sd})",
                 [{"label": f"speed {sp}", "voice": win, "seed": sd, "speed": sp}
@@ -168,7 +173,8 @@ def main() -> None:
     ap.add_argument("--explore", type=int, metavar="N",
                     help="2단계 후보 '주변'을 더 넓게 듣는다(1=비율·외삽, 2=제3의 목소리)")
     ap.add_argument("--from", dest="base", metavar="SPEC",
-                    help="탐색 기준이 될 목소리(예: 'F1:0.3+F4:0.7'). 없으면 저장된 2단계 결과")
+                    help="기준이 될 목소리(예: 'F2:0.85+F5:0.15'). --explore 와 3~5단계에 쓴다. "
+                         "없으면 저장된 결과를 따라간다")
     ap.add_argument("--text", default=DEFAULT_TEXT)
     ap.add_argument("--blind", action="store_true",
                     help="이름을 감추고 순서도 섞는다 — 'F1 이 좋다더라'는 선입견을 없앤다")
@@ -185,7 +191,7 @@ def main() -> None:
             raise SystemExit("탐색 기준이 없다. --from 'F1:0.3+F4:0.7' 처럼 줄 것")
         desc, cands = build_explore(args.explore, base, s)
     else:
-        desc, cands = build_stage(args.stage, s)
+        desc, cands = build_stage(args.stage, s, base=args.base)
     if args.blind:
         random.shuffle(cands)
 

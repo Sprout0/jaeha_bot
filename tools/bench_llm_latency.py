@@ -131,6 +131,18 @@ def build_arms(models: list[str], system: str,
     return arms
 
 
+def pace(gap: float) -> None:
+    """호출 사이에 쉰다. 운영은 연달아 치지 않는다 — 아이가 말하고, 봇이 3.5초 말한다.
+
+    🔴 2026-08-20 에 필요해진 이유: 같은 HCX-005 를 연달아 치면 0.831s, 파이프라인
+       벤치(턴 사이에 TTS 재생 3.5s)에서는 1.264s 였다. gpt 는 두 조건에서 같았다.
+       클로바만 간격에 반응한다면 커넥션이 식는 것이고, 그건 keep-alive 로 되찾을 수
+       있는 0.4초다. 재는 조건이 운영과 다르면 숫자도 다르다.
+    """
+    if gap > 0:
+        time.sleep(gap)
+
+
 def p95(v: list[float]) -> float:
     s = sorted(v)
     return s[min(len(s) - 1, int(round(0.95 * (len(s) - 1))))]
@@ -144,6 +156,9 @@ def main() -> None:
     ap.add_argument("--eval-set", default="data/eval_set_safety.jsonl")
     ap.add_argument("--max-tokens", type=int, default=80)
     ap.add_argument("--no-floor", action="store_true", help="네트워크 바닥 측정을 건너뛴다")
+    ap.add_argument("--gap", type=float, default=0.0, metavar="SEC",
+                    help="호출 사이에 쉬는 시간. 운영은 봇이 3.5초 말하는 동안 호출이 없다. "
+                         "기본 0(연달아 치기 — 예전 측정과 비교 가능)")
     ap.add_argument("--list-models", metavar="PREFIX",
                     help="쓸 수 있는 모델 이름만 찍고 끝낸다(예: HCX)")
     args = ap.parse_args()
@@ -168,12 +183,14 @@ def main() -> None:
     lat: dict[str, list[float]] = {a[0]: [] for a in arms}
     lens: dict[str, list[int]] = {a[0]: [] for a in arms}
     fail: dict[str, int] = {a[0]: 0 for a in arms}
+    gap_note = f" · 호출 간격 {args.gap}s" if args.gap else " · 연달아"
     print(f"{len(rows)}문항 × {args.repeat}회 · 팔 {len(arms)}개 교차 · 재시도 끔 · "
-          f"프롬프트 {len(system)}자\n")
+          f"프롬프트 {len(system)}자{gap_note}\n")
     for rep in range(args.repeat):
         for i, r in enumerate(rows):
             k = i % len(arms)
             for label, model, sysp in arms[k:] + arms[:k]:   # 문항마다 순서 회전
+                pace(args.gap)
                 t = time.perf_counter()
                 try:
                     out = clients[model].chat.completions.create(

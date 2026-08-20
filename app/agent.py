@@ -9,10 +9,18 @@
 from __future__ import annotations
 import json
 import logging
+import os
 import re
 from pathlib import Path
 
 log = logging.getLogger("jaeha_bot.agent")
+
+# CLOVA Studio(하이퍼클로바X)는 OpenAI 호환 엔드포인트를 준다. 그래서 백엔드를 새로
+# 쓰지 않고 base_url·키만 갈아끼운다.
+# 🔴 갈래 판단 규칙은 **tools/eval_llm.py 와 똑같이** '모델 이름이 HCX- 로 시작하는가'다.
+#    규칙이 둘이면 평가에서 잰 품질·지연이 운영에서 재현되지 않는다. 그래서 백엔드
+#    교체는 `api_model: HCX-005` 한 줄이면 된다(backend 는 openai 그대로).
+CLOVA_BASE_URL = "https://clovastudio.stream.ntruss.com/v1/openai"
 
 # 대화 이력은 최근 N턴(=사용자+로봇 2N개 메시지)만 유지한다.
 # 컨텍스트를 짧게 유지해야 n_ctx 안에서 3초 목표를 지키기 쉽다.
@@ -204,6 +212,16 @@ class LLMAgent:
         self.backend = backend
         self.api_model = api_model
         self.api_timeout = api_timeout
+        # 🔴 '키 없음'은 네트워크 장애가 아니라 설정 오류다. _complete() 의 폴백에
+        #    삼켜지면 "클로바를 켰다"고 믿는데 실제로는 EXAONE 이 2.3초씩 답하는
+        #    상태가 되고, 경고 로그 한 줄 말고는 아무 신호가 없다. 그래서 여기서
+        #    **기동 때** 터뜨린다. 2026-08-10 에 이 종류로 한 번 당했다.
+        self._is_clova = backend == "openai" and api_model.startswith("HCX-")
+        if self._is_clova and not os.environ.get("CLOVA_STUDIO_KEY"):
+            raise ValueError(
+                f"api_model={api_model} 인데 CLOVA_STUDIO_KEY 가 없습니다. "
+                ".env 에 넣으세요(CLOVA Studio > 테스트 앱 > API 키. "
+                "CLOVA Voice 키와 다릅니다).")
         self._oa = None   # OpenAI 클라이언트(첫 사용 때 1회 생성)
         self.history: list[dict] = []
         self._llm = None  # 지연 로딩(첫 호출 때 1회만 로드)
@@ -330,7 +348,12 @@ class LLMAgent:
             #    두 번 더** 쳐서 p95 가 13.2s 까지 부푼다(2026-08-18 실측). 느린 호출은
             #    다시 치는 게 아니라 로컬로 내려가야 한다 — 그래야 위 '침묵 = 타임아웃 +
             #    1.7s' 계산이 성립한다. 재시도는 SDK 가 아니라 우리가 정한다.
-            self._oa = OpenAI(timeout=self.api_timeout, max_retries=0)
+            kw = {}
+            if self._is_clova:
+                # 클로바는 전용 키를 쓴다. OPENAI_API_KEY 관례에 얹으면 둘이 섞인다.
+                kw = {"base_url": CLOVA_BASE_URL,
+                      "api_key": os.environ["CLOVA_STUDIO_KEY"]}
+            self._oa = OpenAI(timeout=self.api_timeout, max_retries=0, **kw)
         return self._oa
 
     def _complete_local(self, messages: list[dict]) -> str:

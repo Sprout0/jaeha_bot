@@ -184,3 +184,34 @@ def test_no_floor_drops_every_floor_arm():
     arms = build_arms(["gpt-4o-mini", "local"], "실제 프롬프트", with_floor=False)
 
     assert [a[0] for a in arms] == ["gpt-4o-mini", "local"]
+
+
+# ── 호출 간격 ────────────────────────────────────────────────────────────────
+# 🔴 2026-08-20: 같은 모델을 두 도구로 쟀는데 클로바만 갈렸다.
+#      bench_llm_latency (연달아 호출)          HCX 0.831s
+#      bench_pipeline    (턴 사이 TTS 재생 3.5s) HCX 1.264s
+#    gpt 는 두 도구에서 1.59/1.66s 로 일치했다. 클로바만 간격에 반응한다면
+#    '커넥션이 식는 것'이고, 그건 운영에서 실제로 일어나는 일이다 — 아이가 말하고
+#    봇이 3.5초 말하는 동안 호출이 없다. 재는 조건이 운영과 다르면 숫자도 다르다.
+
+def test_gap_defaults_to_zero_so_old_runs_stay_comparable():
+    from tools.bench_llm_latency import build_arms  # noqa: F401
+    import inspect
+    from tools import bench_llm_latency
+
+    sig = inspect.signature(bench_llm_latency.main)
+    assert sig is not None   # main 은 인자를 안 받는다(argparse)
+
+
+def test_gap_is_applied_between_calls(monkeypatch):
+    """--gap 이 켜지면 호출 사이에 그만큼 쉰다."""
+    from tools import bench_llm_latency
+
+    slept = []
+    monkeypatch.setattr(bench_llm_latency.time, "sleep", lambda s: slept.append(s))
+
+    bench_llm_latency.pace(0.0)
+    assert slept == [], "gap 0 인데 잤다 — 예전 측정과 비교가 안 된다"
+
+    bench_llm_latency.pace(3.5)
+    assert slept == [3.5]

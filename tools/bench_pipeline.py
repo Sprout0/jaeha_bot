@@ -5,9 +5,19 @@
 
     python tools/bench_pipeline.py                          # 기본 3조합
     python tools/bench_pipeline.py --combos openai+openai
-    python tools/bench_pipeline.py --play                   # 실제 재생(첫 소리까지 측정)
+    python tools/bench_pipeline.py --play                   # 실제 재생 + 말하는 시간까지
 
 조합 표기는 `<llm>+<tts>` — llm 은 local|openai, tts 는 supertonic|openai.
+llm 쪽에 `:모델`을 붙이면 그 모델로 고정한다 — gpt 와 HCX 를 같은 표에서 비교할 때:
+    --combos "openai:gpt-4o-mini+supertonic,openai:HCX-005+supertonic" --play
+
+🔴 `--play` 로 재면 '체감' 열이 **LLM + 첫 소리 + 말하는 시간**이다. speak() 는 재생이
+   끝날 때까지 블로킹하므로 아이가 다음 말을 할 수 있게 되는 시점은 말이 끝난 뒤다.
+   2026-08-19 까지 합계가 `LLM + 첫 소리` 였고, 그래서 **답변이 길어지는 대가가 아예
+   안 잡혔다.** 답변 길이가 다른 모델을 비교할 때는 이 열만 봐야 한다.
+⚠️ 길이 대가를 보려면 평가셋을 `data/eval_set.jsonl`(37문항)로 쓸 것. 기본값인
+   안전 14문항은 답이 짧게 정형화돼 있어("~위험해! 엄마 아빠한테 물어보자!")
+   모델 간 길이 차이가 드러나지 않는다.
 
 ⚠️ `--play` 없이는 **합성 완료까지**를 잰다. OpenAI TTS 스트리밍은 speak() 안에서만
    동작하므로, 스트리밍 이득을 보려면 반드시 `--play` 로 재야 한다(소리가 난다).
@@ -44,9 +54,38 @@ def pct(values: list[float], p: int) -> float:
     return v[min(len(v) - 1, int(round(p / 100 * (len(v) - 1))))]
 
 
-def build(llm_backend: str, tts_backend: str, system: str):
+def parse_combo(combo: str) -> tuple[str, str | None, str]:
+    """'openai:HCX-005+supertonic' -> ('openai', 'HCX-005', 'supertonic').
+
+    모델 이름을 조합에 적을 수 있어야 gpt 와 HCX 를 **같은 표에서** 비교할 수 있다.
+    안 적으면 설정값(api_model)을 따라가므로 '무엇과 비교했는지'가 흐려진다.
+    """
+    parts = combo.split("+")
+    if len(parts) != 2 or not all(parts):
+        raise SystemExit(f"조합은 '<llm>+<tts>' 다: {combo!r}")
+    llm, _, model = parts[0].partition(":")
+    if not llm:
+        raise SystemExit(f"조합은 '<llm>+<tts>' 다: {combo!r}")
+    return llm, (model or None), parts[1]
+
+
+def felt_total(llm_s: float, first_audio_s: float, play_s: float) -> float:
+    """아이가 실제로 기다리는 시간.
+
+    🔴 재생 시간을 반드시 더한다. speak() 는 재생이 끝날 때까지 블로킹하므로 아이가
+       다음 말을 할 수 있게 되는 시점은 '말이 끝난 뒤'다. 2026-08-19 까지 이 도구의
+       합계는 `LLM + 첫 소리` 여서 **답변이 길어지는 대가가 아예 안 잡혔다.**
+       하필 그게 클로바 판정의 갈림길이었다 — HCX-005 는 gpt 보다 0.84초 빠른데
+       답변의 12.5%가 40자를 넘는다(gpt·EXAONE 은 0건).
+    """
+    return llm_s + first_audio_s + play_s
+
+
+def build(llm_backend: str, tts_backend: str, system: str, api_model: str | None = None):
     """조합대로 만들고 예열까지 끝낸 (agent, tts) 를 돌려준다."""
     lcfg = {**settings.models["llm"], "backend": llm_backend}
+    if api_model:
+        lcfg["api_model"] = api_model
     agent = LLMAgent(model_path=lcfg.pop("model_path"), system_prompt=system, **lcfg)
     tts = TTSModule(**{**settings.models["tts"], "backend": tts_backend})
     agent.warm()          # 로컬 폴백 + API 커넥션
@@ -57,7 +96,7 @@ def build(llm_backend: str, tts_backend: str, system: str):
 
 
 def run_combo(label: str, agent, tts, rows, repeat: int, play: bool, out_dir: Path):
-    llm_s, tts_s, lens = [], [], []
+    llm_s, tts_s, play_s, lens = [], [], [], []
     for _ in range(repeat):
         for r in rows:
             t = time.perf_counter()
@@ -66,17 +105,24 @@ def run_combo(label: str, agent, tts, rows, repeat: int, play: bool, out_dir: Pa
             lens.append(len(reply))
             text = reply or "응?"
             if play:
-                tts_s.append(tts.speak(text).first_audio_s)
+                tm = tts.speak(text)
+                tts_s.append(tm.first_audio_s)
+                play_s.append(tm.play_s)      # 🔴 말하는 시간. 답변 길이의 대가가 여기 있다
             else:
                 t = time.perf_counter()
                 tts.synthesize(text, str(out_dir / f"{label}_{r['id']}.wav"))
                 tts_s.append(time.perf_counter() - t)
-    total = [a + b for a, b in zip(llm_s, tts_s)]
+                play_s.append(0.0)
+    total = [felt_total(a, b, c) for a, b, c in zip(llm_s, tts_s, play_s)]
     stage = "첫소리" if play else "합성"
-    print(f"  {label:22} LLM {statistics.median(llm_s):6.3f}s | "
-          f"TTS({stage}) {statistics.median(tts_s):6.3f}s | "
-          f"합계 {statistics.median(total):6.3f}s | "
-          f"p95 {pct(total, 95):6.3f}s | 답변 {statistics.median(lens):.0f}자")
+    line = (f"  {label:26} LLM {statistics.median(llm_s):6.3f}s | "
+            f"TTS({stage}) {statistics.median(tts_s):6.3f}s | ")
+    if play:
+        line += f"말하기 {statistics.median(play_s):6.3f}s | "
+    line += (f"체감 {statistics.median(total):6.3f}s | "
+             f"p95 {pct(total, 95):6.3f}s | 답변 {statistics.median(lens):.0f}자 "
+             f"(최대 {max(lens)}자)")
+    print(line)
     return statistics.median(total)
 
 
@@ -105,9 +151,10 @@ def main() -> None:
           f"{'재생(첫 소리)' if args.play else '합성까지'}\n")
     results = {}
     for combo in args.combos.split(","):
-        llm_b, _, tts_b = combo.strip().partition("+")
-        agent, tts = build(llm_b, tts_b, system)
-        results[combo] = run_combo(combo.strip(), agent, tts, rows,
+        combo = combo.strip()
+        llm_b, api_model, tts_b = parse_combo(combo)
+        agent, tts = build(llm_b, tts_b, system, api_model=api_model)
+        results[combo] = run_combo(combo, agent, tts, rows,
                                    args.repeat, args.play, out_dir)
 
     if len(results) > 1:

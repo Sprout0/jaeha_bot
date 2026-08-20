@@ -70,3 +70,46 @@ def test_tournament_terminates():
         rounds += 1
         assert rounds < 20
     assert len(pool) == 1
+
+
+# ── 후보를 직접 넣기 ──────────────────────────────────────────────────────────
+# 사람이 "F1 과 F4 가 좋더라" 까지 좁힌 뒤에는 무작위 후보가 오히려 방해가 된다.
+# 그때는 손으로 고른 목록을 **같은 블라인드 절차**에 태워야 한다 — 목록을 하나씩
+# 듣는 절대평가로 돌아가면 2026-08-18 의 "솔직히 잘 모르겠어"를 반복한다.
+
+def test_given_specs_are_used_instead_of_random():
+    rng = random.Random(0)
+    given = ["F1:0.6+F4:0.6+F3:-0.2", "F1:0.6+F4:0.6+M1:-0.2"]
+
+    pool = make_pool(99, rng, "F1+F4", specs=given)
+
+    assert set(pool) == set(given) | {"F1+F4"}, "준 목록 말고 다른 게 섞였다"
+
+
+def test_control_is_still_smuggled_in_when_specs_are_given():
+    """🔴 현행 목소리는 손으로 고른 목록에도 반드시 들어가야 한다.
+
+    블라인드에서 현행이 이기면 '바꿀 이유가 없다'가 결론이고, 그것도 결과다.
+    사람이 고른 목록만 돌리면 그 결론이 나올 길 자체가 없어진다.
+    """
+    pool = make_pool(99, random.Random(0), "현행목소리", specs=["F1+F4"])
+
+    assert "현행목소리" in pool
+
+
+def test_control_is_not_duplicated_if_already_listed():
+    pool = make_pool(99, random.Random(0), "F1+F4", specs=["F1+F4", "F2"])
+
+    assert sorted(pool) == ["F1+F4", "F2"]
+
+
+def test_duplicates_in_the_given_list_collapse():
+    pool = make_pool(99, random.Random(0), "F1+F4", specs=["F2", "F2", "F3"])
+
+    assert sorted(pool) == ["F1+F4", "F2", "F3"]
+
+
+def test_random_pool_still_works_when_no_specs_given():
+    pool = make_pool(6, random.Random(1), "F1+F4")
+
+    assert len(pool) == 6 and "F1+F4" in pool

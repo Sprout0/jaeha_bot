@@ -24,6 +24,8 @@
     python tools/voice_knockout.py               # 15명 3파전 (약 22번 듣고 8번 선택)
     python tools/voice_knockout.py --pool 9 --k 2  # 더 짧게, 이지선다
     python tools/voice_knockout.py --seed 5       # 다른 후보 뽑기(재현 가능)
+    python tools/voice_knockout.py --specs-file data/voice_candidates.txt --k 2
+                                                 # 손으로 고른 목록을 짝비교로
 """
 from __future__ import annotations
 
@@ -71,13 +73,24 @@ def random_spec(rng: random.Random) -> str:
     return spec
 
 
-def make_pool(n: int, rng: random.Random, control: str) -> list[str]:
-    """후보 n명. 현행 목소리를 대조군으로 반드시 넣고 위치는 섞는다."""
+def make_pool(n: int, rng: random.Random, control: str,
+              specs: list[str] | None = None) -> list[str]:
+    """후보 n명. 현행 목소리를 대조군으로 반드시 넣고 위치는 섞는다.
+
+    `specs` 를 주면 무작위 대신 그 목록을 쓴다(n 은 무시). 사람이 "F1 과 F4 가
+    좋더라"까지 좁힌 뒤에는 무작위 후보가 오히려 방해가 되기 때문이다.
+    🔴 손으로 고른 목록에도 **대조군은 그대로 넣는다.** 블라인드에서 현행이 이기면
+       '바꿀 이유가 없다'가 결론이고 그것도 결과다 — 내 목록만 돌리면 그 결론이
+       나올 길 자체가 사라진다.
+    """
     pool = {control}
-    guard = 0
-    while len(pool) < n and guard < n * 50:
-        pool.add(random_spec(rng))
-        guard += 1
+    if specs is not None:
+        pool.update(s.strip() for s in specs if s.strip())
+    else:
+        guard = 0
+        while len(pool) < n and guard < n * 50:
+            pool.add(random_spec(rng))
+            guard += 1
     pool = list(pool)
     rng.shuffle(pool)
     return pool
@@ -125,7 +138,19 @@ def main() -> None:
     ap.add_argument("--k", type=int, default=3, help="한 판에 몇 개(2=이지선다, 기본 3)")
     ap.add_argument("--seed", type=int, default=None, help="후보 뽑기 시드(재현용)")
     ap.add_argument("--text", default=DEFAULT_TEXT)
+    ap.add_argument("--specs", metavar="A,B,C",
+                    help="후보를 직접 지정(쉼표 구분). 주면 무작위 대신 이 목록을 쓴다")
+    ap.add_argument("--specs-file", metavar="FILE",
+                    help="후보 목록 파일(한 줄에 하나, # 은 주석)")
     args = ap.parse_args()
+
+    specs = None
+    if args.specs_file:
+        specs = [ln.split("#")[0].strip()
+                 for ln in Path(args.specs_file).read_text(encoding="utf-8").splitlines()]
+        specs = [s for s in specs if s]
+    elif args.specs:
+        specs = [s.strip() for s in args.specs.split(",") if s.strip()]
 
     logging.basicConfig(level=logging.WARNING, format="  [경고] %(message)s")
     from app.main import _setup_audio_device
@@ -134,7 +159,7 @@ def main() -> None:
     seed = args.seed if args.seed is not None else random.randrange(10_000)
     rng = random.Random(seed)
     control = str(settings.models["tts"]["voice"])
-    pool = make_pool(args.pool, rng, control)
+    pool = make_pool(args.pool, rng, control, specs=specs)
 
     print(f'\n블라인드 토너먼트 · 후보 {len(pool)}명 · 한 판 {args.k}개 · 시드 {seed}')
     print(f'문장: "{args.text}"')

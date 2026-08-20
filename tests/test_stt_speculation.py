@@ -154,3 +154,75 @@ def test_resumed_speech_gets_the_full_utterance(monkeypatch):
     assert text == "전체"
     # 마지막으로 쓰인 인식은 뒤 발화까지 포함한 길이여야 한다
     assert max(seen) >= 9 * FRAME, "앞부분만 인식한 결과를 답으로 썼다"
+
+
+# ── 꼬리 도중 추측 텍스트 흘려주기 (2026-08-20) ───────────────────────────────
+# 🔴 왜: 선행 인식이 꼬리 안에서 끝나면, 그 시점에 **아이가 한 말을 이미 알고 있다.**
+#    그런데 지금은 그걸 listen() 이 끝날 때까지 쥐고만 있다. 남은 꼬리 동안 LLM 을
+#    미리 칠 수 있는데 놀리는 것이다(실기 15턴: 생각 1.71s 가 체감의 38%).
+#    on_partial 로 흘려주면 main 이 agent.speculate() 를 걸 수 있다.
+# ⚠️ 흘려준 텍스트가 최종과 다를 수 있다(아이가 이어 말하면). 그건 받는 쪽이
+#    '말 자체'를 키로 써서 거른다 — app/agent.py _Speculation 참조.
+
+def test_partial_text_is_handed_over_during_the_tail():
+    seen = []
+    stt = STTModule(silence_duration=1.2, max_duration=10.0)
+    stt._spec = _Speculation(lambda a: ("칼 어딨어", 0.0))
+
+    stt.record_until_silence(source=ScriptedSource(_loud(4) + _quiet(40)),
+                             on_partial=seen.append)
+
+    assert seen == ["칼 어딨어"], "꼬리 동안 인식 결과를 안 흘려줬다"
+
+
+def test_partial_is_handed_over_only_once():
+    """매 프레임마다 부르면 LLM 을 꼬리 동안 수십 번 친다."""
+    seen = []
+    stt = STTModule(silence_duration=1.2, max_duration=10.0)
+    stt._spec = _Speculation(lambda a: ("안녕", 0.0))
+
+    stt.record_until_silence(source=ScriptedSource(_loud(4) + _quiet(40)),
+                             on_partial=seen.append)
+
+    assert len(seen) == 1
+
+
+def test_empty_recognition_is_not_handed_over():
+    seen = []
+    stt = STTModule(silence_duration=1.2, max_duration=10.0)
+    stt._spec = _Speculation(lambda a: ("", 0.0))
+
+    stt.record_until_silence(source=ScriptedSource(_loud(4) + _quiet(40)),
+                             on_partial=seen.append)
+
+    assert seen == []
+
+
+def test_a_broken_callback_does_not_kill_the_recording():
+    """최적화가 본 기능을 죽이면 안 된다."""
+    def boom(_):
+        raise RuntimeError("콜백 터짐")
+
+    stt = STTModule(silence_duration=1.2, max_duration=10.0)
+    stt._spec = _Speculation(lambda a: ("안녕", 0.0))
+
+    audio = stt.record_until_silence(source=ScriptedSource(_loud(4) + _quiet(40)),
+                                     on_partial=boom)
+
+    assert audio.size > 0
+
+
+def test_recording_still_works_without_a_callback():
+    stt = STTModule(silence_duration=1.2, max_duration=10.0)
+
+    audio = stt.record_until_silence(source=ScriptedSource(_loud(4) + _quiet(40)))
+
+    assert audio.size > 0
+
+
+def test_peek_does_not_block_when_nothing_is_ready():
+    s = _Speculation(lambda a: ("느림", 1.0))
+
+    t = time.perf_counter()
+    assert s.peek(999) is None
+    assert time.perf_counter() - t < 0.05, "peek 가 기다리고 있다 — 꼬리 루프가 멈춘다"

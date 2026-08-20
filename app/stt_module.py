@@ -93,6 +93,15 @@ class _Speculation:
                 self._busy_key = None
                 self._cv.notify_all()
 
+    def peek(self, key):
+        """**기다리지 않고** 그 키의 결과만 본다. 없으면 None.
+
+        꼬리 루프 안에서 매 프레임 불리므로 절대 블로킹하면 안 된다 — 여기서 기다리면
+        녹음 루프가 멈춰서 아이가 다시 말하는 것을 못 듣는다.
+        """
+        with self._cv:
+            return self._done.get(key)
+
     def take(self, key, timeout: float = 10.0):
         """그 키의 결과를 (돌고 있으면 기다렸다) 돌려준다. 아무도 안 하고 있으면 None."""
         deadline = time.perf_counter() + timeout
@@ -254,7 +263,7 @@ class STTModule:
 
     # --------------------------------------------------------- 마이크 녹음(VAD)
     def record_until_silence(self, verbose: bool = False, *,
-                             source=None, prefix=None) -> np.ndarray:
+                             source=None, prefix=None, on_partial=None) -> np.ndarray:
         """말이 시작되면 녹음, silence_duration 만큼 조용해지면 종료.
 
         source: AudioSource(공유 스트림). None 이면 예전처럼 자체 스트림을 연다.
@@ -269,9 +278,10 @@ class STTModule:
         self._spec_key = None
         if source is None:
             return self._record_own_stream(verbose)
-        return self._record_from_source(source, verbose, prefix)
+        return self._record_from_source(source, verbose, prefix, on_partial)
 
-    def _record_from_source(self, source, verbose: bool, prefix) -> np.ndarray:
+    def _record_from_source(self, source, verbose: bool, prefix,
+                            on_partial=None) -> np.ndarray:
         """공유 스트림에서 녹음. 소음 바닥은 source 가 이미 재 뒀다(재측정 안 함).
 
         시간 계산은 source 가 실제로 공급하는 프레임 크기(``source.frame``, 없으면
@@ -333,6 +343,7 @@ class STTModule:
         max_samples = int(self.max_duration * SAMPLE_RATE)
         total_samples = sum(int(np.asarray(b).size) for b in collected)
         quiet = 0
+        handed = False          # 추측 텍스트는 턴당 한 번만 흘린다
         speech_peak = threshold
         last_loud_samples = total_samples   # 마지막 말소리까지 모인 양(꼬리 계산 기준)
         while total_samples < max_samples:
@@ -350,6 +361,17 @@ class STTModule:
                 # 백그라운드로 인식시킨다. 남은 꼬리가 그 연산을 덮는다.
                 if quiet == spec_after:
                     self._spec.submit(_snapshot(collected), key=last_loud_samples)
+                # 선행 인식이 꼬리 안에서 끝났으면 그 텍스트를 곧바로 흘려준다.
+                # 받는 쪽(main)이 남은 꼬리 동안 LLM 을 미리 친다 — 안 흘려주면
+                # '아이가 한 말을 이미 아는데도' 꼬리가 끝날 때까지 놀린다.
+                if on_partial is not None and not handed:
+                    got = self._spec.peek(last_loud_samples)
+                    if got and got[0]:
+                        handed = True
+                        try:
+                            on_partial(got[0])
+                        except Exception as e:   # 최적화가 본 기능을 죽이면 안 된다
+                            log.warning("선행 전달 실패(무시): %s", e)
                 if quiet >= quiet_needed:
                     break
             else:
@@ -437,10 +459,12 @@ class STTModule:
         return _normalize(audio)
 
     # ------------------------------------------------- 녹음 + 인식 한 번에
-    def listen(self, verbose: bool = False, *, source=None, prefix=None) -> tuple[str, float]:
+    def listen(self, verbose: bool = False, *, source=None, prefix=None,
+               on_partial=None) -> tuple[str, float]:
         """마이크 -> (인식 텍스트, 인식 처리시간초). 말이 없으면 ('', 0.0)."""
         t0 = time.perf_counter()
-        audio = self.record_until_silence(verbose=verbose, source=source, prefix=prefix)
+        audio = self.record_until_silence(verbose=verbose, source=source, prefix=prefix,
+                                          on_partial=on_partial)
         rec_dt = time.perf_counter() - t0
         if audio.size == 0:
             # 여기서 transcribe() 를 안 거치므로 플래그를 직접 지운다. 안 지우면 직전

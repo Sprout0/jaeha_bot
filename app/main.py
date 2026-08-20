@@ -245,8 +245,16 @@ def main() -> None:
 
             # 듣기: listen 전체시간 - 인식연산(tr_dt) = 녹음대기.
             # source 가 있으면 감지기와 같은 스트림을 쓴다(장치 하나만 열기 위해).
+            # 🔴 on_partial: 선행 인식이 VAD 꼬리 안에서 끝나면 그 텍스트로 **답까지**
+            #    미리 만들기 시작한다(app/agent.py _Speculation). 꼬리 1.20초는 정의상
+            #    무음이라 어차피 기다리는 시간이고, 실기 15턴에서 '생각'이 체감의 38%
+            #    였다. 아이가 말을 이어가 최종 인식이 달라지면 키가 안 맞아 그냥
+            #    버려지므로, 틀린 추측이 답으로 나갈 수는 없다.
+            # ⚠️ 놀이 턴이면 그 추측은 안 쓰인다(놀이는 상태머신이 답한다) — 호출
+            #    하나를 버리는 셈이다. 지연은 0 이고 비용은 턴당 1~2원 수준이다.
             t_listen = time.perf_counter()
-            text, tr_dt = stt.listen(source=source, prefix=pending_prefix)
+            text, tr_dt = stt.listen(source=source, prefix=pending_prefix,
+                                     on_partial=agent.speculate)
             pending_prefix = None
             stt_wait = max(0.0, (time.perf_counter() - t_listen) - tr_dt)
 

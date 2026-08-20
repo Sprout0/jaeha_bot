@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import re
+import threading
 from pathlib import Path
 
 log = logging.getLogger("jaeha_bot.agent")
@@ -21,6 +22,63 @@ log = logging.getLogger("jaeha_bot.agent")
 #    규칙이 둘이면 평가에서 잰 품질·지연이 운영에서 재현되지 않는다. 그래서 백엔드
 #    교체는 `api_model: HCX-005` 한 줄이면 된다(backend 는 openai 그대로).
 CLOVA_BASE_URL = "https://clovastudio.stream.ntruss.com/v1/openai"
+
+
+class _Speculation:
+    """다음 답을 **미리** 만들어 두는 한 칸짜리 슬롯.
+
+    🔴 왜: 실기 15턴에서 체감 4.53s 중 '생각'이 1.71s(38%)로 가장 크다. 그런데 그
+       앞의 VAD 꼬리 1.20s 는 정의상 무음이라 아무것도 안 하고 기다리는 시간이다.
+       선행 인식(b3db02c)이 그 안에 STT 를 밀어넣어 -0.85s 를 벌었고, 이건 같은 수를
+       한 단계 더 쓰는 것이다 — 인식이 꼬리 안에서 끝나면 곧바로 LLM 을 미리 친다.
+
+    🔴 **키는 '아이가 한 말 그 자체'다.** 최종 인식이 다르면 키가 안 맞아 추측이 그냥
+       버려진다 — 틀린 추측이 답으로 나가는 일이 **구조적으로** 불가능하다.
+       (STT 쪽이 '마지막 말소리까지 모인 샘플 수'를 키로 쓰는 것과 같은 장치다.)
+    ⚠️ 버린 추측의 손해는 호출 한 번이고 **지연은 0** 이다 — 어차피 기다리는 중이었다.
+    ⚠️ take() 는 돌고 있는 추측을 **반드시 기다린다.** 안 기다리고 새로 치면 로컬
+       llama.cpp 를 두 스레드가 동시에 부를 수 있다(스레드 안전하지 않다).
+    """
+
+    def __init__(self, work) -> None:
+        self._work = work                 # callable(text) -> str
+        self._lock = threading.Lock()
+        self._key: str | None = None
+        self._thread: threading.Thread | None = None
+        self._result: str | None = None
+
+    def start(self, text: str) -> None:
+        with self._lock:
+            if text == self._key and self._thread is not None:
+                return                    # 같은 말을 두 번 추측하지 않는다
+            self._key, self._result = text, None
+            self._thread = threading.Thread(target=self._run, args=(text,),
+                                            daemon=True, name="llm-speculation")
+            self._thread.start()
+
+    def _run(self, text: str) -> None:
+        try:
+            out = self._work(text)
+        except Exception as e:            # 최적화가 본 기능을 죽이면 안 된다
+            log.warning("선행 생각 실패(무시하고 평소 경로로): %s: %s",
+                        type(e).__name__, str(e)[:120])
+            out = None
+        with self._lock:
+            if self._key == text:
+                self._result = out
+
+    def take(self, text: str, timeout: float = 15.0) -> str | None:
+        """그 말에 대한 추측을 (돌고 있으면 기다렸다) 돌려준다. 없으면 None."""
+        with self._lock:
+            if text != self._key:
+                return None               # 다른 말이었다 = 추측은 버린다
+            th = self._thread
+        if th is not None:
+            th.join(timeout)
+        with self._lock:
+            out = self._result
+            self._key, self._thread, self._result = None, None, None
+            return out
 
 # 대화 이력은 최근 N턴(=사용자+로봇 2N개 메시지)만 유지한다.
 # 컨텍스트를 짧게 유지해야 n_ctx 안에서 3초 목표를 지키기 쉽다.
@@ -223,6 +281,9 @@ class LLMAgent:
                 ".env 에 넣으세요(CLOVA Studio > 테스트 앱 > API 키. "
                 "CLOVA Voice 키와 다릅니다).")
         self._oa = None   # OpenAI 클라이언트(첫 사용 때 1회 생성)
+        # 선행 생각(VAD 꼬리 동안 미리 답을 만들어 두는 것). 자세한 이유는 _Speculation.
+        self._spec = _Speculation(
+            lambda t: self._complete(self._build_messages(t, "")))
         self.history: list[dict] = []
         self._llm = None  # 지연 로딩(첫 호출 때 1회만 로드)
 
@@ -405,11 +466,27 @@ class LLMAgent:
         if not user_text:
             return {"text": "", "function_call": None}
 
-        reply = self._postprocess(
-            self._complete(self._build_messages(user_text, vision_context)))
+        # 꼬리 동안 미리 만들어 둔 답이 있으면 쓴다. 키가 이 말과 같을 때만 쓰이므로
+        # 인식이 바뀌었으면 자동으로 버려진다(_Speculation 주석 참조).
+        # ⚠️ 비전이 붙는 턴은 재사용하지 않는다 — 추측은 카메라 상태 없이 만들어졌다.
+        raw = None if vision_context else self._spec.take(user_text)
+        if raw is None:
+            raw = self._complete(self._build_messages(user_text, vision_context))
+        reply = self._postprocess(raw)
         if reply:
             self._remember(user_text, reply)
         return {"text": reply, "function_call": None}
+
+    def speculate(self, user_text: str) -> None:
+        """아이 말이 (아직 확정 전이지만) 잡혔을 때 답을 **미리** 만들기 시작한다.
+
+        VAD 꼬리 안에서 불린다. 아이가 말을 이어가 최종 인식이 달라지면 이 추측은
+        키가 안 맞아 그냥 버려진다 — 호출 한 번을 버릴 뿐 지연은 0 이다.
+        이력은 건드리지 않는다(추측은 '아직 일어나지 않은 턴'이다).
+        """
+        text = (user_text or "").strip()
+        if text:
+            self._spec.start(text)
 
     def render(self, instruction: str) -> str:
         """놀이 상태머신용 1회성 문구 생성(이력·few-shot 없이 stateless).

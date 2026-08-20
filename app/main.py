@@ -145,6 +145,23 @@ def build_pipeline():
     return stt, tts, vision, agent
 
 
+def preload(stt, tts, agent) -> None:
+    """첫 대화 지연을 없애기 위해 무거운 모델을 미리 올린다(순차 로딩으로 OOM 방지).
+
+    🔴 **LLM 은 여기서 올리지 않는다.** `agent.warm()` 이 이미 '로컬 폴백을 올릴지'를
+       정했다(원격이 살아 있으면 안 올려서 2.3GB 를 아낀다). 여기서 `_ensure_loaded()`
+       를 부르면 그 결정을 덮어써서 아낀 것을 도로 문다.
+       2026-08-20 실기 로그에서 실제로 그러고 있었다 — 같은 기동에서 5초 사이에
+         "로컬 폴백은 올리지 않는다(... 약 2.3GB 절약)"
+         "LLM 로딩 중: models/exaone-3.5-2.4b-q4.gguf"
+       가 연달아 찍혔다. 커밋 ca260c7 이 warm() 만 고치고 이 호출부를 놓쳤다.
+       **로그에 '절약했다'고 찍히기까지 해서 더 안 보였다.**
+    """
+    log.info("모델 미리 로딩 중... (STT -> TTS)")
+    stt.load()
+    tts.load()
+
+
 def main() -> None:
     log.info("재하봇 1 시작 (모듈 순차 로딩으로 OOM 방지)")
     _setup_audio_device()
@@ -156,11 +173,8 @@ def main() -> None:
     metrics = MetricsLogger(enabled=mcfg.get("enabled", True), tag=mcfg.get("tag", "pc"))
 
     # 첫 대화 지연을 없애기 위해 무거운 모델을 미리 로드(순차 로딩).
-    log.info("모델 미리 로딩 중... (STT -> TTS -> LLM)")
-    stt.load()
-    tts.load()
-    agent._ensure_loaded()
-    metrics.after_load()  # 모델 3종 로드 후 메모리 baseline
+    preload(stt, tts, agent)
+    metrics.after_load()  # 모델 로드 후 메모리 baseline
     log.info("준비 완료. 말을 걸어보세요! (종료: Ctrl+C)")
 
     # 트리거(호출어) 설정: wake.enabled 면 '대기↔대화' 세션. 아니면 항상 대화(옛 동작).

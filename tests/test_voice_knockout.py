@@ -113,3 +113,37 @@ def test_random_pool_still_works_when_no_specs_given():
     pool = make_pool(6, random.Random(1), "F1+F4")
 
     assert len(pool) == 6 and "F1+F4" in pool
+
+
+# ── 시드도 블라인드 짝비교로 ─────────────────────────────────────────────────
+# 🔴 시드는 조합 문자열로 표현이 안 되는 축이라 이 도구에 못 태웠고, 그래서
+#    voice_tournament 의 '5개 늘어놓고 고르기'(절대평가)로 갈 수밖에 없었다.
+#    그 방식은 2026-08-18 에 이미 실패했다("솔직히 아직도 잘 모르겠어").
+#    'F2@1234' 처럼 뒤에 시드를 붙여 같은 짝비교 절차에 태운다.
+# ⚠️ 이 문법은 이 도구 안에서만 산다. app/tts_module.py 의 목소리 문법은 안 건드린다.
+
+from tools.voice_knockout import parse_spec  # noqa: E402
+
+
+def test_spec_without_seed_keeps_the_configured_one():
+    assert parse_spec("F2") == ("F2", None)
+    assert parse_spec("F2:0.85+F5:0.15|F1") == ("F2:0.85+F5:0.15|F1", None)
+
+
+def test_seed_suffix_is_split_off():
+    assert parse_spec("F2@1234") == ("F2", 1234)
+
+
+def test_seed_works_with_the_rhythm_syntax():
+    """'|' 와 '@' 가 같이 와도 갈라져야 한다 — 리듬 문법은 목소리 쪽에 남는다."""
+    assert parse_spec("F2:0.85+F5:0.15|F1@42") == ("F2:0.85+F5:0.15|F1", 42)
+
+
+def test_whitespace_around_the_seed_is_tolerated():
+    assert parse_spec("F2 @ 777") == ("F2", 777)
+
+
+def test_non_integer_seed_is_rejected_loudly():
+    """조용히 시드를 무시하면 '시드를 바꿔 들었다'고 믿는데 전부 같은 소리가 난다."""
+    with pytest.raises(ValueError):
+        parse_spec("F2@abc")

@@ -26,6 +26,11 @@
     python tools/voice_knockout.py --seed 5       # 다른 후보 뽑기(재현 가능)
     python tools/voice_knockout.py --specs-file data/voice_candidates.txt --k 2
                                                  # 손으로 고른 목록을 짝비교로
+
+후보 문법: 목소리는 app/tts_module.py 와 같고, 뒤에 '@시드'를 붙일 수 있다.
+    F2                  설정된 시드 그대로
+    F2@1234             같은 목소리, 시드만 다르게
+    F2:0.85+F5:0.15|F1@42
 """
 from __future__ import annotations
 
@@ -101,9 +106,32 @@ def make_heats(pool: list[str], k: int) -> list[list[str]]:
     return [pool[i:i + k] for i in range(0, len(pool), k)]
 
 
+def parse_spec(entry: str) -> tuple[str, int | None]:
+    """'F2@1234' -> ('F2', 1234). 시드가 없으면 (목소리, None).
+
+    🔴 시드는 조합 문자열로 표현이 안 되는 축이라 여태 이 도구에 못 태웠고, 그래서
+       시드 고르기는 voice_tournament 의 '5개 늘어놓고 고르기'(절대평가)로 갈 수밖에
+       없었다. 그 방식은 2026-08-18 에 이미 실패했다 — 목소리처럼 미묘한 건 붙여
+       들어야 판단이 선다. 뒤에 '@시드'를 붙여 같은 짝비교 절차에 태운다.
+    ⚠️ 이 문법은 이 도구 안에서만 산다. app/tts_module.py 의 목소리 문법은 안 건드린다.
+       '|'(리듬)와 섞여도 '@'가 항상 뒤이므로 오른쪽에서 한 번만 자르면 된다.
+    """
+    voice, sep, seed = entry.rpartition("@")
+    if not sep:
+        return entry.strip(), None
+    try:
+        return voice.strip(), int(seed.strip())
+    except ValueError:
+        raise ValueError(f"시드는 정수여야 한다: {entry!r}") from None
+
+
 def play(spec: str, text: str, tag: str) -> None:
     print(f"  ▶ {tag}", flush=True)
-    tts = TTSModule(**{**settings.models["tts"], "backend": "supertonic", "voice": spec})
+    voice, seed = parse_spec(spec)
+    cfg = {**settings.models["tts"], "backend": "supertonic", "voice": voice}
+    if seed is not None:
+        cfg["seed"] = seed
+    tts = TTSModule(**cfg)
     tts.load()
     tts.speak(text)
 

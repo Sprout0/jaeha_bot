@@ -198,6 +198,13 @@ class TTSModule:
         # 조각이 오는 대로 재생한다(첫 소리를 앞당긴다). 통짜 수신은 1.25s, 스트리밍은 0.6s 대.
         # ⚠️ 소리가 한 번 나가면 폴백이 불가능하다 — 중간에 끊기면 말이 잘린 채로 끝난다.
         openai_stream: bool = True,
+        # ── TensorRT(젯슨 전용 가속) ─────────────────────────────────────────
+        # 확산·보코더 세션을 TRT 로 갈아끼운다. 자세한 근거는 _apply_trt 참고.
+        # ⚠️ 노트북엔 TRT 가 없다. 같은 config 를 공유하므로 없으면 조용히 지나간다.
+        trt: bool = False,
+        trt_cache: str = "~/.cache/trt_supertonic",
+        trt_max_latent: int = 200,   # latent 200 ≈ 13.9초 발화. 답변은 2~4초라 넉넉하다
+        trt_max_text: int = 256,
     ) -> None:
         self.model = model
         self.voice = voice
@@ -214,6 +221,11 @@ class TTSModule:
         self.openai_instructions = openai_instructions
         self.openai_timeout = openai_timeout
         self.openai_stream = openai_stream
+        self.trt = trt
+        self.trt_cache = trt_cache
+        self.trt_max_latent = trt_max_latent
+        self.trt_max_text = trt_max_text
+        self._trt_backup = {}     # TRT 로 갈아끼우기 **전**의 세션. 폴백용으로 들고 있는다
         self._oa = None           # OpenAI 클라이언트(첫 사용 때 1회 생성)
         self._tts = None
         self._style = None
@@ -233,6 +245,7 @@ class TTSModule:
             intra_op_num_threads=self.threads,
         )
         self._report_providers()
+        self._apply_trt()
         self._style = self._resolve_style(self.voice)
         self.sample_rate = int(self._tts.sample_rate)
 
@@ -273,6 +286,114 @@ class TTSModule:
         missed = [p for p in self.providers if p in available and p not in got]
         if missed:
             log.warning("요청한 프로바이더가 붙지 않음: %s — CPU 로 동작 중", missed)
+
+    # ------------------------------------------------- TensorRT(젯슨 전용 가속)
+    # 어떤 세션을 바꿀지. dp·text_enc 는 뺀다 — TRT 빌드가 실패하고(Pad 출력에 shape
+    # 없음, ORT-TRT 알려진 제약) 모양 고정 상태에서 합쳐 20ms 뿐이라 값어치도 없다.
+    _TRT_TARGETS = (("vector_estimator", "vector_est_ort"), ("vocoder", "vocoder_ort"))
+    # (latent, text) 최솟값. 1 로 잡는다 — TRT 는 opt 를 기준으로 최적화하고 min/max 는
+    # 유효 범위일 뿐이라 낮춰도 손해가 없다. 반대로 짧은 발화("응")가 min 아래로 내려가면
+    # 프로파일을 벗어나 위험하다. 참고: '고양이는 야옹 하고 울어.'(12자)가 text_ids 37 이다.
+    _TRT_MIN = (1, 1)
+    _TRT_OPT = (40, 40)    # 최적화 기준점. 실기 답변 18~33자가 이 근처다
+
+    def _trt_profile(self, name: str, lat: int, txt: int) -> str:
+        """TRT 최적화 프로파일의 shape 문자열."""
+        if name == "vocoder":
+            return f"latent:1x144x{lat}"
+        return (f"noisy_latent:1x144x{lat},text_emb:1x256x{txt},style_ttl:1x50x256,"
+                f"latent_mask:1x1x{lat},text_mask:1x1x{txt},"
+                f"current_step:1,total_step:1")
+
+    def _make_trt_session(self, name: str):
+        """같은 onnx 파일을 TensorRT 프로바이더로 다시 연다."""
+        import onnxruntime as ort
+
+        attr = dict(self._TRT_TARGETS)[name]
+        # 경로는 현재 세션에서 가져온다 — 캐시 위치가 바뀌어도 따라간다.
+        # ⚠️ _model_path 는 onnxruntime 내부 속성이다. 버전이 올라 사라지면 여기서
+        #    AttributeError 가 나고, _apply_trt 가 잡아 원래 세션을 그대로 둔다.
+        path = getattr(self._tts.model, attr)._model_path
+        cache = str(Path(self.trt_cache).expanduser())
+        Path(cache).mkdir(parents=True, exist_ok=True)
+
+        so = ort.SessionOptions()
+        so.intra_op_num_threads = self.threads
+        so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        opts = {
+            "trt_engine_cache_enable": True,     # 없으면 기동마다 72초씩 굽는다
+            "trt_engine_cache_path": cache,
+            "trt_timing_cache_enable": True,
+            "trt_profile_min_shapes": self._trt_profile(name, *self._TRT_MIN),
+            "trt_profile_opt_shapes": self._trt_profile(name, *self._TRT_OPT),
+            "trt_profile_max_shapes": self._trt_profile(
+                name, self.trt_max_latent, self.trt_max_text),
+        }
+        return ort.InferenceSession(
+            str(path), sess_options=so,
+            providers=[("TensorrtExecutionProvider", opts),
+                       ("CUDAExecutionProvider", {}), "CPUExecutionProvider"])
+
+    def _apply_trt(self) -> None:
+        """확산·보코더를 TensorRT 세션으로 갈아끼운다. 못 하면 원래 것을 지킨다.
+
+        🔴 왜 (2026-08-24 젯슨 실측). CUDA EP 는 **직전 호출과 입력 모양이 다르면**
+           확산 1스텝에 ~180ms 를 문다. 두 모양을 각각 6번 예열한 뒤에도 그렇다:
+             A 181.2ms(직전과 다름) → 50.2 → 27.1 → 27.0  |  B 184.5ms  |  A 180.6ms
+           문장마다 길이가 달라 실기에선 매번 낸다. '처음 보는 모양'이 아니라 '직전과
+           다른 모양'이 비용이라, 모양 가짓수를 줄이는 버킷팅은 **원리적으로 무의미**하다.
+           유일한 방법인 패딩은 소리를 바꾼다(text_enc 최대차 0.444 / vector_est 0.206).
+           ORT 옵션(cudnn_conv_algo_search·mem_pattern·arena)도 전부 무효였다.
+           TRT 는 min/opt/max 프로파일로 엔진을 미리 구워 이 비용을 없앤다:
+             모양 바뀜 +271.5ms → +10.7ms, 고정 상태에서도 2.4배 빠름
+           문장 합성(길이 섞인 실기 조건) CUDA@12 817ms → **TRT@24 453.8ms**.
+
+        ⚠️ 기동이 6.4초 늘어난다(엔진 캐시가 더울 때. 첫 빌드는 확산 72s + 보코더 49s).
+           캐시를 지우면 그 값을 다시 문다.
+        ⚠️ 노트북엔 TRT 가 없다. 같은 configs/model_paths.yaml 을 쓰므로 여기서
+           죽으면 안 된다 — 없으면 경고 없이 지나가고 CUDA/CPU 로 계속 간다.
+        🔴 반대로 젯슨에서 조용히 실패하면 '왜 느려졌는지'를 못 찾는다. 실패는 경고로.
+        """
+        if not self.trt or self._tts is None:
+            return
+        try:
+            import onnxruntime as ort
+
+            if "TensorrtExecutionProvider" not in ort.get_available_providers():
+                log.info("TensorRT 없음 — 기존 프로바이더로 계속(노트북에선 정상)")
+                return
+        except Exception as e:
+            log.info("TensorRT 확인 불가(%s) — 기존 프로바이더로 계속", type(e).__name__)
+            return
+
+        for name, attr in self._TRT_TARGETS:
+            t0 = time.perf_counter()
+            try:
+                sess = self._make_trt_session(name)
+            except Exception as e:   # 하나 실패해도 봇은 말을 해야 한다
+                log.warning("TensorRT 적용 실패 [%s] (%s: %s) — 기존 세션 유지",
+                            name, type(e).__name__, str(e)[:160])
+                continue
+            # 원래 세션은 버리지 않는다 — 프로파일을 벗어난 문장이 오면 되돌아간다.
+            self._trt_backup[attr] = getattr(self._tts.model, attr)
+            setattr(self._tts.model, attr, sess)
+            log.info("TensorRT 적용 [%s] %.1fs", name, time.perf_counter() - t0)
+
+    def _without_trt(self, fn):
+        """이번 한 번만 원래 CUDA 세션으로 돌려 실행하고, 끝나면 TRT 를 되돌린다.
+
+        ⚠️ 영구히 되돌리지 않는 이유: 긴 문장 하나 때문에 그 뒤 모든 발화를 두 배 느리게
+           만들 이유가 없다. 긴 문장은 드물다.
+        """
+        swapped = {}
+        for attr, original in self._trt_backup.items():
+            swapped[attr] = getattr(self._tts.model, attr)
+            setattr(self._tts.model, attr, original)
+        try:
+            return fn()
+        finally:
+            for attr, sess in swapped.items():
+                setattr(self._tts.model, attr, sess)
 
     # ---------------------------------------------------- 보이스 스타일 해석(+블렌딩)
     def _parse_blend(self, spec: str) -> list[tuple[str, float]]:
@@ -497,8 +618,29 @@ class TTSModule:
 
     # ------------------------------------------------------ 로컬 합성(Supertonic)
     def _infer_local(self, text: str) -> np.ndarray:
+        """Supertonic 합성. TRT 가 걸려 있고 실패하면 그 문장만 CUDA 로 다시 만든다.
+
+        🔴 2026-08-24 젯슨에서 실제로 터졌다. TRT 프로파일 상한(latent 200)을 넘는
+           문장을 주면 `does not satisfy any optimization profiles` 로 예외가 나고
+           **합성이 통째로 실패**한다 — 이 모듈이 스스로 정한 최악("아이 앞에서 소리가
+           안 나는 것")이다. 상한을 아무리 올려도 넘는 문장은 언제든 나올 수 있으므로
+           값이 아니라 경로로 막는다.
+        ⚠️ TRT 를 안 쓸 땐 예외를 그대로 올린다. 그건 진짜 고장이고 숨기면 안 된다.
+        """
+        try:
+            return self._synthesize_local(text)
+        except Exception as e:
+            if not self._trt_backup:
+                raise
+            log.warning("TensorRT 합성 실패(%s: %s) — 이 문장만 기존 세션으로 다시",
+                        type(e).__name__, str(e)[:160])
+            return self._without_trt(lambda: self._synthesize_local(text))
+
+    def _synthesize_local(self, text: str) -> np.ndarray:
         # Supertonic 은 초기 노이즈를 np.random.randn(전역 RNG)으로 뽑는다. 합성 직전
         # 시드를 고정하면 문장마다 같은 노이즈에서 출발해 말투·속도가 일정해진다.
+        # 🔴 재시도에서도 반드시 다시 박아야 한다 — 실패한 시도가 이미 난수를 써버려서,
+        #    안 박으면 폴백된 문장만 목소리가 달라진다.
         if self.seed is not None:
             np.random.seed(self.seed)
         wav, _dur = self._tts.synthesize(

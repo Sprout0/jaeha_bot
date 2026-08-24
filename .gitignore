@@ -29,3 +29,9 @@ logs/*
 # 호출어 학습용 합성 데이터(tools/gen_wake_supertonic.py 산출).
 # wav 수만 개·수백 MB 라 저장소에 들어가면 안 된다. 재현은 도구 + manifest.jsonl 로 한다.
 output/
+
+# 턴 종료 판정 채점의 **원자료**(tools/eval_turn_detect.py --json).
+# 발화 153개 x 판정 3,060회를 그대로 찍어 파일 하나가 2만 줄이 넘는다.
+# 2026-08-24 에 이것만으로 변경분이 47,171줄이 돼 리뷰가 불가능했다.
+# 결론과 표는 메모리·리포트에 남기고, 원자료는 도구로 다시 만든다.
+reports/turn/

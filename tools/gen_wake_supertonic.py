@@ -160,9 +160,16 @@ EXPAND_GRID = [
 EXPAND_PER_CLIP = 3
 
 
-def build_grid(phrases: list[str]) -> list[tuple[str, str, float]]:
-    """(문구, 화자, 합성속도) 조합을 섞어 돌려준다. 시드 고정이라 재현된다."""
-    grid = list(itertools.product(phrases, VOICES, SPEEDS))
+def build_grid(phrases: list[str],
+               speeds: list[float] | None = None) -> list[tuple[str, str, float]]:
+    """(문구, 화자, 합성속도) 조합을 섞어 돌려준다. 시드 고정이라 재현된다.
+
+    speeds 를 주면 그 속도만 쓴다 — **수율이 낮은 칸을 보충 생성**하는 용도다.
+    x1.15 는 통과율이 67~70% 라 한 번 돌려서는 다른 칸만큼 안 찬다(위 SPEEDS 주석 참고).
+    ⚠️ 보충할 때는 `--seed-base` 를 반드시 바꿀 것. 탈락의 원인이 시드 편차라,
+       같은 시드로 다시 뽑으면 **같은 클립이 같은 이유로 또 떨어진다.**
+    """
+    grid = list(itertools.product(phrases, VOICES, speeds or SPEEDS))
     random.Random(20260806).shuffle(grid)
     return grid
 
@@ -315,6 +322,9 @@ def main() -> int:
     ap.add_argument("--out", required=True, help="저장 폴더 (clip_%%06d.wav)")
     ap.add_argument("-n", "--count", type=int, default=3000)
     ap.add_argument("--phrases", default=",".join(DEFAULT_PHRASES))
+    ap.add_argument("--speeds", default=None,
+                    help="쉼표로 구분한 합성 속도. 기본은 SPEEDS 전체. "
+                         "수율 낮은 칸만 보충할 때 쓴다(예: --speeds 1.15)")
     ap.add_argument("--start-index", type=int, default=0,
                     help="이어서 뽑을 때. 기존 파일을 덮어쓰지 않으려면 max+1")
     ap.add_argument("--total-steps", type=int, default=None,
@@ -347,8 +357,12 @@ def main() -> int:
     print(f"Supertonic 로드 완료 (합성 {src_sr}Hz -> 저장 {TARGET_SR}Hz)")
 
     os.makedirs(args.out, exist_ok=True)
-    grid = build_grid(phrases)
-    print(f"조합 {len(grid)}가지 × 시드 변주 -> {args.count}개 생성\n")
+    speeds = ([float(x) for x in args.speeds.split(",") if x.strip()]
+              if args.speeds else None)
+    grid = build_grid(phrases, speeds)
+    print(f"조합 {len(grid)}가지"
+          f"{' (속도 ' + str(speeds) + ' 만)' if speeds else ''}"
+          f" × 시드 변주 -> {args.count}개 생성\n")
 
     # 어떤 클립이 어떤 조합에서 나왔는지 남긴다. voxcpm 때 이게 없어서
     # "설정은 바꿨는데 생성물이 왜 이런지"를 추적할 수 없었다.

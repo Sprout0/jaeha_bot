@@ -46,10 +46,10 @@ _add_file_log()
 #    반영되지 않았다(yaml 의 유일한 소비처가 app/agent.py 의 터미널 REPL 이었다).
 #    설정을 고쳤는데 봇이 그대로 말하는 종류의 사고라 눈에도 안 띈다. → 단일 소스로 묶는다.
 SAFE_RECOVERY = settings.prompts.get("recovery") or "어? 잘 못 들었어. 다시 말해줄래?"
-GREETING = "안녕. 나는 재하봇이야! 나랑 놀자!"
+GREETING = "안녕. 나는 티드야! 나랑 놀자!"
 GOODBYE = "안녕! 또 보자~"
 # 트리거(호출어) 모드 문구.
-READY_ASLEEP = "재하봇 준비됐어. 부르면 나올게!"  # 시작 시 대기 모드 안내
+READY_ASLEEP = "티드 준비됐어. 부르면 나올게!"  # 시작 시 대기 모드 안내
 WAKE_GREETING = "응! 왜 불렀어? 나랑 놀자!"      # 호출어에 깨어날 때
 SLEEP_MSG = "그래, 또 부르면 올게! 안녕~"          # 다시 대기(잠듦)로 갈 때
 
@@ -180,7 +180,7 @@ def main() -> None:
     # 트리거(호출어) 설정: wake.enabled 면 '대기↔대화' 세션. 아니면 항상 대화(옛 동작).
     wcfg = settings.models.get("wake", {}) or {}
     wake_enabled = wcfg.get("enabled", True)
-    wake_word = wcfg.get("word", "재하봇")
+    wake_word = wcfg.get("word", "하이티드")
     sleep_timeout = float(wcfg.get("sleep_timeout", 30))
     sleep_words = wcfg.get("sleep_words")
 
@@ -231,7 +231,7 @@ def main() -> None:
                 awake = True
                 last_active = time.time()
                 if result.continued and result.preroll.size:
-                    # '재하봇 이거 뭐야?' 처럼 부르고 바로 이어 말한 경우 —
+                    # '하이 티드 이거 뭐야?' 처럼 부르고 바로 이어 말한 경우 —
                     # 인사말을 하면 뒷말을 놓치므로 생략하고 그 오디오를 STT 로 넘긴다.
                     log.info("호출 직후 발화 이어짐 → 인사말 생략")
                     pending_prefix = result.preroll
@@ -299,7 +299,7 @@ def main() -> None:
             if not reply:
                 reply, kind = SAFE_RECOVERY, "recovery"
             think_s = time.perf_counter() - t_think
-            log.info("[재하봇] %s", reply)
+            log.info("[티드] %s", reply)
 
             # 말하기 + 에코 쿨다운(재생 여운이 가라앉은 뒤 다시 듣기).
             # speak() 은 재생이 끝날 때까지 막힌다. 그래서 '첫 소리까지'와 '말하는 시간'을
@@ -359,7 +359,7 @@ def text_repl() -> None:
             reply = games.maybe_start(text)
         if reply is None:
             reply = agent.respond(text)["text"]
-        print(f"재하봇: {reply or SAFE_RECOVERY}")
+        print(f"티드: {reply or SAFE_RECOVERY}")
 
 
 if __name__ == "__main__":

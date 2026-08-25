@@ -462,7 +462,7 @@ def _repl() -> None:
             reply = mgr.maybe_start(user)
         if reply is None:
             reply = "(평소 대화 → agent.respond 로 감)"
-        print(f"재하봇: {reply}")
+        print(f"티드: {reply}")
 
 
 if __name__ == "__main__":

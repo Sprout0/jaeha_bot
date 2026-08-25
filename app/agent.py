@@ -87,7 +87,7 @@ MAX_HISTORY_TURNS = 6
 # 놀이 상태머신이 넘긴 '상황 지시'를 문장으로 바꿀 때 쓰는 system 프롬프트(render()).
 # 상황 설명을 그대로 읽지 말고, 아이에게 말하듯 밝은 반말 한두 문장으로만 렌더링한다.
 _RENDER_SYSTEM = (
-    "너는 2세 유아와 노는 다정한 로봇 '재하봇'이야. "
+    "너는 2세 유아와 노는 다정한 로봇 '티드'야. "
     "아래 상황을 아이에게 말하듯 밝고 신나는 반말로 말해. "
     "한두 문장까지만, 아주 짧고 쉽게. 존댓말('~요/~습니다')·이모지·목록·번호·따옴표는 쓰지 않는다. "
     "지식·사실 설명이나 부연은 절대 하지 말고(예: '고양이는 눈빛으로 표현해' 같은 설명 금지), "
@@ -134,12 +134,13 @@ def _flatten_markdown(text: str) -> str:
     return re.sub(r"\s{2,}", " ", text).strip()
 
 
-# 모델이 가끔 응답 앞에 스스로 붙이는 '재하봇:' 이름표(대사 아님)를 제거한다.
-_SPEAKER_PREFIX_RE = re.compile(r"^\s*재하봇\s*[:：]\s*")
+# 모델이 가끔 응답 앞에 스스로 붙이는 '티드:' 이름표(대사 아님)를 제거한다.
+# 옛 이름 '재하봇'도 같이 받는다 — 파인튜닝 데이터·캐시에 남아 있을 수 있다(2026-08-25 개명).
+_SPEAKER_PREFIX_RE = re.compile(r"^\s*(?:티드|재하봇)\s*[:：]\s*")
 
 
 def _strip_speaker_prefix(text: str) -> str:
-    """'재하봇:' 같은 화자 이름표를 앞에서 제거한다(중복 붙어도 모두 제거)."""
+    """'티드:' 같은 화자 이름표를 앞에서 제거한다(중복 붙어도 모두 제거)."""
     prev = None
     while prev != text:
         prev = text
@@ -194,7 +195,7 @@ def load_fewshot(path) -> list[dict]:
 def _augment_system(system_prompt: str, fewshot: list[dict]) -> str:
     """few-shot 메시지쌍을 system 프롬프트 끝에 '예시' 블록으로 붙인다.
 
-    화자 이름표('재하봇:')를 가르치지 않도록 화살표 형식으로 렌더링한다.
+    화자 이름표('티드:')를 가르치지 않도록 화살표 형식으로 렌더링한다.
     """
     lines = ["", "좋은 답변 예시(이 말투·길이를 따라해):"]
     for i in range(0, len(fewshot) - 1, 2):
@@ -432,10 +433,10 @@ class LLMAgent:
     def _postprocess(self, reply: str) -> str:
         """소리로 읽을 수 있는 형태로 다듬는다. **백엔드와 무관하게 반드시 거친다.**
 
-        이모지·마크다운·'재하봇:' 이름표는 TTS 로 읽으면 치명적이라, 원격 답변이라고
+        이모지·마크다운·'티드:' 이름표는 TTS 로 읽으면 치명적이라, 원격 답변이라고
         건너뛰면 안 된다. respond()/render() 가 같은 것을 쓰도록 여기 모아 둔다.
         """
-        reply = _strip_speaker_prefix(reply)  # '재하봇:' 이름표 제거(모델이 가끔 붙임)
+        reply = _strip_speaker_prefix(reply)  # '티드:' 이름표 제거(모델이 가끔 붙임)
         reply = _flatten_markdown(reply)      # 목록/굵게/여러줄 -> 한 문단(TTS로 기호 읽기 방지)
         reply = _strip_emoji(reply)           # 소리로 읽으므로 이모지 제거(프롬프트+코드 이중 차단)
         return _clamp_sentences(reply, self.max_sentences)  # 최대 N문장(사족 제거, 뚝끊김 방지)
@@ -534,7 +535,7 @@ def _repl() -> None:
         if not user or user.lower() in {"exit", "quit"}:
             break
         result = agent.respond(user)
-        print(f"재하봇: {result['text'] or recovery}")
+        print(f"티드: {result['text'] or recovery}")
 
 
 if __name__ == "__main__":

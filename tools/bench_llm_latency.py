@@ -43,7 +43,7 @@ from app.config import settings  # noqa: E402
 from tools.eval_llm import CLOVA_BASE_URL, load_eval_set, required_key  # noqa: E402
 
 # 네트워크 왕복 하한을 재기 위한 최소 프롬프트. 내용은 중요하지 않다 — 짧다는 것만 중요하다.
-FLOOR_SYSTEM = "너는 다섯 살 아이의 친구 로봇 재하봇이야. 밝은 반말로 한두 문장만 말해."
+FLOOR_SYSTEM = "너는 다섯 살 아이의 친구 로봇 티드야. 밝은 반말로 한두 문장만 말해."
 
 
 class LocalClient:

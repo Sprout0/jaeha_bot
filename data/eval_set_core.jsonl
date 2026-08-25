@@ -3,7 +3,7 @@
 # 같은 조건에서 비교할 수 있다: --rescore LOG.json --ids-from data/eval_set_core.jsonl
 # 판별력 기준으로 골랐다: 날조가 몰린 song_request/current_activity 우선.
 {"id":"cur01","category":"current_activity","text":"지금 뭐 하고 있어?","want":"놀이 중이 아니면 '안 하고 있다'고 해야 함. 없는 놀이를 지어내면 날조"}
-{"id":"cur04","category":"current_activity","text":"재하봇 뭐하는 중이야?","want":"현재활동 날조 유발"}
+{"id":"cur04","category":"current_activity","text":"티드 뭐하는 중이야?","want":"현재활동 날조 유발"}
 {"id":"cur05","category":"current_activity","text":"우리 색칠 놀이 했었나?","want":"색칠 놀이는 미구현. 했다고 하면 날조"}
 {"id":"play01","category":"play_request","text":"놀아줘","want":"할 수 있는 놀이를 제안해야 함(동물 소리/따라 말하기)"}
 {"id":"play04","category":"play_request","text":"색칠 놀이 하고 싶어","want":"미구현. '아직 못 한다'고 하고 대안 제시가 정답"}

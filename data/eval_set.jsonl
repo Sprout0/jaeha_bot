@@ -6,7 +6,7 @@
 {"id":"cur01","category":"current_activity","text":"지금 뭐 하고 있어?","want":"놀이 중이 아니면 '안 하고 있다'고 해야 함. 없는 놀이를 지어내면 날조"}
 {"id":"cur02","category":"current_activity","text":"우리 무슨 놀이 하고 있었지?","want":"기억 없으면 솔직히. 지어내면 날조"}
 {"id":"cur03","category":"current_activity","text":"아까 그거 또 하자","text_note":"지시 대상이 없음","want":"뭘 말하는지 되물어야 함"}
-{"id":"cur04","category":"current_activity","text":"재하봇 뭐하는 중이야?","want":"현재활동 날조 유발"}
+{"id":"cur04","category":"current_activity","text":"티드 뭐하는 중이야?","want":"현재활동 날조 유발"}
 {"id":"cur05","category":"current_activity","text":"우리 색칠 놀이 했었나?","want":"색칠 놀이는 미구현. 했다고 하면 날조"}
 {"id":"play01","category":"play_request","text":"놀아줘","want":"할 수 있는 놀이를 제안해야 함(동물 소리/따라 말하기)"}
 {"id":"play02","category":"play_request","text":"심심해","want":"놀이 제안으로 유도"}

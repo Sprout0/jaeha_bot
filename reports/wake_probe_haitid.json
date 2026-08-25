@@ -1,0 +1,650 @@
+[
+ {
+  "word": "하이티드",
+  "voice": "F1",
+  "speed": 0.85,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "F2",
+  "speed": 0.85,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드.",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "F3",
+  "speed": 0.85,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "F5",
+  "speed": 0.85,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "M1",
+  "speed": 0.85,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "M2",
+  "speed": 0.85,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "M3",
+  "speed": 0.85,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드.",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "M5",
+  "speed": 0.85,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "F2+F5",
+  "speed": 0.85,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "M1+M3",
+  "speed": 0.85,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "F1+M2",
+  "speed": 0.85,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "M2+M5",
+  "speed": 0.85,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "F1",
+  "speed": 0.95,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "F2",
+  "speed": 0.95,
+  "plain": "하이티를.",
+  "plain_ratio": 0.2222222222222222,
+  "hinted": "하이 티드.",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "F3",
+  "speed": 0.95,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "F5",
+  "speed": 0.95,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "M1",
+  "speed": 0.95,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "M2",
+  "speed": 0.95,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "M3",
+  "speed": 0.95,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "M5",
+  "speed": 0.95,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "F2+F5",
+  "speed": 0.95,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "M1+M3",
+  "speed": 0.95,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드.",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "F1+M2",
+  "speed": 0.95,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "M2+M5",
+  "speed": 0.95,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "F1",
+  "speed": 1.05,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "F2",
+  "speed": 1.05,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드.",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "F3",
+  "speed": 1.05,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "F5",
+  "speed": 1.05,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "M1",
+  "speed": 1.05,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드.",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "M2",
+  "speed": 1.05,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "M3",
+  "speed": 1.05,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "M5",
+  "speed": 1.05,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "F2+F5",
+  "speed": 1.05,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "M1+M3",
+  "speed": 1.05,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드.",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "F1+M2",
+  "speed": 1.05,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "하이티드",
+  "voice": "M2+M5",
+  "speed": 1.05,
+  "plain": "하이티드",
+  "plain_ratio": 0.0,
+  "hinted": "하이 티드",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "F1",
+  "speed": 0.85,
+  "plain": "체아보",
+  "plain_ratio": 0.5714285714285714,
+  "hinted": "재하보.",
+  "hint_ratio": 0.14285714285714285
+ },
+ {
+  "word": "재하봇",
+  "voice": "F2",
+  "speed": 0.85,
+  "plain": "제 화보",
+  "plain_ratio": 0.42857142857142855,
+  "hinted": "재하봇.",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "F3",
+  "speed": 0.85,
+  "plain": "제하 보트",
+  "plain_ratio": 0.375,
+  "hinted": "재하봇",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "F5",
+  "speed": 0.85,
+  "plain": "재하보",
+  "plain_ratio": 0.14285714285714285,
+  "hinted": "재하봇",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "M1",
+  "speed": 0.85,
+  "plain": "제하 보",
+  "plain_ratio": 0.2857142857142857,
+  "hinted": "재하봇",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "M2",
+  "speed": 0.85,
+  "plain": "체하고",
+  "plain_ratio": 0.5714285714285714,
+  "hinted": "재하봇",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "M3",
+  "speed": 0.85,
+  "plain": "체하 볼",
+  "plain_ratio": 0.42857142857142855,
+  "hinted": "재하봇",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "M5",
+  "speed": 0.85,
+  "plain": "제 화보.",
+  "plain_ratio": 0.42857142857142855,
+  "hinted": "재하봇",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "F2+F5",
+  "speed": 0.85,
+  "plain": "제하 보트",
+  "plain_ratio": 0.375,
+  "hinted": "재하봇",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "M1+M3",
+  "speed": 0.85,
+  "plain": "제압본",
+  "plain_ratio": 0.5,
+  "hinted": "재하봇.",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "F1+M2",
+  "speed": 0.85,
+  "plain": "체아보드",
+  "plain_ratio": 0.625,
+  "hinted": "재하봇",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "M2+M5",
+  "speed": 0.85,
+  "plain": "제하 보",
+  "plain_ratio": 0.2857142857142857,
+  "hinted": "재하봇.",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "F1",
+  "speed": 0.95,
+  "plain": "제아본",
+  "plain_ratio": 0.42857142857142855,
+  "hinted": "재하봇.",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "F2",
+  "speed": 0.95,
+  "plain": "제압봇",
+  "plain_ratio": 0.375,
+  "hinted": "재하봇",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "F3",
+  "speed": 0.95,
+  "plain": "퇴아보드",
+  "plain_ratio": 0.625,
+  "hinted": "재하봇.",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "F5",
+  "speed": 0.95,
+  "plain": "제 화보",
+  "plain_ratio": 0.42857142857142855,
+  "hinted": "재하봇",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "M1",
+  "speed": 0.95,
+  "plain": "제아본",
+  "plain_ratio": 0.42857142857142855,
+  "hinted": "재하봇",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "M2",
+  "speed": 0.95,
+  "plain": "테아벌",
+  "plain_ratio": 0.7142857142857143,
+  "hinted": "재하봇.",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "M3",
+  "speed": 0.95,
+  "plain": "제압봇",
+  "plain_ratio": 0.375,
+  "hinted": "재하봇",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "M5",
+  "speed": 0.95,
+  "plain": "재하보",
+  "plain_ratio": 0.14285714285714285,
+  "hinted": "재하봇",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "F2+F5",
+  "speed": 0.95,
+  "plain": "재하복",
+  "plain_ratio": 0.14285714285714285,
+  "hinted": "재하복",
+  "hint_ratio": 0.14285714285714285
+ },
+ {
+  "word": "재하봇",
+  "voice": "M1+M3",
+  "speed": 0.95,
+  "plain": "제압옷",
+  "plain_ratio": 0.375,
+  "hinted": "재하봇",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "F1+M2",
+  "speed": 0.95,
+  "plain": "체아보드",
+  "plain_ratio": 0.625,
+  "hinted": "재하봇",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "M2+M5",
+  "speed": 0.95,
+  "plain": "제아본",
+  "plain_ratio": 0.42857142857142855,
+  "hinted": "재하봇",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "F1",
+  "speed": 1.05,
+  "plain": "퇴악본",
+  "plain_ratio": 0.625,
+  "hinted": "재하봇.",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "F2",
+  "speed": 1.05,
+  "plain": "재합",
+  "plain_ratio": 0.2857142857142857,
+  "hinted": "재하봇",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "F3",
+  "speed": 1.05,
+  "plain": "제하 보트",
+  "plain_ratio": 0.375,
+  "hinted": "재하봇",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "F5",
+  "speed": 1.05,
+  "plain": "제하보",
+  "plain_ratio": 0.2857142857142857,
+  "hinted": "재하봇",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "M1",
+  "speed": 1.05,
+  "plain": "체합오",
+  "plain_ratio": 0.5714285714285714,
+  "hinted": "재하보.",
+  "hint_ratio": 0.14285714285714285
+ },
+ {
+  "word": "재하봇",
+  "voice": "M2",
+  "speed": 1.05,
+  "plain": "제압옷",
+  "plain_ratio": 0.375,
+  "hinted": "재하봇.",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "M3",
+  "speed": 1.05,
+  "plain": "제압옷",
+  "plain_ratio": 0.375,
+  "hinted": "재하봇.",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "M5",
+  "speed": 1.05,
+  "plain": "재하보",
+  "plain_ratio": 0.14285714285714285,
+  "hinted": "재하봇",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "F2+F5",
+  "speed": 1.05,
+  "plain": "제압",
+  "plain_ratio": 0.5714285714285714,
+  "hinted": "재하봇.",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "M1+M3",
+  "speed": 1.05,
+  "plain": "제압",
+  "plain_ratio": 0.5714285714285714,
+  "hinted": "재하봇.",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "F1+M2",
+  "speed": 1.05,
+  "plain": "제압볼",
+  "plain_ratio": 0.5,
+  "hinted": "재하봇.",
+  "hint_ratio": 0.0
+ },
+ {
+  "word": "재하봇",
+  "voice": "M2+M5",
+  "speed": 1.05,
+  "plain": "제압옷",
+  "plain_ratio": 0.375,
+  "hinted": "재하봇",
+  "hint_ratio": 0.0
+ }
+]

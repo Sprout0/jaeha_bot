@@ -31,7 +31,7 @@ _PUNCT = " .,!?~\"'…"
 
 def is_wake_word(
     text: str,
-    word: str = "재하봇",
+    word: str = "하이티드",
     threshold: float = 0.6,
     aliases: list[str] | None = None,
 ) -> bool:
@@ -39,7 +39,8 @@ def is_wake_word(
 
     - aliases: 확정 호출 오인식(정확 일치 시 즉시 True). 예: ["개하복","제하모"].
     - threshold: 자모 유사도 컷(작을수록 엄격). 단일 토큰 + 인접 2토큰 결합을 모두 검사
-      (STT가 '재하 봇'처럼 쪼개 적어도 결합해서 '재하봇'으로 잡히게).
+      (STT가 '하이 티드'처럼 띄어 적어도 결합해서 '하이티드'로 잡히게).
+      🔴 그래서 매칭어는 **공백을 뺀 '하이티드'** 를 쓴다(config `wake.word`).
     """
     if not text:
         return False
@@ -56,7 +57,7 @@ def is_wake_word(
         if jamo_ratio(t, word) <= threshold:
             return True
 
-    # 2) 인접 2토큰 결합('재하 봇' -> '재하봇')도 검사
+    # 2) 인접 2토큰 결합('하이 티드' -> '하이티드')도 검사
     for a, b in zip(toks, toks[1:]):
         if jamo_ratio(a + b, word) <= threshold:
             return True
@@ -64,7 +65,7 @@ def is_wake_word(
     return False
 
 
-def best_wake_ratio(text: str, word: str = "재하봇") -> float:
+def best_wake_ratio(text: str, word: str = "하이티드") -> float:
     """text 안에서 호출어(word)에 가장 가까운 자모거리(0=동일, 1=완전다름). 진단·튜닝용.
 
     대기 모드에서 '안 깨움' 시 이 값을 로그로 남기면, 실제로 뭐라고 들렸고 얼마나
@@ -100,7 +101,7 @@ class SttWakeDetector:
     (= 늘 '부르고 기다리기' 경로 = 이 방식의 기존 동작과 같다).
     """
 
-    def __init__(self, stt, word: str = "재하봇", threshold: float = 0.68,
+    def __init__(self, stt, word: str = "하이티드", threshold: float = 0.68,
                  aliases: list | None = None) -> None:
         self.stt = stt
         self.word = word
@@ -190,7 +191,7 @@ def make_detector(wcfg: dict, stt, source):
 
     폴백하는 이유: 모델을 아직 안 넣었거나 파일이 깨져도 봇이 죽으면 안 된다.
     """
-    word = wcfg.get("word", "재하봇")
+    word = wcfg.get("word", "하이티드")
     threshold = float(wcfg.get("threshold", 0.68))
     aliases = wcfg.get("aliases", [])
     fallback = SttWakeDetector(stt, word, threshold, aliases)
@@ -222,8 +223,8 @@ def make_detector(wcfg: dict, stt, source):
 
 def _repl() -> None:
     """문자열로 판정 확인(마이크 불필요)."""
-    aliases = ["개하복", "제하모", "재하모사", "재보소"]
-    pos = ["재하봇", "재하봇아", "재하", "제하모", "개하복", "재하 봇", "재하보사"]
+    aliases = ["하이티브", "하이치드", "하이티들"]
+    pos = ["하이티드", "하이 티드", "하이티드야", "하이티브", "하이치드"]
     neg = ["엄마 어디 있어", "사과 먹고 싶어", "이게 뭐야", "강아지 멍멍 해봐", "제가 웃어"]
     print("[깨워야 함]")
     for s in pos:

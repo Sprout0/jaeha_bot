@@ -33,12 +33,29 @@ def test_pitch_goes_both_ways():
     assert any(p < 1.0 for p in PITCHES), "피치를 내리는 칸이 없다(성인 남성 음역)"
 
 
-def test_low_pitch_range_matches_measurement():
-    """내리는 칸이 실측 최적 구간(1/1.15≈0.87, 1/1.35≈0.74)을 덮어야 한다."""
+def test_low_pitch_stays_inside_human_range():
+    """내리는 칸은 **우리 집 사람이 실제로 내는 소리** 안에 있어야 한다.
+
+    🔄 이 테스트는 뒤집힌 것이다(2026-08-25). 원래는 "0.78 이하까지 내려가야 한다"였다
+       — v5 가 v4 말뭉치(F0 중앙 165Hz)의 얇은 저역 꼬리를 증강으로 메우려 했기 때문이다
+       (녹음을 +35% 올려 점수가 살아났으니 학습은 1/1.35=0.74 를 채우자는 논리).
+
+    v6 에서 전제가 바뀌었다. 저역을 증강이 아니라 **화자 선택**으로 채웠다 —
+    말뭉치 실측 F0 최저 화자가 M5 **97Hz** 다(400개 표본, <=130Hz 가 24.5%).
+    그래서 내리는 칸의 역할이 '없는 저역을 만드는 것'에서 '증강이 분포를 위로 밀지
+    않게 **지키는 것**'으로 바뀌었다. 지켜야 할 선이 반대가 됐다:
+
+      x0.85 -> 97Hz 화자가 82Hz. 성인 남성 하한(85Hz) 언저리 — 여기까지가 사람 소리다.
+      x0.75 -> **73Hz**. 이 집 누구도 내지 않는다. 실제로 이 칸을 넣으면 말뭉치
+               5%tile 이 93Hz -> 86Hz 로 내려간다(원본은 94Hz).
+
+    올리는 쪽이 여전히 필요한 이유는 test_pitch_goes_both_ways 에 있다.
+    """
     low = sorted(p for p in PITCHES if p < 1.0)
-    assert low, "내리는 칸이 없다"
-    assert min(low) <= 0.78, f"충분히 낮은 칸이 없다: {low}"
-    assert max(low) >= 0.82, f"완만하게 낮춘 칸이 없다: {low}"
+    assert low, "내리는 칸이 없다 — 증강이 분포를 위로만 밀면 v4 실패가 재현된다"
+    assert min(low) >= 0.80, \
+        f"사람이 내지 않는 음역까지 내린다: {low} (최저 화자 97Hz x {min(low)} = {97 * min(low):.0f}Hz)"
+    assert max(low) <= 0.90, f"내리는 시늉만 한다: {low}"
 
 
 def test_low_pitch_is_crossed_with_speed():

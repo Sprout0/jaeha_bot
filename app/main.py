@@ -98,6 +98,46 @@ def _setup_audio_device() -> None:
                     dev, "입력" if din is None else "출력")
 
 
+def _build_filler():
+    """설정에서 필러를 만든다. 무슨 일이 있어도 None 을 돌려줄지언정 안 죽는다."""
+    from pathlib import Path
+
+    from .audio_player import SoundDeviceSink
+    from .filler import FillerBank
+
+    cfg = settings.models.get("filler", {}) or {}
+    try:
+        return FillerBank(
+            cfg.get("phrases", []),
+            cache_dir=Path(cfg.get("cache_dir", "~/.cache/jaeha_filler")).expanduser(),
+            sink=SoundDeviceSink(),
+            delay_s=float(cfg.get("delay_s", 0.0)),
+            enabled=bool(cfg.get("enabled", True)),
+        )
+    except Exception as e:
+        log.warning("필러 구성 실패(필러 없이 계속): %s: %s", type(e).__name__, str(e)[:120])
+        return None
+
+
+def _respond(agent, games, text, filler=None):
+    """놀이가 먼저, 아니면 자유대화. 자유대화로 갈 때만 필러를 낸다.
+
+    🔴 필러는 **LLM 을 치기 전에** 나가야 한다. 뒤에 내면 답이 이미 나온 뒤라
+       침묵이 그대로 남는다 — 이 순서가 이 기능의 전부다.
+    ⚠️ 놀이 턴에는 안 낸다. 상태머신은 즉답(체감 총 2.4초)이라 필러가 오히려
+       답을 늦춘다. 놀이 판정 자체는 순수 상태머신이라 마이크로초다.
+    """
+    reply = games.handle(text)
+    if reply is not None:
+        return reply, "game"
+    reply = games.maybe_start(text)
+    if reply is not None:
+        return reply, "game_start"
+    if filler is not None:
+        filler.play()
+    return agent.respond(text)["text"], "llm"
+
+
 def _empty_text_action(*, rejected: bool, wake_enabled: bool,
                        idle_s: float, sleep_timeout: float) -> str:
     """인식 결과가 비었을 때 무엇을 할지 결정한다 — 'reask' | 'sleep' | 'wait'.
@@ -145,7 +185,7 @@ def build_pipeline():
     return stt, tts, vision, agent
 
 
-def preload(stt, tts, agent) -> None:
+def preload(stt, tts, agent, filler=None) -> None:
     """첫 대화 지연을 없애기 위해 무거운 모델을 미리 올린다(순차 로딩으로 OOM 방지).
 
     🔴 **LLM 은 여기서 올리지 않는다.** `agent.warm()` 이 이미 '로컬 폴백을 올릴지'를
@@ -160,6 +200,14 @@ def preload(stt, tts, agent) -> None:
     log.info("모델 미리 로딩 중... (STT -> TTS)")
     stt.load()
     tts.load()
+    # 필러 캐시는 tts.load() 뒤에 만든다(합성이 필요하다). 첫 턴에 만들면 그 턴만
+    # 2.7초 느려지므로 여기서 미리 굽는다 — 캐시가 이미 있으면 파일만 읽어 즉시 끝난다.
+    if filler is not None:
+        try:
+            filler.ensure(tts)
+        except Exception as e:   # 최적화가 기동을 죽이면 안 된다
+            log.warning("필러 준비 실패(필러 없이 계속): %s: %s",
+                        type(e).__name__, str(e)[:120])
 
 
 def main() -> None:
@@ -171,9 +219,11 @@ def main() -> None:
     # STEP 7 계측: 턴마다 단계별 지연·메모리를 파일에 기록(젯슨 이식 전 PC baseline).
     mcfg = settings.models.get("metrics", {})
     metrics = MetricsLogger(enabled=mcfg.get("enabled", True), tag=mcfg.get("tag", "pc"))
+    # 맞장구: 아이가 처음 소리를 듣는 시각을 4.17 -> 1.70초로. 실지연은 안 준다.
+    filler = _build_filler()
 
     # 첫 대화 지연을 없애기 위해 무거운 모델을 미리 로드(순차 로딩).
-    preload(stt, tts, agent)
+    preload(stt, tts, agent, filler)
     metrics.after_load()  # 모델 로드 후 메모리 baseline
     log.info("준비 완료. 말을 걸어보세요! (종료: Ctrl+C)")
 
@@ -291,11 +341,7 @@ def main() -> None:
 
             # 생각: (a)놀이 진행중이면 상태머신 처리 (b)아니면 놀이 시작 트리거 (c)둘 다 아니면 LLM.
             t_think = time.perf_counter()
-            reply, kind = games.handle(text), "game"
-            if reply is None:
-                reply, kind = games.maybe_start(text), "game_start"
-            if reply is None:
-                reply, kind = agent.respond(text)["text"], "llm"
+            reply, kind = _respond(agent, games, text, filler)
             if not reply:
                 reply, kind = SAFE_RECOVERY, "recovery"
             think_s = time.perf_counter() - t_think

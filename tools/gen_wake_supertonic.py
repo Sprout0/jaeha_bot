@@ -367,6 +367,9 @@ def main() -> int:
     ap.add_argument("--out", required=True, help="저장 폴더 (clip_%%06d.wav)")
     ap.add_argument("-n", "--count", type=int, default=3000)
     ap.add_argument("--phrases", default=",".join(DEFAULT_PHRASES))
+    ap.add_argument("--phrases-file", default=None,
+                    help="한 줄에 한 문구인 파일(# 주석·빈 줄 무시). --phrases 보다 우선한다. "
+                         "부정 문구처럼 수십 개일 때 쓴다(configs/wake/negatives_v6.txt).")
     ap.add_argument("--speeds", default=None,
                     help="쉼표로 구분한 합성 속도. 기본은 SPEEDS 전체. "
                          "수율 낮은 칸만 보충할 때 쓴다(예: --speeds 1.15)")
@@ -387,7 +390,13 @@ def main() -> int:
     if args.expand:
         return expand(args.out, sf)
 
-    phrases = [p.strip() for p in args.phrases.split(",") if p.strip()]
+    if args.phrases_file:
+        with open(args.phrases_file, encoding="utf-8") as f:
+            phrases = [x.strip() for x in f
+                       if x.strip() and not x.lstrip().startswith("#")]
+        print(f"문구 {len(phrases)}개 <- {args.phrases_file}")
+    else:
+        phrases = [p.strip() for p in args.phrases.split(",") if p.strip()]
     cfg = load_models().get("tts", {})
     tts = TTSModule(
         model=cfg.get("model", "supertonic-3"),

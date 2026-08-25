@@ -652,6 +652,16 @@ class TTSModule:
         )
         return np.asarray(wav, dtype=np.float32).squeeze()
 
+    # ------------------------------------------------------- 파형만(소리 안 냄)
+    def render(self, text: str) -> np.ndarray:
+        """텍스트 -> 합성 파형(앞 무음 잘라낸 것). **재생하지 않는다.**
+
+        speak() 이 재생 직전까지 하는 일과 똑같다. 소리는 안 내고 파형만 필요한
+        곳(app/filler.py 의 필러 캐시 생성)이 쓴다 — 기동 때 스피커로 여섯 번
+        떠들면 안 되기 때문이다.
+        """
+        return self._trim(self._infer(text))
+
     # ------------------------------------------------------------ 파일로 저장
     def synthesize(self, text: str, out_path: str = "logs/last_tts.wav") -> str:
         """텍스트 -> wav 경로."""
@@ -765,7 +775,7 @@ class TTSModule:
             timing = self._speak_openai_stream(text, t0)
             if timing is not None:
                 return timing
-        audio = self._trim(self._infer(text))
+        audio = self.render(text)
         synth_s = time.perf_counter() - t0
         if not audio.size:
             return SpeakTiming(first_audio_s=synth_s, synth_s=synth_s, play_s=0.0)

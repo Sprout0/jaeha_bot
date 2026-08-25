@@ -35,7 +35,7 @@ from app.wake import best_wake_ratio  # noqa: E402  런타임과 같은 판정�
 # 값을 쓴다(하나라도 맞으면 정상 클립).
 # ⚠️ 목록을 늘릴수록 판정이 관대해진다 — v2 의 비어휘 변형(재하보사·재하부사·재하보시)은
 #    이제 합성하지 않으므로 넣지 않는다. 넣으면 뭉개진 발음까지 통과한다.
-DEFAULT_WORDS = ["재하봇", "재하봇아", "재하봇이"]
+DEFAULT_WORDS = ["하이티드", "하이 티드", "하이티드야"]
 
 
 def best_ratio_any(text: str, words: list[str]) -> tuple[float, str]:

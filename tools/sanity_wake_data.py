@@ -153,7 +153,7 @@ def check_stt(root: str, word: str) -> bool:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dir", required=True, help="예: output_v5")
-    ap.add_argument("--word", default="재하봇")
+    ap.add_argument("--word", default="하이티드")
     ap.add_argument("--no-stt", action="store_true")
     args = ap.parse_args()
 

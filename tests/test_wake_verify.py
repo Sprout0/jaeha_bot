@@ -392,3 +392,71 @@ def test_shipped_bypass_sits_above_the_measured_room_noise():
     assert byp > 0.173, f"우회컷 {byp} 이 실측 방 소음 최고치 0.173 아래다"
     assert byp > float(cfg["wake"]["onnx"]["threshold"]), \
         "우회컷이 1단계 임계보다 낮으면 2단계가 통째로 무력화된다"
+
+
+# ── 1패스 (2026-08-26) ───────────────────────────────────────────────────
+# 🔴 2패스는 '재하봇'이 OOV 라 힌트 없이는 41% 밖에 못 읽어서 넣은 것이다.
+#    '하이티드'로 바꾼 뒤 실기 로그 전수에서 **2패스가 판정을 뒤집은 건 0건**이고,
+#    성공한 호출마다 whisper 를 한 번 더(1.22초) 돌릴 뿐이었다.
+
+class _CountingStt:
+    """힌트 유무에 따라 다른 답을 주고, 몇 번 불렸는지 센다."""
+
+    def __init__(self, plain, hinted):
+        self.plain, self.hinted = plain, hinted
+        self.calls = []
+
+    def transcribe(self, audio, initial_prompt=None):
+        self.calls.append(initial_prompt)
+        return (self.hinted if initial_prompt else self.plain), 0.0
+
+
+def _verifier(stt, **over):
+    from app.wake import make_wake_verifier
+    cfg = {"enabled": True, "initial_prompt": "하이 티드.",
+           "max_ratio": 0.45, "plain_max_ratio": 0.35}
+    cfg.update(over)
+    return make_wake_verifier(cfg, stt, "하이티드")
+
+
+def test_single_pass_calls_whisper_once():
+    """성공한 호출마다 1.22초를 아낀다 — whisper 를 두 번 부르지 않아야 한다."""
+    stt = _CountingStt("하이치드", "하이티드")
+    assert _verifier(stt, two_pass=False)(np.zeros(32000, dtype=np.float32)) is True
+    assert stt.calls == [None], f"whisper 를 {len(stt.calls)}번 불렀다"
+
+
+def test_single_pass_still_rejects_on_the_plain_gate():
+    """🔴 정밀도는 전부 1패스가 만든다. 여기가 뚫리면 유튜브에 깨어난다."""
+    stt = _CountingStt("MBC 뉴스 이재경입니다", "하이티드")
+    assert _verifier(stt, two_pass=False)(np.zeros(32000, dtype=np.float32)) is False
+    assert stt.calls == [None], "기각인데 힌트 패스를 돌았다"
+
+
+def test_single_pass_does_not_use_the_hint_at_all():
+    """힌트는 환각을 만든다(유튜브 후보의 47~100%가 호출어로 전사됐다).
+    1패스에서는 힌트가 **아예 쓰이면 안 된다** — 쓰이면 그 위험이 돌아온다."""
+    stt = _CountingStt("하이티드", "하이티드")
+    _verifier(stt, two_pass=False)(np.zeros(32000, dtype=np.float32))
+    assert None in stt.calls and not any(c for c in stt.calls), stt.calls
+
+
+def test_two_pass_is_the_default_so_old_configs_keep_working():
+    """설정에 two_pass 가 없으면 옛 동작이어야 한다(되돌릴 길)."""
+    stt = _CountingStt("하이치드", "하이티드")
+    assert _verifier(stt)(np.zeros(32000, dtype=np.float32)) is True
+    assert stt.calls == [None, "하이 티드."], stt.calls
+
+
+def test_shipped_config_turned_two_pass_off():
+    """설정이 실제로 1패스인지 — 이게 켜져 있으면 깨움이 1.2초 느리다."""
+    from pathlib import Path
+
+    import yaml
+
+    cfg = yaml.safe_load(
+        (Path(__file__).resolve().parent.parent / "configs" / "model_paths.yaml")
+        .read_text(encoding="utf-8"))
+    v = (cfg["wake"]["onnx"].get("verify") or {})
+    assert v.get("two_pass") is False, "2패스가 켜져 있다 — 근거는 wake.py 주석 참고"
+    assert v.get("initial_prompt"), "되돌릴 때 필요하니 힌트는 남겨 둔다"

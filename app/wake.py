@@ -155,6 +155,9 @@ def make_wake_verifier(vcfg: dict, stt, word: str):
     prompt = vcfg.get("initial_prompt") or None
     max_ratio = float(vcfg.get("max_ratio", 0.45))
     plain_ratio = float(vcfg.get("plain_max_ratio", 0.65))
+    # 🟢 2026-08-26: 2패스를 끌 수 있게 했다. 기본 True 는 옛 설정을 그대로 읽기 위한 것이고,
+    #    지금 우리 설정은 False 다 — 아래 2)번 주석에 근거가 있다.
+    two_pass = bool(vcfg.get("two_pass", True))
 
     def verify(audio) -> bool:
         # ── 1) 힌트 **없이** 먼저 듣는다 ──────────────────────────────
@@ -173,8 +176,25 @@ def make_wake_verifier(vcfg: dict, stt, word: str):
             return False
 
         # ── 2) 힌트를 주고 다시 듣는다 ───────────────────────────────
-        # 힌트 없는 쪽만으로는 진짜 호출을 41% 밖에 못 읽는다(OOV 고유명사라서).
-        # 여기서 고유명사 인식을 회복한다 — 단, 1)을 통과한 오디오에만 쓴다.
+        # 🔴 **호출어를 '하이 티드'로 바꾼 뒤로 이 관문은 할 일이 없다(2026-08-26).**
+        #   원래 이유: '재하봇'은 OOV 고유명사라 힌트 없이는 41% 밖에 못 읽었다.
+        #   '하이티드'는 whisper 가 그대로 읽는다(합성 36개 중 35개 거리 0.000).
+        #
+        #   실기 로그 전수(logs/jaeha_*.log):
+        #     1패스에서 기각(2패스 안 감)   58건
+        #     두 패스 다 돈 경우              9건
+        #     그중 **2패스가 뒤집은 것        0건**
+        #   즉 정밀도는 전부 1)이 만들고 있고, 2)는 성공한 호출마다 whisper 를 한 번 더
+        #   돌릴 뿐이다. 실측 비용 **1.22초**(2026-08-26 15:37:23~24) — 깨어나는 데
+        #   2.53초가 걸렸고 그 절반이 여기였다.
+        #
+        #   ⚠️ 되돌릴 상황: 호출어를 다시 OOV 고유명사로 바꾸면 이 관문이 필요해진다.
+        #      그때는 설정에서 two_pass 를 true 로.
+        if not two_pass:
+            log.info("[검증] 통과 — 힌트없이 '%s' 자모거리 %.2f <= %.2f (1패스)",
+                     (plain or "")[:26], r2, plain_ratio)
+            return True
+
         hinted, _ = stt.transcribe(audio, initial_prompt=prompt)
         r1 = best_wake_ratio(hinted or "", word)
         ok = r1 <= max_ratio

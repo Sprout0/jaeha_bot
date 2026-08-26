@@ -131,3 +131,86 @@ def test_drain_without_open_stream_returns_zero():
 def test_sample_rate_and_frame_constants():
     assert SAMPLE_RATE == 16000
     assert FRAME == 1280  # openWakeWord 규격: 80ms
+
+
+# ── 마이크 버퍼 넘침 (2026-08-26) ────────────────────────────────────────
+# 🔴 왜: 2단계 검증(whisper)이 1.2초쯤 걸리고 그동안 읽기 루프가 멈춘다. 유튜브를 켜면
+#    후보가 1.2초마다 떠서 사실상 계속 검증 중이 된다(실기 로그 14:53:50~56, 6초에 6번).
+#    그때 버퍼가 넘치면 진짜 호출이 통째로 사라지는데, `block, _ = read()` 로 플래그를
+#    **버리고 있어** 넘쳤는지조차 알 수 없었다. 이 프로젝트는 조용한 실패에 반복해 당했다.
+
+class _OverflowStream:
+    """읽을 때마다 넘침을 보고하는 가짜 스트림."""
+
+    def __init__(self, frame, overflow=True):
+        self.frame = frame
+        self.overflow = overflow
+        self.reads = 0
+
+    def read(self, n):
+        self.reads += 1
+        return np.zeros((n, 1), dtype=np.float32), self.overflow
+
+
+def _src_with_stream(stream):
+    from app.audio_source import AudioSource
+    s = AudioSource()
+    s._stream = stream
+    return s
+
+
+def test_overflow_flag_is_not_thrown_away():
+    """🔴 넘침을 세지 않으면 소리가 버려진 걸 영영 모른다."""
+    from app.audio_source import FRAME
+    s = _src_with_stream(_OverflowStream(FRAME, overflow=True))
+    s._read_frame()
+    s._read_frame()
+    assert s.overflows == 2
+
+
+def test_no_overflow_leaves_the_counter_alone():
+    """멀쩡할 때 카운터가 오르면 경고가 늑대소년이 된다."""
+    from app.audio_source import FRAME
+    s = _src_with_stream(_OverflowStream(FRAME, overflow=False))
+    for _ in range(5):
+        s._read_frame()
+    assert s.overflows == 0
+
+
+def test_overflow_still_returns_usable_audio():
+    """넘쳤다고 프레임을 버리면 안 된다 — 남은 소리는 그대로 써야 한다."""
+    from app.audio_source import FRAME
+    s = _src_with_stream(_OverflowStream(FRAME, overflow=True))
+    f = s._read_frame()
+    assert f.shape == (FRAME,) and f.dtype == np.float32
+
+
+def test_overflow_logging_is_rate_limited(caplog):
+    """넘치는 상황에선 프레임마다 넘친다. 그대로 찍으면 초당 12줄이라 [호출] 이 묻힌다."""
+    import logging
+    s = _src_with_stream(None)
+    with caplog.at_level(logging.WARNING, logger="jaeha_bot.audio"):
+        for _ in range(50):
+            s.note_overflow()
+    assert s.overflows == 50
+    lines = [r for r in caplog.records if "넘침" in r.message]
+    assert len(lines) == 1, f"간격 제한이 안 걸렸다({len(lines)}줄)"
+
+
+def test_overflow_total_is_reported_on_close(caplog):
+    """중간 경고는 간격 제한에 걸려 안 나올 수 있다 — 총계는 반드시 남아야 한다."""
+    import logging
+    s = _src_with_stream(None)
+    s.overflows = 7
+    with caplog.at_level(logging.WARNING, logger="jaeha_bot.audio"):
+        s.close()
+    assert any("총 7회" in r.message for r in caplog.records)
+
+
+def test_close_is_quiet_when_nothing_overflowed(caplog):
+    """정상 세션에 경고를 남기면 로그를 안 믿게 된다."""
+    import logging
+    s = _src_with_stream(None)
+    with caplog.at_level(logging.WARNING, logger="jaeha_bot.audio"):
+        s.close()
+    assert not [r for r in caplog.records if "넘침" in r.message]

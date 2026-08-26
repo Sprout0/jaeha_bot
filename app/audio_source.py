@@ -45,6 +45,10 @@ class AudioSource:
         self._verify_ring: deque[np.ndarray] = deque(maxlen=self.verify_frames)
         self._stream = None
         self.noise_floor = 0.0
+        # 마이크 버퍼 넘침 — 넘친 만큼 **소리가 버려졌다**. 아래 _note_overflow 참고.
+        self.overflows = 0
+        self._overflow_since_log = 0
+        self._overflow_logged_at = 0.0
 
     # ------------------------------------------------------------- 스트림 수명
     def open(self, measure_noise: bool = True) -> "AudioSource":
@@ -69,6 +73,11 @@ class AudioSource:
             self._stream.stop()
             self._stream.close()
             self._stream = None
+        # 세션 총계를 한 줄 남긴다 — 간격 제한 때문에 중간 경고가 몇 줄 안 나올 수 있어,
+        # 나중에 로그만 보고 '이 세션에서 소리가 얼마나 버려졌나'를 알 수 있어야 한다.
+        if self.overflows:
+            log.warning("🔴 이 세션 마이크 버퍼 넘침 총 %d회 — 놓친 호출이 있을 수 있다",
+                        self.overflows)
 
     def __enter__(self) -> "AudioSource":
         return self.open()
@@ -79,8 +88,43 @@ class AudioSource:
     # ------------------------------------------------------------- 프레임 공급
     def _read_frame(self) -> np.ndarray:
         """마이크와 닿는 지점 1 — 프레임 하나를 읽는다. 테스트는 여기를 오버라이드한다."""
-        block, _ = self._stream.read(self.frame)
+        block, overflowed = self._stream.read(self.frame)
+        if overflowed:
+            self.note_overflow()
         return np.asarray(block, dtype=np.float32).reshape(-1)
+
+    # 넘침 로그 최소 간격(초). 넘치는 상황에선 프레임마다 넘치므로 그대로 찍으면
+    # 초당 12줄이 쌓여 정작 봐야 할 [검증]·[호출] 줄이 묻힌다.
+    OVERFLOW_LOG_S = 10.0
+
+    def note_overflow(self) -> None:
+        """마이크 버퍼가 넘쳤다 = **그 사이 들어온 소리가 버려졌다.**
+
+        🔴 왜 이걸 세는가 (2026-08-26 추가):
+          2단계 검증(whisper)은 한 번에 1.2초쯤 걸리고, 그동안 이 읽기 루프는 멈춰
+          있다. 유튜브를 켜면 후보가 1.2초마다 떠서 사실상 **계속 검증 중**이 된다
+          (logs/jaeha_20260826.log 14:53:50~56 이 그 모습이다 — 6초 동안 6번).
+          그때 PortAudio 버퍼가 넘치면 진짜 호출이 통째로 사라지는데, 지금까지
+          `block, _ = read()` 로 **플래그를 버리고 있어 넘쳤는지조차 알 수 없었다.**
+
+        이 프로젝트는 조용한 실패에 반복해서 당했다 — 젯슨 기본 마이크가 에러 없이
+        0.0 만 주던 것, 증강 검사가 빈 목록을 받고 '통과'를 찍던 것. 넘침도 같은 종류라
+        **소리 없이 지나가게 두지 않는다.**
+
+        호출부(main·진단)는 `self.overflows` 로 누적 횟수를 볼 수 있다.
+        """
+        import time
+
+        self.overflows += 1
+        self._overflow_since_log += 1
+        now = time.monotonic()
+        if now - self._overflow_logged_at < self.OVERFLOW_LOG_S:
+            return
+        log.warning("🔴 마이크 버퍼 넘침 %d회(누적 %d) — 그만큼 소리가 버려졌다. "
+                    "검증이 길어 읽기가 밀렸을 수 있다(호출을 놓칠 수 있음)",
+                    self._overflow_since_log, self.overflows)
+        self._overflow_since_log = 0
+        self._overflow_logged_at = now
 
     def _available(self) -> int:
         """마이크와 닿는 지점 2 — 지금 당장 읽을 수 있는 샘플 수(스트림 없으면 0).

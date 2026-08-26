@@ -90,3 +90,38 @@ def test_the_current_fillers_survive_the_fastest_turn():
     v = overlap_verdict(buffer_s=1.39, audible_end_s=0.85, answer_at_s=ANSWER_AT_FAST_S)
 
     assert v["audible_cut"] is False, "필러가 제 답에 잘린다 — 문구를 줄일 것"
+
+
+# ── 재생 레이트 고르기 ───────────────────────────────────────────────────────
+# 🔴 젯슨 /etc/asound.conf: `pcm.!default = plug -> hw:APE,0 @48000`.
+#    `plug` 는 뭐든 받아주므로 check_output_settings(44100) 이 성공하고, 운영 경로는
+#    44100 을 고른다 → ALSA 가 매 재생마다 44100->48000 을 변환한다.
+#    그 변환을 빼고 재보려면 레이트를 강제할 수 있어야 한다.
+
+from tools.check_filler import resolve_play_rate
+
+
+class _FakeSd:
+    def __init__(self, dev_rate=48000):
+        self._dev_rate = dev_rate
+
+    def query_devices(self, i):
+        return {"default_samplerate": self._dev_rate}
+
+
+class _FakeTTS:
+    def _resolve_play_rate(self, sd):
+        return 44100        # 운영 경로가 고르는 값
+
+
+def test_a_forced_rate_wins_over_everything():
+    assert resolve_play_rate(_FakeSd(), _FakeTTS(), out_dev=3, forced=48000) == 48000
+
+
+def test_a_named_device_uses_its_own_rate():
+    assert resolve_play_rate(_FakeSd(48000), _FakeTTS(), out_dev=34, forced=None) == 48000
+
+
+def test_without_either_the_operating_path_decides():
+    """운영 경로를 그대로 재현하는 게 기본이어야 한다 — 안 그러면 재현이 아니다."""
+    assert resolve_play_rate(_FakeSd(), _FakeTTS(), out_dev=None, forced=None) == 44100

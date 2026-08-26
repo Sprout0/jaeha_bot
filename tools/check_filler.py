@@ -76,7 +76,23 @@ def _fmt_env(sp: np.ndarray, rate: int, n: int = 8) -> str:
 
 # ── 1) 귀로 확인 ──────────────────────────────────────────────────────────────
 
-def listen(bank, tts, sd, out_dev, reply: str) -> int:
+def resolve_play_rate(sd, tts, out_dev, forced) -> int:
+    """재생에 쓸 레이트. 강제값 > 지정장치 기본값 > 운영 경로 자동선택.
+
+    🔴 젯슨 `/etc/asound.conf` 는 기본 출력을 `plug -> hw:APE,0 @48000` 으로 둔다.
+       `plug` 는 **뭐든 받아주므로** `check_output_settings(44100)` 이 성공하고,
+       운영 경로는 44100 을 고른다 — 그러면 ALSA 가 매 재생마다 44100->48000 을
+       변환한다. `_resolve_play_rate` 는 '받아주나'를 물을 뿐 '네 원래 레이트냐'를
+       묻지 않는다. 여기서 48000 을 강제해 그 변환을 빼고 A/B 하는 게 이 옵션이다.
+    """
+    if forced:
+        return int(forced)
+    if out_dev is not None:
+        return int(sd.query_devices(out_dev)["default_samplerate"])
+    return tts._resolve_play_rate(sd)
+
+
+def listen(bank, tts, sd, out_dev, reply: str, play_rate: int) -> int:
     from app.tts_module import PLAY_PAD_S
 
     print(f"필러 {bank.size}개 / 앞뒤 무음 {bank.pad_s * 1000:.0f}ms "
@@ -129,7 +145,8 @@ def listen(bank, tts, sd, out_dev, reply: str) -> int:
 # ── 2) 마이크로 꼬리 잘림 실측 ────────────────────────────────────────────────
 
 def measure_tail(sd, tts, out_dev, in_dev, repeats: int, bursts: int,
-                 burst_ms: float, margin_db: float, calib: int) -> int:
+                 burst_ms: float, margin_db: float, calib: int,
+                 play_rate: int) -> int:
     """탐침을 **패딩 없이** 재생하고 되받아, 뒤에서 몇 ms 가 사라졌는지 센다.
 
     🔴 기준음을 **앞**에 붙인다. 뒤에 두면 재려는 그 잘림에 함께 쓸려나가 '녹음 실패'와
@@ -145,10 +162,7 @@ def measure_tail(sd, tts, out_dev, in_dev, repeats: int, bursts: int,
         return 1
 
     signal = add_anchor(probe, sr, at_end=False)      # 기준음을 앞에
-    if out_dev is None:
-        rate = tts._resolve_play_rate(sd)
-    else:
-        rate = int(sd.query_devices(out_dev)["default_samplerate"])
+    rate = play_rate
     play = signal if rate == sr else tts._resample(signal, sr, rate)
     allf = freqs + [ANCHOR_HZ]
 
@@ -228,6 +242,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--measure", action="store_true", help="마이크로 꼬리 잘림을 잰다")
     p.add_argument("--out-device", default=None, help="재생 장치(운영 기본이 의심되면 지정)")
     p.add_argument("--in-device", default=None, help="녹음 장치(보통 0=ReSpeaker)")
+    p.add_argument("--play-rate", type=int, default=None,
+                   help="재생 레이트를 강제한다. 젯슨 기본 출력의 원래 레이트는 48000 인데 "
+                        "운영 경로는 44100 을 고른다(ALSA plug 가 받아주므로) — 48000 을 "
+                        "줘서 그 변환을 빼고 재보는 용도")
     p.add_argument("--reply", default="그건 말이야, 하늘이 파란 건 햇빛 때문이야.",
                    help="순서 재현에 쓸 답변 문장")
     p.add_argument("--repeats", type=int, default=6)
@@ -255,9 +273,14 @@ def main(argv: list[str] | None = None) -> int:
     print(f"합성 {tts.sample_rate}Hz -> 재생 {tts._resolve_play_rate(sd)}Hz "
           f"(voice={tts.voice}, steps={tts.total_steps})\n")
 
+    play_rate = resolve_play_rate(sd, tts, out_dev, a.play_rate)
+    if play_rate != tts._resolve_play_rate(sd):
+        print(f"⚠️ 재생 레이트를 {play_rate}Hz 로 바꿔 잰다 "
+              f"(운영 경로는 {tts._resolve_play_rate(sd)}Hz — ALSA plug 가 그 차이를 변환한다)\n")
+
     if a.measure:
         return measure_tail(sd, tts, out_dev, in_dev, a.repeats, a.bursts,
-                            a.burst_ms, a.margin_db, a.calibrate_repeats)
+                            a.burst_ms, a.margin_db, a.calibrate_repeats, play_rate)
 
     from pathlib import Path
     cfg = settings.models.get("filler", {}) or {}
@@ -267,7 +290,7 @@ def main(argv: list[str] | None = None) -> int:
                       delay_s=float(cfg.get("delay_s", 0.0)),
                       enabled=bool(cfg.get("enabled", True)))
     bank.ensure(tts)
-    return listen(bank, tts, sd, out_dev, a.reply)
+    return listen(bank, tts, sd, out_dev, a.reply, play_rate)
 
 
 if __name__ == "__main__":

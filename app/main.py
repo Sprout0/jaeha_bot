@@ -103,7 +103,7 @@ def _build_filler():
     from pathlib import Path
 
     from .audio_player import SoundDeviceSink
-    from .filler import FillerBank
+    from .filler import DEFAULT_TAIL_PAD_S, FillerBank
 
     cfg = settings.models.get("filler", {}) or {}
     try:
@@ -112,6 +112,7 @@ def _build_filler():
             cache_dir=Path(cfg.get("cache_dir", "~/.cache/jaeha_filler")).expanduser(),
             sink=SoundDeviceSink(),
             delay_s=float(cfg.get("delay_s", 0.0)),
+            tail_pad_s=float(cfg.get("tail_pad_s", DEFAULT_TAIL_PAD_S)),
             enabled=bool(cfg.get("enabled", True)),
         )
     except Exception as e:

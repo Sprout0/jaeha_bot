@@ -132,3 +132,35 @@ def test_speak_with_empty_audio_skips_playback(monkeypatch):
 
     t = tts.speak("")
     assert t.play_s == 0.0
+
+
+# ── 말끝 무음은 앞과 따로다 ──────────────────────────────────────────────────
+# 🔴 2026-08-26 젯슨 청취: 답변도 말끝이 끊긴다. 필러 6개를 비교해 보니 꼬리 무음이
+#    472~719ms 인데도 `응, 응` 은 두 번째 음절을 통째로 잃었다 — 장치가 끝에서 그만큼
+#    흘린다는 뜻이다. 앞(0.15s)과 같은 값으로는 못 덮는다.
+# ⚠️ 앞과 달리 뒤는 **공짜가 아니다.** speak() 은 sd.wait() 로 버퍼 끝까지 기다리므로
+#    늘린 만큼 봇이 늦게 듣기 시작한다(체감 응답속도가 아니라 다음 턴 진입이 늦어짐).
+#    그래서 필러(0.6s)보다 짜게 잡고, --measure 로 실측되면 그 값으로 내린다.
+
+def test_the_tail_silence_is_longer_than_the_head():
+    from app.tts_module import PLAY_PAD_S, PLAY_TAIL_PAD_S
+
+    assert PLAY_TAIL_PAD_S > PLAY_PAD_S
+
+
+def test_the_tail_silence_can_be_tuned_per_machine():
+    """젯슨에서 실측한 값으로 코드 수정 없이 내려야 한다."""
+    from app.tts_module import TTSModule
+
+    assert TTSModule(play_tail_pad_s=0.35).play_tail_pad_s == 0.35
+
+
+def test_the_head_silence_still_decides_when_the_first_sound_lands():
+    """뒤를 늘렸다고 첫 소리 계산까지 흔들리면 지연 측정이 통째로 망가진다."""
+    from app.tts_module import PLAY_PAD_S, PLAY_TAIL_PAD_S, TTSModule
+    import inspect
+
+    src = inspect.getsource(TTSModule.speak)
+
+    assert "+ PLAY_PAD_S" in src, "첫 소리에는 **앞** 무음만 더해야 한다"
+    assert "+ PLAY_TAIL_PAD_S" not in src

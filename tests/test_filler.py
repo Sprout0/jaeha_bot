@@ -406,6 +406,7 @@ def test_config_values_reach_the_bank(monkeypatch):
         "enabled": True,
         "phrases": ["어?", "그랬구나"],
         "delay_s": 0.4,
+        "tail_pad_s": 0.8,
         "cache_dir": "~/.cache/test_filler",
     })
 
@@ -413,6 +414,7 @@ def test_config_values_reach_the_bank(monkeypatch):
 
     assert bank.phrases == ["어?", "그랬구나"]
     assert bank.delay_s == 0.4
+    assert bank.tail_pad_s == 0.8, "젯슨에서 코드 수정 없이 못 늘린다"
     assert bank.enabled is True
 
 
@@ -452,9 +454,9 @@ class _LevelTTS(_FakeTTS):
                        self.LEVELS.get(text, 0.05), dtype=np.float32)
 
 
-def _speech_rms(audio, rate, pad_s):
-    pad = int(pad_s * rate)
-    core = audio[pad:audio.size - pad]
+def _speech_rms(bank, audio, rate):
+    """앞뒤 무음을 뺀 말소리 구간의 RMS. 앞뒤 패딩 길이가 다르므로 각각 뺀다."""
+    core = audio[int(bank.pad_s * rate):audio.size - int(bank.tail_pad_s * rate)]
     return float(np.sqrt(np.mean(core ** 2)))
 
 
@@ -479,7 +481,7 @@ def test_every_filler_comes_out_at_the_same_loudness(tmp_path):
     bank = _bank(tmp_path)
     bank.ensure(_LevelTTS())
 
-    levels = [_speech_rms(a, r, bank.pad_s) for a, r in bank._audio]
+    levels = [_speech_rms(bank, a, r) for a, r in bank._audio]
 
     assert max(levels) / min(levels) < 1.05, f"음량이 제각각이다: {levels}"
 
@@ -493,7 +495,7 @@ def test_the_loudness_matches_the_real_answer(tmp_path):
 
     audio, rate = bank._audio[0]
 
-    assert _speech_rms(audio, rate, bank.pad_s) == pytest.approx(TARGET_RMS, rel=0.02)
+    assert _speech_rms(bank, audio, rate) == pytest.approx(TARGET_RMS, rel=0.02)
 
 
 def test_a_very_quiet_filler_is_not_amplified_into_clipping(tmp_path):
@@ -580,3 +582,38 @@ def test_the_filler_still_reaches_the_speaker(tmp_path):
     bank.wait(timeout=2.0)
 
     assert len(sink.plays) == 1, "맡겼는데 소리가 안 났다"
+
+
+# ── 뒤 무음은 앞과 따로다 ────────────────────────────────────────────────────
+# 🔴 2026-08-26 젯슨 청취: `응, 응` 만 유독 끊기고 나머지는 살짝 끊긴다. 꼬리 무음이
+#    472~719ms 인데 장치가 끝에서 그만큼 흘린다는 뜻이다 — 단모음은 여운 끄트머리만
+#    잃어 '살짝'이고, `응, 응` 은 **쉼표 뒤 두 번째 음절을 통째로** 잃는다.
+#    필러의 뒤 무음은 **공짜다**(논블로킹이고 어차피 진짜 답이 덮어쓴다). 넉넉히 준다.
+
+def test_the_tail_padding_is_generous_by_default(tmp_path):
+    """앞과 같은 값(0.15s)으로는 젯슨이 흘리는 양을 못 덮는다."""
+    from app.filler import DEFAULT_PAD_S, DEFAULT_TAIL_PAD_S
+
+    assert DEFAULT_TAIL_PAD_S > DEFAULT_PAD_S
+    assert _bank(tmp_path).tail_pad_s == DEFAULT_TAIL_PAD_S
+
+
+def test_head_and_tail_padding_are_set_independently(tmp_path):
+    bank = _bank(tmp_path, pad_s=0.10, tail_pad_s=0.70)
+    bank.ensure(_FakeTTS())
+
+    audio, rate = bank.next()
+
+    head, tail = int(0.10 * rate), int(0.70 * rate)
+    assert np.all(audio[:head] == 0.0), "앞 무음이 없다"
+    assert np.all(audio[-tail:] == 0.0), "뒤 무음이 모자라다"
+    assert np.any(audio[head:audio.size - tail] != 0.0), "무음만 있고 소리가 없다"
+
+
+def test_changing_the_tail_padding_rebuilds_the_cache(tmp_path):
+    """길이가 달라졌는데 옛 파일을 쓰면 고친 게 적용이 안 된다."""
+    tts = _FakeTTS()
+    short = FillerBank(PHRASES, cache_dir=tmp_path, tail_pad_s=0.2)
+    long = FillerBank(PHRASES, cache_dir=tmp_path, tail_pad_s=0.8)
+
+    assert short.cache_key(tts) != long.cache_key(tts)

@@ -35,6 +35,15 @@ log = logging.getLogger("jaeha_bot.filler")
 #    스트림 시작이 앞 샘플을 흘리므로, 파일에 구워 넣지 않으면 첫 음절이 잘린다.
 DEFAULT_PAD_S = 0.15
 
+# 뒤에 구워 넣는 무음(초). **앞과 따로다.**
+# 🔴 2026-08-26 젯슨 청취: `응, 응` 만 유독 끊기고 나머지는 살짝 끊긴다. 필러들의 꼬리
+#    무음이 472~719ms 인데 장치가 끝에서 그만큼 흘린다는 뜻이다 — 단모음은 여운
+#    끄트머리만 잃어 '살짝'이고, `응, 응` 은 **쉼표 뒤 두 번째 음절을 통째로** 잃는다.
+# ✅ 필러의 뒤 무음은 **공짜다.** 재생이 논블로킹이고, 어차피 진짜 답의 sd.play 가
+#    앞 재생을 닫으며 덮어쓴다. 그래서 답변 TTS 와 달리 아낄 이유가 없다.
+# ⚠️ 다만 버퍼가 답보다 길어지면 꼬리 무음이 잘린다 — 안 들리는 부분이라 무해하다.
+DEFAULT_TAIL_PAD_S = 0.6
+
 # 필러의 목표 음량(말소리 구간 RMS). 답변 TTS 실측 중앙값이다
 # (2026-08-26, F2/speed 1.05, 문장 5개: 0.0538~0.0681, 중앙 0.0625).
 # 🔴 문구마다 그냥 두면 RMS 가 1.9배(피크로는 2.7배)까지 벌어진다 — 어떤 맞장구는
@@ -54,12 +63,14 @@ class FillerBank:
     """
 
     def __init__(self, phrases, cache_dir, *, sink=None,
-                 pad_s: float = DEFAULT_PAD_S, delay_s: float = 0.0,
+                 pad_s: float = DEFAULT_PAD_S,
+                 tail_pad_s: float = DEFAULT_TAIL_PAD_S, delay_s: float = 0.0,
                  target_rms: float = TARGET_RMS, enabled: bool = True) -> None:
         self.phrases = [p for p in (phrases or []) if p and p.strip()]
         self.cache_dir = Path(cache_dir)
         self.sink = sink
         self.pad_s = float(pad_s)
+        self.tail_pad_s = float(tail_pad_s)
         self.delay_s = float(delay_s)
         self.target_rms = float(target_rms)
         self.enabled = bool(enabled)
@@ -78,6 +89,7 @@ class FillerBank:
             str(getattr(tts, "speed", "")),
             str(getattr(tts, "total_steps", "")),
             str(self.pad_s),
+            str(self.tail_pad_s),
             str(self.target_rms),
             *self.phrases,
         ])
@@ -118,10 +130,11 @@ class FillerBank:
     def _render(self, tts, phrase) -> tuple[np.ndarray, int]:
         audio = self._normalize(np.asarray(tts.render(phrase), dtype=np.float32).reshape(-1))
         rate = int(getattr(tts, "sample_rate", 44100))
-        # 🔴 앞뒤 **둘 다** 덧댄다. 뒤가 없으면 장치가 끝 샘플을 흘려 말끝이 '뚝' 끊긴다
-        #    (TTSModule.speak 가 PLAY_PAD_S 를 앞뒤로 붙이는 것과 같은 이유).
-        pad = np.zeros(int(self.pad_s * rate), dtype=np.float32)
-        return np.concatenate([pad, audio, pad]), rate
+        # 🔴 앞뒤 **둘 다** 덧댄다. 뒤가 없으면 장치가 끝 샘플을 흘려 말끝이 '뚝' 끊긴다.
+        #    뒤는 앞보다 넉넉하다 — 이유는 DEFAULT_TAIL_PAD_S 참고.
+        head = np.zeros(int(self.pad_s * rate), dtype=np.float32)
+        tail = np.zeros(int(self.tail_pad_s * rate), dtype=np.float32)
+        return np.concatenate([head, audio, tail]), rate
 
     def _normalize(self, audio: np.ndarray) -> np.ndarray:
         """말소리 구간 RMS 를 target_rms 에 맞춘다. 피크는 PEAK_CEILING 을 안 넘는다.

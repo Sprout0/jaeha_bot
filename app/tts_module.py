@@ -37,6 +37,16 @@ _SENT_SPLIT = re.compile(r"(?<=[.!?。！？…])\s+|\n+")
 # 앞쪽 무음 동안은 **아직 아무 소리도 안 난다** — 체감 지연에 포함해야 한다.
 PLAY_PAD_S = 0.15
 
+# 재생 **뒤**에 덧대는 무음(초). 앞과 따로 둔다.
+# 🔴 2026-08-26 젯슨 청취: 답변도 필러도 말끝이 끊긴다. 필러 6개를 비교하니 꼬리 무음이
+#    472~719ms 인데도 `응, 응` 은 쉼표 뒤 두 번째 음절을 통째로 잃었다 — 장치가 끝에서
+#    그만큼 흘린다는 뜻이다. 앞과 같은 0.15s 로는 못 덮는다.
+# ⚠️ 앞과 달리 뒤는 **공짜가 아니다.** speak() 은 sd.wait() 로 버퍼 끝까지 기다리므로
+#    늘린 만큼 봇이 늦게 듣기 시작한다(체감 응답속도가 아니라 다음 턴 진입이 늦어진다).
+#    그래서 필러(0.6s)보다 짜게 잡았다. `tools/check_filler --measure` 로 실측되면
+#    그 값으로 내릴 것 — 지금 값은 청취에 근거한 **잠정치**다.
+PLAY_TAIL_PAD_S = 0.45
+
 # OpenAI TTS 스트리밍 재생 관련.
 OPENAI_PCM_RATE = 24000   # response_format="pcm" 은 24kHz 16bit mono LE 고정(컨테이너 없음)
 STREAM_CHUNK = 4096       # HTTP 조각 크기
@@ -202,6 +212,8 @@ class TTSModule:
         # ── TensorRT(젯슨 전용 가속) ─────────────────────────────────────────
         # 확산·보코더 세션을 TRT 로 갈아끼운다. 자세한 근거는 _apply_trt 참고.
         # ⚠️ 노트북엔 TRT 가 없다. 같은 config 를 공유하므로 없으면 조용히 지나간다.
+        # 재생 뒤 무음(초). 기계마다 장치가 흘리는 양이 달라 config 로 뺀다(PLAY_TAIL_PAD_S 참고).
+        play_tail_pad_s: float = PLAY_TAIL_PAD_S,
         trt: bool = False,
         trt_cache: str = "~/.cache/trt_supertonic",
         trt_max_latent: int = 200,   # latent 200 ≈ 13.9초 발화. 답변은 2~4초라 넉넉하다
@@ -232,6 +244,7 @@ class TTSModule:
         self.openai_instructions = openai_instructions
         self.openai_timeout = openai_timeout
         self.openai_stream = openai_stream
+        self.play_tail_pad_s = float(play_tail_pad_s)
         self.trt = trt
         self.trt_cache = trt_cache
         self.trt_max_workspace_mb = trt_max_workspace_mb
@@ -859,7 +872,7 @@ class TTSModule:
         # 앞뒤에 짧은 무음을 덧대 그 지연을 무음으로 흡수한다(합성 오디오는 손대지 않음).
         # 오디션 wav(파일 재생)에는 이 현상이 없어 앱만 빠르고 잘려 들렸던 원인.
         audio = np.concatenate([self._silence(PLAY_PAD_S), audio,
-                                self._silence(PLAY_PAD_S)])
+                                self._silence(self.play_tail_pad_s)])
         # 장치가 합성 레이트를 지원하는지 미리 확인해 처음부터 맞는 레이트로 재생한다
         # (실패-후-재시도가 아님 → paInvalidSampleRate 로그 안 뜸).
         # PC 는 대개 그대로, Jetson USB(16000 전용)는 리샘플해서 재생.

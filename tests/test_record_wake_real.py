@@ -135,3 +135,104 @@ def test_check_mic_explains_when_device_is_busy(monkeypatch):
     with pytest.raises(SystemExit) as e:
         check_mic(0)
     assert "봇" in str(e.value)
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  아이 모드 (2026-08-26)
+# ══════════════════════════════════════════════════════════════════════
+# 🔴 왜 여기에 테스트가 필요한가: 아이 모드는 **한 번 녹음하면 다시 못 찍는다.**
+#    2세를 다시 앉히는 비용이 크고, 구간 분리가 틀리면 그 세션이 통째로 버려진다.
+#    마이크 없이 확인할 수 있는 건 전부 여기서 확인한다.
+
+from tools.record_wake_real import (ADULT_CONDITIONS, CHILD_ELICIT,  # noqa: E402
+                                    F0_MAX_ADULT, F0_MAX_CHILD,
+                                    segment_utterances)
+
+
+def _tone(f: float, sec: float, amp: float = 0.3) -> np.ndarray:
+    t = np.arange(int(sec * SR)) / SR
+    return ((2 * ((f * t) % 1.0) - 1.0) * amp).astype(np.float32)
+
+
+def _quiet(sec: float) -> np.ndarray:
+    return np.zeros(int(sec * SR), dtype=np.float32)
+
+
+def test_segments_split_on_long_gaps():
+    """1초 쉬면 다른 발화다 — 두 번 부른 걸 하나로 묶으면 표본이 반으로 준다."""
+    y = np.concatenate([_quiet(1.0), _tone(300, 0.8), _quiet(1.0),
+                        _tone(300, 0.8), _quiet(0.5)])
+    assert len(segment_utterances(y)) == 2
+
+
+def test_segments_merge_across_short_pauses():
+    """아이 내부 쉼 p90 은 0.32s(2026-08-24 실측). '하이…티드'가 갈리면 안 된다."""
+    y = np.concatenate([_quiet(0.5), _tone(300, 0.5), _quiet(0.32),
+                        _tone(300, 0.5), _quiet(0.5)])
+    assert len(segment_utterances(y)) == 1
+
+
+def test_segments_drop_short_clicks_even_though_padding_lengthens_them():
+    """🔴 길이 판정은 덧대기 **전**에. 0.1초 기침도 앞뒤 0.3초가 붙으면 0.7초가 된다."""
+    y = np.concatenate([_quiet(1.0), _tone(300, 0.08), _quiet(1.0)])
+    assert segment_utterances(y) == []
+
+
+def test_segments_pad_so_the_first_consonant_survives():
+    """앞을 바짝 자르면 감지기가 못 잡는다 — 모델 탓이 아니라 녹음 탓이 된다."""
+    y = np.concatenate([_quiet(1.0), _tone(300, 0.8), _quiet(1.0)])
+    (s0, s1), = segment_utterances(y)
+    assert s0 < SR * 1.0, "발화 시작 앞에 여유가 없다"
+    assert s1 > SR * 1.8, "발화 끝 뒤에 여유가 없다"
+
+
+def test_segments_handle_silence_and_empty():
+    assert segment_utterances(np.zeros(0, dtype=np.float32)) == []
+    assert segment_utterances(_quiet(3.0)) == []
+
+
+def test_segment_threshold_follows_the_measured_noise_floor():
+    """시끄러운 방에서 바닥이 높으면 그 위만 발화로 봐야 한다."""
+    rng = np.random.default_rng(0)
+    noisy = (rng.standard_normal(int(3 * SR)) * 0.02).astype(np.float32)
+    assert segment_utterances(noisy, noise_floor=0.02) == []
+
+
+# ── F0 상한 ──────────────────────────────────────────────────────────
+# 🔴 재하 F0 는 이 프로젝트에서 **한 번도 측정된 적이 없다.** 그런데 EXPAND_GRID 의
+#    아이 음역 칸(43%)이 그 미측정 값 위에 서 있다. 처음 재는 값이 천장에 눌리면
+#    다음 학습 데이터를 통째로 잘못 만든다.
+
+def test_child_ceiling_is_above_adult_ceiling():
+    assert F0_MAX_CHILD > F0_MAX_ADULT >= 400
+
+
+def test_excited_child_pitch_needs_the_raised_ceiling():
+    """500Hz 는 흥분한 2세에게 흔하다. 성인 상한(400)으로는 못 읽는다."""
+    saw = _tone(500, 1.0)
+    assert abs(f0_median(saw, f_max=F0_MAX_CHILD) - 500) < 25
+    assert abs(f0_median(saw, f_max=F0_MAX_ADULT) - 500) > 25, \
+        "성인 상한에서도 읽힌다면 이 상한 구분은 의미가 없다"
+
+
+def test_adult_range_still_reads_the_same_with_either_ceiling():
+    """상한을 올린 게 성인 음역 판독을 망치면 부모 녹음이 틀어진다."""
+    saw = _tone(110, 1.0)
+    assert abs(f0_median(saw, f_max=F0_MAX_CHILD)
+               - f0_median(saw, f_max=F0_MAX_ADULT)) < 5
+
+
+# ── 대본 ─────────────────────────────────────────────────────────────
+
+def test_no_stale_wake_word_anywhere_in_the_prompts():
+    """🔴 08-25 에 호출어를 바꿨는데 이 대본에 '재하봇'이 남아 있었다(08-26 발견).
+    부모가 그대로 읽으면 **틀린 호출어로 녹음한 세션 하나를 통째로 버린다.**"""
+    for text in [g for _, g in ADULT_CONDITIONS] + CHILD_ELICIT:
+        assert "재하" not in text and "잰봇" not in text, text
+
+
+def test_child_script_tells_the_parent_not_the_child():
+    """2세는 '빠르게 말하되 다 발음하라'를 수행할 수 없다. 조건은 부모가 만들어 준다."""
+    assert len(CHILD_ELICIT) >= 4
+    assert any("깨워" in s for s in CHILD_ELICIT), "빠르고 높은 소리를 끌어낼 유도가 필요"
+    assert any("멀리" in s for s in CHILD_ELICIT), "실제 호출과 가장 비슷한 조건"

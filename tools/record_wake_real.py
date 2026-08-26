@@ -15,10 +15,22 @@ whisper 전사는 대조군이다. whisper 가 '재하봇'으로 읽는데 감�
 
 녹음물은 버리지 않고 data/wake_real/ 에 쌓는다 — 실음성 재학습의 씨앗이다.
 
+🔴 2026-08-26 두 모드로 나눴다 — **2세는 시키는 대로 못 한다.**
+  위의 조건 안내("빠르게, 그래도 다 발음해서")는 **읽고 따라 할 수 있는 사람**을 전제한다.
+  2세에게는 셋 다 불가능하다: 카운트다운을 기다렸다가 신호에 맞춰 말하기, 네 가지
+  발음 조건을 구분해 수행하기, 20회를 앉아서 반복하기. 그대로 쓰면 무음과 딴소리만
+  쌓이고, 그걸 '못 알아들은 발화'로 세면 결론이 통째로 뒤집힌다(2026-08-12 에 이미
+  같은 종류의 사고가 났다).
+
+  - `--mode adult` (기본): 예전 방식. **부모 녹음에 쓴다**(20~30건 필요).
+  - `--mode child`: 그냥 몇 분 **계속 녹음**하고, 부모가 아이를 놀이로 유도한다.
+      끝나면 소리가 난 구간을 자동으로 잘라 하나씩 **부모가 y/n 으로 확인**한다.
+      아이에게 시키는 게 아니라 **나온 것을 줍는다.**
+
 사용법 (젯슨에서, 봇을 끄고):
     conda activate jaeha_bot && cd ~/jaeha_bot
-    python tools/record_wake_real.py            # 조건당 5회
-    python tools/record_wake_real.py --n 10     # 조건당 10회
+    python tools/record_wake_real.py --mode child --minutes 3   # 아이
+    python tools/record_wake_real.py --n 10                     # 부모(조건당 10회)
 ⚠️ ReSpeaker 는 장치가 하나뿐이라 봇이 돌고 있으면 마이크를 못 연다. 먼저 끌 것.
    (그 상태로 돌리면 젯슨 기본 입력 35번이 잡히는데, 이 장치는 **에러 없이 무음**을 준다.)
 """
@@ -48,12 +60,27 @@ TAKE_S = 3.0          # 한 번 녹음 길이
 # 잘라낸 파일은 그렇지 않으므로, 채점할 때 앞뒤에 무음을 덧대 같은 조건으로 만든다.
 PAD_S = 2.5
 
-CONDITIONS = [
-    ("또박또박", "또박또박 천천히  ―  '재 하 봇'"),
+ADULT_CONDITIONS = [
+    ("또박또박", "또박또박 천천히  ―  '하 이  티 드'"),
     ("보통", "평소처럼  ―  '하이 티드'"),
     ("빠르게", "빠르게, 그래도 다 발음해서  ―  '하이 티드!'"),
-    ("흘려서", "대충 흘려서, 실제로 부를 때처럼  ―  '잰봇' 처럼 돼도 그대로"),
+    ("흘려서", "대충 흘려서, 실제로 부를 때처럼  ―  '하이티' 처럼 돼도 그대로"),
 ]
+
+# 아이에게 주는 지시가 아니라 **부모에게 주는 유도 대본**이다. 2세는 조건을 못 고르므로
+# 조건을 만들어 주는 쪽이 부모다. 아래를 섞어 쓰면 네 조건이 자연스럽게 다 나온다.
+CHILD_ELICIT = [
+    "티드한테 인사하자 —  '하이 티드!'  (부모가 먼저 하고 따라 하게)",
+    "티드가 잠들었대. 깨워 볼까?  (아이가 크게 부르게 된다 = 빠르고 높은 소리)",
+    "속닥속닥 작은 소리로 티드 불러 보자  (작은 소리 표본)",
+    "저기 멀리 있는 티드 불러 보자  (외침 — 아이가 실제로 부를 때와 가장 비슷)",
+    "티드야 뭐 해? 하고 물어보자  (호출어 뒤에 말이 붙는 실제 형태)",
+]
+
+# 아이 목소리는 400Hz 를 넘는다. 자기상관 탐색 상한을 성인 기준으로 두면 흥분한 아이의
+# F0 가 천장에 눌려 조용히 낮게 찍힌다 — 격자의 아이 음역 칸을 정하는 근거가 그 숫자다.
+F0_MAX_ADULT = 400
+F0_MAX_CHILD = 600
 
 
 # 무음 판정 기준. 젯슨 실측(2026-08-12): 조용한 방의 소음 바닥이 RMS 0.0035 정도고,
@@ -131,13 +158,15 @@ def score(det: OnnxWakeDetector, y: np.ndarray) -> float:
     return best
 
 
-def f0_median(y: np.ndarray, sr: int = SR) -> float:
+def f0_median(y: np.ndarray, sr: int = SR, f_max: int = F0_MAX_ADULT) -> float:
     """유성 구간의 기본주파수 중앙값(Hz). 자기상관 — numpy 만 쓴다.
 
-    성인 남성 85~180 / 여성 165~255 / 유아 250~400 대역이 대략의 기준이다.
+    성인 남성 85~180 / 여성 165~255 / 유아 250~400, **흥분한 2세는 400 을 넘는다.**
+    그래서 `f_max` 를 받는다. 상한을 낮게 두면 천장에 눌린 값이 조용히 나오고,
+    그 값으로 격자의 아이 음역 칸을 정하면 데이터를 통째로 잘못 만든다.
     """
     n, hop = 1024, 256
-    lo, hi = sr // 400, sr // 70          # 70~400Hz 만 본다
+    lo, hi = sr // f_max, sr // 70        # 70~f_max Hz 만 본다
     out = []
     for i in range(0, max(0, len(y) - n), hop):
         seg = y[i:i + n].astype(np.float64)
@@ -153,12 +182,268 @@ def f0_median(y: np.ndarray, sr: int = SR) -> float:
     return float(np.median(out)) if out else 0.0
 
 
+# ══════════════════════════════════════════════════════════════════════
+#  아이 모드 — 시키지 않고 줍는다
+# ══════════════════════════════════════════════════════════════════════
+
+def segment_utterances(y: np.ndarray, sr: int = SR, noise_floor: float = 0.0,
+                       min_s: float = 0.35, max_s: float = 4.0,
+                       gap_s: float = 0.45, pad_s: float = 0.30,
+                       k: float = 3.0, floor: float = 0.006
+                       ) -> list[tuple[int, int]]:
+    """소리가 난 구간만 (시작, 끝) 표본 번호로 잘라낸다.
+
+    왜 이렇게 자르나:
+      - `gap_s` 0.45s: 아이 말은 중간에 쉰다. 우리 실측으로 아이 **내부 쉼 p90 이
+        0.32s** 였다(2026-08-24, Smart Turn 조사 부산물). 그보다 넉넉해야 '하이…티드'가
+        두 조각으로 갈리지 않는다.
+      - `pad_s` 0.30s: 앞 자음이 잘리면 감지기가 못 잡는다. 판정이 아니라 녹음 탓이 된다.
+      - `k`·`floor`: 문턱은 잰 소음 바닥에 비례하되 절대 하한을 둔다. 아주 조용한 방에서
+        바닥이 0 에 가까우면 비례값만으로는 숨소리까지 구간이 된다.
+
+    순수 함수다 — 마이크·모델 없이 테스트한다.
+    """
+    if y.size == 0:
+        return []
+    hop = FRAME
+    nf = max(1, len(y) // hop)
+    energy = np.array([rms(y[i * hop:(i + 1) * hop]) for i in range(nf)])
+    thresh = max(noise_floor * k, floor)
+    active = energy > thresh
+    if not active.any():
+        return []
+
+    gap_f = max(1, int(round(gap_s * sr / hop)))
+    segs: list[list[int]] = []
+    for i, on in enumerate(active):
+        if not on:
+            continue
+        if segs and i - segs[-1][1] <= gap_f:
+            segs[-1][1] = i                      # 짧은 쉼은 이어 붙인다
+        else:
+            segs.append([i, i])
+
+    pad = int(round(pad_s * sr))
+    out: list[tuple[int, int]] = []
+    for a, b in segs:
+        # 🔴 길이 판정은 **덧대기 전** 실제 소리 구간으로 한다. 덧댄 뒤에 재면 0.1초짜리
+        #    기침도 앞뒤 0.3초가 붙어 0.7초가 되어 통과한다.
+        if (b - a + 1) * hop / sr < min_s:
+            continue                             # 기침·문 닫는 소리 같은 것
+        s0 = max(0, a * hop - pad)
+        s1 = min(len(y), (b + 1) * hop + pad)
+        if (s1 - s0) / sr > max_s:
+            s1 = s0 + int(max_s * sr)            # 너무 길면 앞쪽만 — 호출어는 앞에 있다
+        out.append((s0, s1))
+    return out
+
+
+def record_session(device: int | None, minutes: float, sr: int = SR) -> np.ndarray:
+    """정해진 시간 동안 계속 녹음한다. Ctrl+C 로 일찍 끝낼 수 있다.
+
+    🔴 아이를 기다리게 하지 않는다. 카운트다운도 신호도 없다 — 부모가 놀이를 하는
+       동안 그냥 흐르고, 무엇을 주웠는지는 끝나고 나서 고른다.
+    """
+    total = int(minutes * 60 * sr)
+    buf: list[np.ndarray] = []
+    got = 0
+    print(f"\n🔴 녹음 시작 — {minutes:g}분. 끝내려면 Ctrl+C.\n")
+    try:
+        with sd.InputStream(samplerate=sr, channels=1, dtype="float32",
+                            blocksize=FRAME, device=device) as st:
+            while got < total:
+                block, overflowed = st.read(FRAME)
+                if overflowed:
+                    print("\r  ⚠️ 입력 넘침(overflow) — 소리가 일부 빠졌다", end="")
+                b = block.reshape(-1).copy()
+                buf.append(b)
+                got += len(b)
+                if len(buf) % 25 == 0:           # 2초마다
+                    sec = got / sr
+                    bar = "█" * int(sec / (minutes * 60) * 30)
+                    print(f"\r  {sec:5.0f}s / {minutes*60:.0f}s  "
+                          f"|{bar:<30}|  지금 소리 {rms(b):.4f}", end="", flush=True)
+    except KeyboardInterrupt:
+        print("\n  (여기서 끝냄)")
+    print()
+    return np.concatenate(buf) if buf else np.zeros(0, dtype=np.float32)
+
+
+def _ask(prompt: str) -> str:
+    """y/n/q 를 받는다. 파이프로 돌리는 경우(EOF)엔 'n' 으로 본다."""
+    try:
+        return input(prompt).strip().lower()
+    except EOFError:
+        return "n"
+
+
+def confirm_segments(segments: list[dict], play: bool = False,
+                     out_device: int | None = None) -> list[dict]:
+    """잘라낸 구간을 하나씩 보여 주고 **부모가** 호출어인지 고른다.
+
+    🔴 자동 라벨링을 하지 않는 이유: whisper 는 유아 음성에서 못 미덥다
+       (5세 WER 21%, [[research-child-stt-robots]]). 전사는 **힌트로만** 보여 주고
+       판단은 사람이 한다. 잘못 라벨된 긍정 한 건이 학습을 망치는 쪽이 더 비싸다.
+    """
+    keep: list[dict] = []
+    print(f"\n{'='*70}")
+    print(f"소리 난 구간 {len(segments)}개를 찾았다. 호출어를 부른 것만 고르자.")
+    print("  y = 호출어 맞음   n = 아님(기본)   a = 남은 것 전부 아님   q = 그만")
+    print(f"{'='*70}")
+    for i, seg in enumerate(segments):
+        hint = f'  전사 "{seg["text"]}"' if seg.get("text") else ""
+        print(f"\n[{i+1}/{len(segments)}] {seg['t0']:.1f}s  길이 {seg['dur']:.1f}s  "
+              f"소리 {seg['rms']:.4f}  F0 {seg['f0']:.0f}Hz{hint}")
+        if play:
+            try:
+                sd.play(seg["audio"], SR, device=out_device)
+                sd.wait()
+            except Exception as e:
+                print(f"    ⚠️ 재생 실패(무시): {type(e).__name__}: {e}")
+        a = _ask("    호출어였나? [y/N/a/q] ")
+        if a == "q":
+            break
+        if a == "a":
+            break
+        if a == "y":
+            keep.append(seg)
+    print(f"\n➡️ {len(keep)}건을 호출어로 확인했다.")
+    return keep
+
+
+def _output_device() -> int | None:
+    name = (load_models().get("audio") or {}).get("device")
+    if not name:
+        return None
+    for i, d in enumerate(sd.query_devices()):
+        if name.lower() in d["name"].lower() and d["max_output_channels"] > 0:
+            return i
+    return None
+
+
+def run_child(det, thr: float, device: int | None, args, outdir: str,
+              f_max: int) -> int:
+    """자유 녹음 -> 자동 구간 분리 -> 부모 확인 -> 채점."""
+    print(f"\n{'='*70}")
+    print("아이 모드 — 아이에게 시키지 않는다. 부모가 놀이로 유도하고, 나온 것을 줍는다.")
+    print(f"{'='*70}")
+    for line in CHILD_ELICIT:
+        print(f"  · {line}")
+    print("\n아이가 딴 얘기를 해도 그냥 두세요. 끝나고 고릅니다.")
+    _ask("준비되면 Enter — ")
+
+    y = record_session(device, args.minutes)
+    if y.size == 0:
+        print("🔴 녹음된 게 없다.")
+        return 1
+
+    raw = os.path.join(outdir, "session.wav")
+    sf.write(raw, y, SR)
+    # 🔴 통짜 녹음을 버리지 않는다. 실제 거실에서 아이가 있는 소리 = 우리에게 **없는**
+    #    배경음·부정 데이터다. 호출어 표본보다 이쪽이 더 귀할 수도 있다.
+    print(f"통짜 녹음 저장: {raw}  ({len(y)/SR:.0f}초) — 배경음·부정 데이터로도 쓴다")
+
+    hop = FRAME
+    frames = np.array([rms(y[i*hop:(i+1)*hop]) for i in range(max(1, len(y)//hop))])
+    floor_rms = float(np.percentile(frames, 20))   # 조용한 쪽 20% 를 바닥으로 본다
+    print(f"소음 바닥(20퍼센타일) {floor_rms:.5f}")
+
+    spans = segment_utterances(y, noise_floor=floor_rms)
+    if not spans:
+        print("🔴 소리 난 구간을 하나도 못 찾았다. 마이크 게인이나 거리 문제일 수 있다.")
+        return 1
+
+    segments = []
+    for (s0, s1) in spans:
+        clip = y[s0:s1].astype(np.float32)
+        segments.append({"t0": s0 / SR, "dur": (s1 - s0) / SR,
+                         "rms": rms(clip), "f0": f0_median(clip, f_max=f_max),
+                         "audio": clip})
+
+    if not args.no_stt:
+        print(f"\nwhisper 로 {len(segments)}개 구간 전사 중(힌트로만 쓴다)...")
+        try:
+            from app.stt_module import STTModule
+            stt = STTModule(**load_models().get("stt", {}))
+            stt.load()
+            for seg in segments:
+                text, _ = stt.transcribe(seg["audio"])
+                seg["text"] = (text or "").strip()
+        except Exception as e:
+            print(f"⚠️ 전사 실패(무시): {e}")
+
+    keep = confirm_segments(segments, play=args.play,
+                            out_device=_output_device() if args.play else None)
+    if not keep:
+        print("\n호출어로 확인된 게 없다. 통짜 녹음은 남겼으니 배경음으로는 쓸 수 있다.")
+        return 1
+
+    takes = []
+    for i, seg in enumerate(keep):
+        path = os.path.join(outdir, f"child_{i:02d}.wav")
+        sf.write(path, seg["audio"], SR)
+        s = score(det, seg["audio"])
+        # 🔴 아이는 이미 음역이 높다. 성인 남성 때와 진단 방향이 **반대**다 —
+        #    못 잡으면 '너무 낮아서'가 아니라 '너무 높아서'를 의심해야 하므로 내려서 잰다.
+        takes.append({"cond": "아이", "path": path, "score": s,
+                      "rms": seg["rms"], "f0": seg["f0"], "silent": False,
+                      "dur": seg["dur"], "text": seg.get("text", ""),
+                      "dn85": score(det, pitch_shift(seg["audio"], 0.85)),
+                      "dn75": score(det, pitch_shift(seg["audio"], 0.75))})
+        mark = "○" if s >= thr else "✗"
+        print(f"  {mark} {os.path.basename(path)}  점수 {s:.3f}  F0 {seg['f0']:.0f}Hz")
+
+    ss = sorted(t["score"] for t in takes)
+    f0s = [t["f0"] for t in takes if t["f0"] > 0]
+    passed = sum(1 for t in takes if t["score"] >= thr)
+    print(f"\n{'='*70}")
+    print(f"호출어 {len(takes)}건 중 **{passed}건 통과** (임계 {thr})  "
+          f"점수 중앙 {ss[len(ss)//2]:.3f}")
+    if f0s:
+        print(f"재하 F0 중앙 **{np.median(f0s):.0f}Hz** "
+              f"(최소 {min(f0s):.0f} / 최대 {max(f0s):.0f})")
+        if np.median(f0s) > f_max * 0.95:
+            print(f"   ⚠️ 탐색 상한 {f_max}Hz 에 눌렸을 수 있다 — --mode child 상한을 올려 다시 볼 것")
+        print("   ➡️ 이 값이 EXPAND_GRID 의 아이 음역 칸을 정하는 근거다"
+              " (그동안 재하 F0 는 **한 번도 측정된 적이 없었다**).")
+    else:
+        print("🔴 F0 가 하나도 안 잡혔다. 녹음을 직접 들어볼 것 — 판정하지 않는다.")
+
+    fails = [t for t in takes if t["score"] < thr]
+    if fails:
+        gain = np.median([max(t["dn85"], t["dn75"]) - t["score"] for t in fails])
+        print(f"\n실패 {len(fails)}건의 **피치 하강** 이득 중앙값: {gain:+.3f}")
+        if gain > 0.15:
+            print("➡️ **음역 문제 — 아이가 학습 음역보다 높다.** 격자 피치 상한을 올려"
+                  " 재학습하면 된다(합성으로 해결 가능).")
+        else:
+            print("➡️ **음역이 아니다.** 피치를 내려도 안 살아난다 — 발음·길이·소음 쪽이다."
+                  " 합성으로는 못 고친다. 이 녹음들을 학습에 넣는 게 답이다.")
+    else:
+        print("\n➡️ 전부 통과했다. 더 어려운 조건을 모아야 한다(멀리서·TV 켜고·뛰면서).")
+
+    with open(os.path.join(outdir, "takes.jsonl"), "w", encoding="utf-8") as f:
+        for t in takes:
+            f.write(json.dumps({k: v for k, v in t.items() if k != "audio"},
+                               ensure_ascii=False) + "\n")
+    print(f"\n저장: {outdir}  (실음성 재학습의 씨앗 — 지금 학습 데이터엔 사람 목소리가 0건이다)")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--n", type=int, default=5, help="조건당 녹음 횟수")
+    ap.add_argument("--mode", choices=("adult", "child"), default="adult",
+                    help="adult=조건별 지시 녹음(부모) / child=자유 녹음 후 골라내기")
+    ap.add_argument("--n", type=int, default=5, help="[adult] 조건당 녹음 횟수")
+    ap.add_argument("--minutes", type=float, default=3.0,
+                    help="[child] 계속 녹음할 시간(분). Ctrl+C 로 일찍 끝낼 수 있다")
+    ap.add_argument("--play", action="store_true",
+                    help="[child] 확인할 때 구간을 스피커로 들려준다")
     ap.add_argument("--outdir", default="data/wake_real")
     ap.add_argument("--no-stt", action="store_true", help="whisper 전사 생략(빠름)")
     args = ap.parse_args()
+    child = args.mode == "child"
+    f_max = F0_MAX_CHILD if child else F0_MAX_ADULT
 
     cfg = load_models()["wake"]["onnx"]
     thr = float(cfg["threshold"])
@@ -169,11 +454,14 @@ def main() -> int:
     check_mic(device)
 
     day = datetime.now().strftime("%Y%m%d_%H%M")
-    outdir = os.path.join(args.outdir, day)
+    outdir = os.path.join(args.outdir, f"{'child' if child else 'adult'}_{day}")
     os.makedirs(outdir, exist_ok=True)
 
+    if child:
+        return run_child(det, thr, device, args, outdir, f_max)
+
     takes = []
-    for label, guide in CONDITIONS:
+    for label, guide in ADULT_CONDITIONS:
         print(f"\n{'='*60}\n[{label}]  {guide}\n{'='*60}")
         for k in range(args.n):
             print(f"({k+1}/{args.n})", end="")
@@ -229,7 +517,7 @@ def main() -> int:
     print(f"{'조건':<8}{'n':>3}{'통과':>6}{'점수중앙':>9}{'F0':>7}"
           f"{'피치+15%':>9}{'피치+35%':>9}   전사(다수)")
     print("-" * 74)
-    for label, _ in CONDITIONS:
+    for label, _ in ADULT_CONDITIONS:
         g = [t for t in takes if t["cond"] == label]
         if not g:
             continue

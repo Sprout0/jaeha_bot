@@ -1,9 +1,15 @@
 """필러(맞장구)가 젯슨에서 성립하나 — 귀로 한 번, 마이크로 한 번 확인한다.
 
 실행(젯슨):
+    python -m tools.check_filler --sweep        # 🔴 소리가 아예 안 나면 여기부터
     python -m tools.check_filler                # 1) 장치 2) 캐시 3) 하나씩 4) 실제 순서
     python -m tools.check_filler --measure      # 마이크로 '꼬리 잘림' 실측(숫자)
     python -m tools.check_filler --out-device 0 # 출력 장치를 바꿔 재볼 때
+
+🔴 2026-08-26: 이 도구가 젯슨에서 **예외 없이 끝까지 돌면서 소리는 하나도 안 났다.**
+   `/etc/asound.conf` 가 기본 출력을 `plug -> hw:APE,0` 으로 두는데 그건 Tegra 오디오
+   패브릭의 DMA 입구(ADMAIF)라, XBAR 라우팅과 코덱이 없으면 아무 데도 안 간다.
+   입력에서 겪은 '죽은 default' 와 **같은 함정이 출력에도 있었다.** --sweep 이 그걸 찾는다.
 
 🔴 왜 이 도구가 필요한가. 2026-08-26 젯슨 청취에서 **필러도 답변도 말끝이 뚝 끊긴다**는
    보고가 나왔는데, 노트북에서는 잘릴 자리가 없었다:
@@ -74,6 +80,48 @@ def _fmt_env(sp: np.ndarray, rate: int, n: int = 8) -> str:
     return " ".join(f"{v:4.1f}" for v in env)
 
 
+# ── 0) 어느 장치가 진짜 소리를 내나 ──────────────────────────────────────────
+# 🔴 2026-08-26 젯슨: `/etc/asound.conf` 가 기본 출력을 `plug -> hw:APE,0` 으로 두는데,
+#    `hw:APE,0` 은 Tegra 오디오 패브릭의 DMA 입구(ADMAIF)다. XBAR 라우팅과 코덱이
+#    없으면 **아무 데도 안 간다** — sd.play 는 성공하고 소리만 없다.
+#    입력에서 겪은 '죽은 default' 와 같은 함정이 출력에도 있었다.
+
+def output_candidates(devices) -> list[tuple[int, str]]:
+    """소리를 내볼 만한 출력 장치. APE 내부 링크는 뺀다 — 24개가 전부 DMA 입구라
+    하나씩 다 재보게 하면 사람이 못 듣고 지친다."""
+    out = []
+    for i, d in enumerate(devices):
+        if d["max_output_channels"] <= 0:
+            continue
+        if "APE" in d["name"]:          # tegra-dlink / ADMAIF: 사람이 들을 물건이 아니다
+            continue
+        out.append((i, d["name"]))
+    return out
+
+
+def sweep(sd, tts, devices) -> int:
+    """후보 장치마다 '몇 번'이라고 말해 본다. 들리는 번호가 곧 진짜 스피커다."""
+    cands = output_candidates(devices)
+    print(f"후보 {len(cands)}개. 각 장치로 번호를 말합니다 — **들리는 번호를 적어두세요.**")
+    print()
+    for i, name in cands:
+        try:
+            rate = int(sd.query_devices(i)["default_samplerate"])
+            audio = tts.render(f"{i}번")
+            play = audio if rate == tts.sample_rate else tts._resample(audio, tts.sample_rate, rate)
+            print(f"  {i:3d} | {rate:6d}Hz | {name}", flush=True)
+            sd.play(play, rate, device=i)
+            sd.wait()
+        except Exception as e:
+            print(f"  {i:3d} | 열지 못함: {type(e).__name__}: {str(e)[:80]}")
+        time.sleep(0.5)
+    print()
+    print("들린 번호를 --out-device 에 넣어 다시 확인할 것:")
+    print("  python -m tools.check_filler --out-device <번호>")
+    print("  python -m tools.check_filler --measure --in-device 0 --out-device <번호>")
+    return 0
+
+
 # ── 1) 귀로 확인 ──────────────────────────────────────────────────────────────
 
 def resolve_play_rate(sd, tts, out_dev, forced) -> int:
@@ -122,14 +170,18 @@ def listen(bank, tts, sd, out_dev, reply: str, play_rate: int) -> int:
         print(f"✅ 가장 늦게 끝나는 '{worst[0]}' 도 답보다 {v['margin_s']:.2f}s 먼저 끝난다"
               + (" (꼬리 무음만 잘림)" if v["cut"] else ""))
 
-    input("\n[1/2] 필러를 하나씩 냅니다. 각각 말끝이 맺히는지 들어보세요. Enter> ")
+    input(f"\n[1/2] 필러를 하나씩 냅니다({play_rate}Hz, 장치 "
+          f"{out_dev if out_dev is not None else '기본'}). 말끝이 맺히는지 들어보세요. Enter> ")
     for (audio, rate), phrase in zip(bank._audio, bank.phrases):
+        out = audio if rate == play_rate else tts._resample(audio, rate, play_rate)
         print(f"   {phrase}")
-        sd.play(audio, rate, device=out_dev)
+        sd.play(out, play_rate, device=out_dev)
         sd.wait()
         time.sleep(0.4)
 
-    input(f"\n[2/2] 실제 순서를 재현합니다(필러 -> 답). Enter> ")
+    # ⚠️ 여기는 **운영 경로 그대로** 간다(--play-rate / --out-device 를 안 탄다).
+    #    실기에서 나는 소리를 재현하는 게 목적이라, 여기서 손대면 재현이 아니게 된다.
+    input("\n[2/2] 실제 순서를 재현합니다(필러 -> 답, 운영 경로 그대로). Enter> ")
     for label, delay in (("최악(답이 빨리 옴)", ANSWER_AT_FAST_S),
                          ("보통", ANSWER_AT_TYPICAL_S)):
         print(f"   {label}: 필러 -> {delay:.2f}초 뒤 답")
@@ -240,6 +292,9 @@ def measure_tail(sd, tts, out_dev, in_dev, repeats: int, bursts: int,
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="젯슨에서 필러가 성립하나 확인")
     p.add_argument("--measure", action="store_true", help="마이크로 꼬리 잘림을 잰다")
+    p.add_argument("--sweep", action="store_true",
+                   help="후보 출력 장치마다 번호를 말해 본다 — 소리가 안 날 때 먼저 이걸로 "
+                        "진짜 스피커를 찾을 것(젯슨 기본 출력은 hw:APE,0 = 죽은 DMA 입구다)")
     p.add_argument("--out-device", default=None, help="재생 장치(운영 기본이 의심되면 지정)")
     p.add_argument("--in-device", default=None, help="녹음 장치(보통 0=ReSpeaker)")
     p.add_argument("--play-rate", type=int, default=None,
@@ -272,6 +327,9 @@ def main(argv: list[str] | None = None) -> int:
     tts.load()
     print(f"합성 {tts.sample_rate}Hz -> 재생 {tts._resolve_play_rate(sd)}Hz "
           f"(voice={tts.voice}, steps={tts.total_steps})\n")
+
+    if a.sweep:
+        return sweep(sd, tts, sd.query_devices())
 
     play_rate = resolve_play_rate(sd, tts, out_dev, a.play_rate)
     if play_rate != tts._resolve_play_rate(sd):

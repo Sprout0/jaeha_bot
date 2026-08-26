@@ -125,3 +125,38 @@ def test_a_named_device_uses_its_own_rate():
 def test_without_either_the_operating_path_decides():
     """운영 경로를 그대로 재현하는 게 기본이어야 한다 — 안 그러면 재현이 아니다."""
     assert resolve_play_rate(_FakeSd(), _FakeTTS(), out_dev=None, forced=None) == 44100
+
+
+# ── 어느 장치가 진짜 스피커인가 ──────────────────────────────────────────────
+# 🔴 젯슨 기본 출력(`plug -> hw:APE,0`)은 Tegra 오디오 패브릭의 DMA 입구다. XBAR
+#    라우팅과 코덱이 없으면 **sd.play 는 성공하고 소리만 안 난다.** 그래서 후보를
+#    하나씩 재보는 모드가 필요한데, APE 내부 링크가 24개나 있어 그냥 다 재면 못 듣는다.
+
+from tools.check_filler import output_candidates
+
+
+def _dev(name, out=2, inp=0):
+    return {"name": name, "max_output_channels": out, "max_input_channels": inp}
+
+
+def test_input_only_devices_are_not_candidates():
+    devs = [_dev("마이크", out=0, inp=6), _dev("스피커", out=2)]
+
+    assert output_candidates(devs) == [(1, "스피커")]
+
+
+def test_the_ape_dma_links_are_left_out():
+    """이걸 안 빼면 사람이 24번 삑 소리를 듣고 있어야 한다 — 아무것도 안 들리는 채로."""
+    devs = [_dev("ReSpeaker (hw:0,0)"),
+            _dev("NVIDIA Jetson Orin Nano APE: - (hw:2,0)"),
+            _dev("NVIDIA Jetson Orin Nano APE: - (hw:2,1)"),
+            _dev("HDMI 0 (hw:1,3)", out=8)]
+
+    assert output_candidates(devs) == [(0, "ReSpeaker (hw:0,0)"), (3, "HDMI 0 (hw:1,3)")]
+
+
+def test_the_index_is_the_device_index_not_the_candidate_number():
+    """돌려주는 번호를 --out-device 에 그대로 넣는다 — 어긋나면 엉뚱한 장치를 지정한다."""
+    devs = [_dev("mic", out=0, inp=2), _dev("mic2", out=0, inp=2), _dev("speaker")]
+
+    assert output_candidates(devs)[0][0] == 2

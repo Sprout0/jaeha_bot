@@ -103,7 +103,7 @@ def _build_filler():
     from pathlib import Path
 
     from .audio_player import SoundDeviceSink
-    from .filler import DEFAULT_TAIL_PAD_S, FillerBank
+    from .filler import DEFAULT_TAIL_PAD_S, MAX_AWAIT_S, FillerBank
 
     cfg = settings.models.get("filler", {}) or {}
     try:
@@ -113,6 +113,7 @@ def _build_filler():
             sink=SoundDeviceSink(),
             delay_s=float(cfg.get("delay_s", 0.0)),
             tail_pad_s=float(cfg.get("tail_pad_s", DEFAULT_TAIL_PAD_S)),
+            max_await_s=float(cfg.get("max_await_s", MAX_AWAIT_S)),
             enabled=bool(cfg.get("enabled", True)),
         )
     except Exception as e:
@@ -347,6 +348,12 @@ def main() -> None:
                 reply, kind = SAFE_RECOVERY, "recovery"
             think_s = time.perf_counter() - t_think
             log.info("[티드] %s", reply)
+
+            # 🔴 필러가 아직 말하는 중이면 그 말끝까지 기다렸다 이어받는다. 안 그러면
+            #    답의 sd.play 가 앞 재생을 닫아 **필러를 말하다 말고 자른다**(그 '뚝').
+            #    보통 턴은 필러가 이미 끝나 있어 대기가 0 이고, 아니어도 상한이 있다.
+            if filler is not None:
+                filler.await_quiet()
 
             # 말하기 + 에코 쿨다운(재생 여운이 가라앉은 뒤 다시 듣기).
             # speak() 은 재생이 끝날 때까지 막힌다. 그래서 '첫 소리까지'와 '말하는 시간'을

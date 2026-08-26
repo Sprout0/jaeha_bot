@@ -24,6 +24,7 @@ import hashlib
 import logging
 import random
 import threading
+import time
 from pathlib import Path
 
 import numpy as np
@@ -44,6 +45,10 @@ DEFAULT_PAD_S = 0.15
 # ⚠️ 다만 버퍼가 답보다 길어지면 꼬리 무음이 잘린다 — 안 들리는 부분이라 무해하다.
 DEFAULT_TAIL_PAD_S = 0.6
 
+# 답이 필러 말끝을 기다려 주는 상한(초). 필러는 최적화지 기능이 아니라서 답을 무한정
+# 붙잡으면 안 된다. 보통 턴은 필러가 이미 끝나 있어 실제 대기는 0 이다.
+MAX_AWAIT_S = 0.5
+
 # 필러의 목표 음량(말소리 구간 RMS). 답변 TTS 실측 중앙값이다
 # (2026-08-26, F2/speed 1.05, 문장 5개: 0.0538~0.0681, 중앙 0.0625).
 # 🔴 문구마다 그냥 두면 RMS 가 1.9배(피크로는 2.7배)까지 벌어진다 — 어떤 맞장구는
@@ -53,6 +58,12 @@ TARGET_RMS = 0.0625
 PEAK_CEILING = 0.95
 # 무음 판정(≈-60dB). tts_module._trim 의 thr 과 같은 발상.
 _SILENCE_THR = 1e-3
+
+
+def _audible_s(audio: np.ndarray, rate: int) -> float:
+    """버퍼에서 **소리가 끝나는** 시각(초). 뒤에 구워 넣은 무음은 빼고 센다."""
+    nz = np.where(np.abs(audio) > _SILENCE_THR)[0]
+    return float(nz[-1] + 1) / rate if nz.size else 0.0
 
 
 class FillerBank:
@@ -65,7 +76,8 @@ class FillerBank:
     def __init__(self, phrases, cache_dir, *, sink=None,
                  pad_s: float = DEFAULT_PAD_S,
                  tail_pad_s: float = DEFAULT_TAIL_PAD_S, delay_s: float = 0.0,
-                 target_rms: float = TARGET_RMS, enabled: bool = True) -> None:
+                 target_rms: float = TARGET_RMS,
+                 max_await_s: float = MAX_AWAIT_S, enabled: bool = True) -> None:
         self.phrases = [p for p in (phrases or []) if p and p.strip()]
         self.cache_dir = Path(cache_dir)
         self.sink = sink
@@ -73,9 +85,12 @@ class FillerBank:
         self.tail_pad_s = float(tail_pad_s)
         self.delay_s = float(delay_s)
         self.target_rms = float(target_rms)
+        self.max_await_s = float(max_await_s)
         self.enabled = bool(enabled)
         self._audio: list[tuple[np.ndarray, int]] = []
+        self._audible: list[float] = []     # 각 필러의 **말소리** 길이(꼬리 무음 제외)
         self._last = -1
+        self._quiet_at = 0.0                # 지금 낸 필러의 말소리가 끝나는 시각
         self._thread: threading.Thread | None = None
 
     # ------------------------------------------------------------------ 캐시
@@ -110,6 +125,7 @@ class FillerBank:
 
         made = 0
         self._audio = []
+        self._audible = []
         for i, phrase in enumerate(self.phrases):
             path = self.cache_dir / f"{key}_{i}.wav"
             try:
@@ -119,7 +135,9 @@ class FillerBank:
                     audio, rate = self._render(tts, phrase)
                     sf.write(str(path), audio, rate)
                     made += 1
-                self._audio.append((np.asarray(audio, dtype=np.float32).reshape(-1), int(rate)))
+                buf = np.asarray(audio, dtype=np.float32).reshape(-1)
+                self._audio.append((buf, int(rate)))
+                self._audible.append(_audible_s(buf, int(rate)))
             except Exception as e:   # 한 문장이 실패해도 나머지는 살린다
                 log.warning("필러 준비 실패(건너뜀) [%s]: %s: %s",
                             phrase, type(e).__name__, str(e)[:120])
@@ -177,6 +195,10 @@ class FillerBank:
         i = self._pick_index()
         return self._audio[i] if i >= 0 else None
 
+    def _audible_of_last_pick(self) -> float:
+        i = self._last
+        return self._audible[i] if 0 <= i < len(self._audible) else 0.0
+
     # ------------------------------------------------------------------ 재생
     def play(self) -> bool:
         """하나 내보내라고 **맡긴다**. 맡겼으면 True(=소리가 났다는 뜻은 아니다).
@@ -190,6 +212,8 @@ class FillerBank:
         picked = self.next()
         if picked is None:
             return False
+        # 답이 이 시각까지 기다렸다 이어받으면 이음매가 안 생긴다(await_quiet).
+        self._quiet_at = time.monotonic() + self.delay_s + self._audible_of_last_pick()
         if self.delay_s > 0:
             t = threading.Timer(self.delay_s, self._emit, args=picked)
         else:
@@ -198,6 +222,22 @@ class FillerBank:
         self._thread = t
         t.start()
         return True
+
+    def await_quiet(self, max_wait: float | None = None) -> float:
+        """지금 낸 필러의 **말소리**가 끝날 때까지 기다린다. 기다린 초를 돌려준다.
+
+        🔴 이걸 안 하면 답의 `sd.play` 가 앞 재생을 닫으며 필러를 **말하다 말고 자른다.**
+           delay_s 를 키울수록(답에 붙일수록) 그 창이 넓어진다 — 사용자가 들은 '뚝'.
+        ⚠️ 꼬리 **무음**은 안 기다린다. 아무도 못 듣는 0.6초를 매 턴 손해 볼 수 없다.
+        ⚠️ 상한이 있다. 필러는 최적화지 기능이 아니라서, 답을 무한정 붙잡으면 안 된다.
+        """
+        cap = self.max_await_s if max_wait is None else max_wait
+        remain = self._quiet_at - time.monotonic()
+        if remain <= 0:
+            return 0.0
+        remain = min(remain, max(0.0, float(cap)))
+        time.sleep(remain)
+        return remain
 
     def wait(self, timeout: float | None = None) -> None:
         """맡긴 재생이 장치로 넘어갈 때까지 기다린다. 테스트·종료용."""
@@ -212,6 +252,7 @@ class FillerBank:
         try:
             if getattr(self.sink, "is_playing", False):
                 log.debug("이미 재생 중이라 필러를 버린다(답을 끊지 않는다)")
+                self._quiet_at = 0.0        # 안 낸 소리를 기다리게 두면 안 된다
                 return False
         except Exception:       # is_playing 이 장치를 건드리다 터져도 필러는 내야 한다
             pass

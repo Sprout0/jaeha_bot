@@ -407,6 +407,7 @@ def test_config_values_reach_the_bank(monkeypatch):
         "phrases": ["어?", "그랬구나"],
         "delay_s": 0.4,
         "tail_pad_s": 0.8,
+        "max_await_s": 0.25,
         "cache_dir": "~/.cache/test_filler",
     })
 
@@ -415,6 +416,7 @@ def test_config_values_reach_the_bank(monkeypatch):
     assert bank.phrases == ["어?", "그랬구나"]
     assert bank.delay_s == 0.4
     assert bank.tail_pad_s == 0.8, "젯슨에서 코드 수정 없이 못 늘린다"
+    assert bank.max_await_s == 0.25
     assert bank.enabled is True
 
 
@@ -663,3 +665,73 @@ def test_a_sink_without_the_flag_still_works(tmp_path):
     bank.wait(timeout=2.0)
 
     assert len(sink.plays) == 1
+
+
+# ── 답이 필러를 자르지 않고 이어받는다 ───────────────────────────────────────
+# 🔴 delay_s 를 키우면(0.7) 답이 필러 말하는 도중에 나온다. `sd.play` 는 앞 재생을
+#    닫으므로 필러가 **말하다 말고 통째로 잘린다** — 사용자가 들은 '뚝'이 이것이다.
+#    ➡️ 답이 필러 말소리 끝까지 기다렸다 이어받으면 이음매가 사라진다. 비용은 유한하다
+#       (상한 있음), 그리고 대개 0 이다 — 보통 턴은 필러가 이미 끝나 있다.
+# ⚠️ 꼬리 **무음**까지 기다리면 안 된다. 0.6s 를 통째로 손해 보면서 아무도 못 듣는다.
+
+def test_the_bank_knows_how_long_each_filler_actually_sounds(tmp_path):
+    bank = _bank(tmp_path, pad_s=0.15, tail_pad_s=0.6)
+    bank.ensure(_FakeTTS())          # 소리 0.3s
+
+    # 앞무음 0.15 + 소리 0.3 = 0.45. 뒤 무음 0.6 은 **안 센다.**
+    assert bank._audible == pytest.approx([0.45] * len(PHRASES), abs=0.01)
+
+
+def test_the_answer_waits_out_the_rest_of_the_filler(tmp_path):
+    import time
+
+    bank = _bank(tmp_path, delay_s=0.0)
+    bank.ensure(_FakeTTS())
+
+    bank.play()
+    t0 = time.perf_counter()
+    waited = bank.await_quiet(max_wait=1.0)
+    elapsed = time.perf_counter() - t0
+
+    assert 0.35 < elapsed < 0.6, f"말소리 0.45s 를 안 기다렸다({elapsed:.2f}s)"
+    assert waited == pytest.approx(elapsed, abs=0.05)
+
+
+def test_the_wait_is_capped_so_a_long_filler_cannot_hold_the_answer(tmp_path):
+    import time
+
+    bank = _bank(tmp_path, delay_s=3.0)      # 한참 뒤에 나올 예정
+    bank.ensure(_FakeTTS())
+
+    bank.play()
+    t0 = time.perf_counter()
+    bank.await_quiet(max_wait=0.2)
+
+    assert time.perf_counter() - t0 < 0.35, "상한을 안 지켰다 — 답이 그만큼 늦는다"
+
+
+def test_waiting_with_nothing_playing_returns_at_once(tmp_path):
+    import time
+
+    bank = _bank(tmp_path)
+    bank.ensure(_FakeTTS())
+
+    t0 = time.perf_counter()
+
+    assert bank.await_quiet(max_wait=1.0) == 0.0
+    assert time.perf_counter() - t0 < 0.05
+
+
+def test_a_dropped_filler_is_not_waited_for(tmp_path):
+    """이미 답이 말하고 있어 필러를 버렸으면 기다릴 게 없다."""
+    import time
+
+    bank = _bank(tmp_path, sink=_BusySink(busy=True))
+    bank.ensure(_FakeTTS())
+
+    bank.play()
+    bank.wait(timeout=2.0)
+    t0 = time.perf_counter()
+    bank.await_quiet(max_wait=1.0)
+
+    assert time.perf_counter() - t0 < 0.05, "안 낸 소리를 기다렸다"

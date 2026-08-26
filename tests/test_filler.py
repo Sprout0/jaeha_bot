@@ -144,6 +144,7 @@ def test_playing_is_non_blocking(tmp_path):
     bank.ensure(_FakeTTS())
 
     bank.play()
+    bank.wait(timeout=2.0)
 
     assert len(sink.plays) == 1
     assert sink.plays[0][2] is False, "블로킹으로 재생했다"
@@ -155,6 +156,7 @@ def test_disabled_bank_stays_silent(tmp_path):
     bank.ensure(_FakeTTS())
 
     bank.play()
+    bank.wait(timeout=2.0)
 
     assert sink.plays == []
 
@@ -172,10 +174,17 @@ def test_disabled_bank_does_not_even_synthesize(tmp_path):
 # 필러는 기능이 아니라 최적화다. 어떤 실패도 위로 안 던진다.
 
 def test_a_broken_sink_does_not_break_the_turn(tmp_path):
+    """장치가 죽어 있어도 예외가 위로 안 올라온다.
+
+    ⚠️ play() 는 '맡겼다'만 알린다 — 실제 재생은 딴 스레드라 성공 여부를 못 돌려준다
+    (그렇게 바꾼 이유는 아래 test_play_returns_before_the_device_finishes_opening).
+    그러니 여기서 볼 것은 '터지지 않는가' 하나뿐이다.
+    """
     bank = _bank(tmp_path, sink=_BrokenSink())
     bank.ensure(_FakeTTS())
 
-    assert bank.play() is False, "실패를 알리되 예외는 안 던진다"
+    assert bank.play() is True, "맡기지도 못했다"
+    bank.wait(timeout=2.0)     # 스레드 안에서 예외가 삼켜졌는지 여기서 드러난다
 
 
 def test_a_broken_tts_does_not_break_startup(tmp_path):
@@ -527,3 +536,47 @@ def test_changing_the_target_loudness_rebuilds_the_cache(tmp_path):
     loud = FillerBank(PHRASES, cache_dir=tmp_path, target_rms=0.09)
 
     assert quiet.cache_key(tts) != loud.cache_key(tts)
+
+
+# ── 진짜로 안 막히나 ─────────────────────────────────────────────────────────
+# 🔴 2026-08-26 실측: `sd.play()` 는 block=False 여도 **반환까지 318~480ms 를 먹는다**
+#    (MME 스트림 여는 비용). 위 test_playing_is_non_blocking 은 sink 의 block 플래그만
+#    보느라 이걸 놓쳤다 — 필러가 매 자유대화 턴마다 진짜 답을 그만큼 늦추고 있었다.
+
+class _SlowSink:
+    """스트림 여는 데 오래 걸리는 장치. sounddevice 가 실제로 이렇다."""
+
+    def __init__(self, open_s=0.3):
+        self.open_s, self.plays = open_s, []
+
+    def play(self, samples, rate, block):
+        import time
+        time.sleep(self.open_s)
+        self.plays.append((int(np.asarray(samples).size), int(rate), bool(block)))
+
+
+def test_play_returns_before_the_device_finishes_opening(tmp_path):
+    """장치를 여는 동안 붙잡으면 그만큼 진짜 답이 늦는다 — 필러의 존재 이유가 뒤집힌다."""
+    import time
+
+    sink = _SlowSink(open_s=0.3)
+    bank = _bank(tmp_path, sink=sink)
+    bank.ensure(_FakeTTS())
+
+    t0 = time.perf_counter()
+    bank.play()
+    elapsed = time.perf_counter() - t0
+
+    assert elapsed < 0.05, f"{elapsed*1000:.0f}ms 를 붙잡았다 — 답이 그만큼 늦는다"
+
+
+def test_the_filler_still_reaches_the_speaker(tmp_path):
+    """안 막힌다고 안 나가면 안 된다 — 맡긴 일은 끝나야 한다."""
+    sink = _SlowSink(open_s=0.05)
+    bank = _bank(tmp_path, sink=sink)
+    bank.ensure(_FakeTTS())
+
+    bank.play()
+    bank.wait(timeout=2.0)
+
+    assert len(sink.plays) == 1, "맡겼는데 소리가 안 났다"

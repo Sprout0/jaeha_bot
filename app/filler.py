@@ -65,6 +65,7 @@ class FillerBank:
         self.enabled = bool(enabled)
         self._audio: list[tuple[np.ndarray, int]] = []
         self._last = -1
+        self._thread: threading.Thread | None = None
 
     # ------------------------------------------------------------------ 캐시
     def cache_key(self, tts) -> str:
@@ -165,9 +166,11 @@ class FillerBank:
 
     # ------------------------------------------------------------------ 재생
     def play(self) -> bool:
-        """논블로킹으로 하나 낸다. 성공하면 True.
+        """하나 내보내라고 **맡긴다**. 맡겼으면 True(=소리가 났다는 뜻은 아니다).
 
-        ⚠️ 절대 막지 않는다. 여기서 붙잡는 만큼 진짜 답이 그대로 늦어진다.
+        🔴 반드시 딴 스레드로 넘긴다. `sd.play()` 는 block=False 여도 반환까지
+           318~480ms 를 먹는다(2026-08-26 실측, MME 스트림 여는 비용) — 여기서
+           기다리면 필러가 줄이려던 침묵을 **진짜 지연으로 바꿔** 되돌려준다.
         """
         if not self.enabled or self.sink is None or not self._audio:
             return False
@@ -175,9 +178,19 @@ class FillerBank:
         if picked is None:
             return False
         if self.delay_s > 0:
-            threading.Timer(self.delay_s, self._emit, args=picked).start()
-            return True
-        return self._emit(*picked)
+            t = threading.Timer(self.delay_s, self._emit, args=picked)
+        else:
+            t = threading.Thread(target=self._emit, args=picked)
+        t.daemon = True
+        self._thread = t
+        t.start()
+        return True
+
+    def wait(self, timeout: float | None = None) -> None:
+        """맡긴 재생이 장치로 넘어갈 때까지 기다린다. 테스트·종료용."""
+        t = self._thread
+        if t is not None:
+            t.join(timeout)
 
     def _emit(self, audio, rate) -> bool:
         try:

@@ -424,3 +424,106 @@ def test_a_missing_filler_section_does_not_crash(monkeypatch):
     bank = m._build_filler()
 
     assert bank is not None and bank.phrases == []
+
+
+# ── 말끝 · 음량 ───────────────────────────────────────────────────────────────
+# 🔴 2026-08-26 실측: Supertonic 이 늘어진 모음을 **최대 음량에서 그대로 멈춘다.**
+#    "오~" 는 피크의 40.9% 에서 20ms 만에 사라졌다(감쇠 40ms). 문구를 "오..." 로
+#    바꿔 모델이 스스로 맺게 했고(140ms), 여기 두 테스트가 나머지 둘을 지킨다:
+#    뒤 무음(장치가 끝 샘플을 흘리는 것)과 음량(문구별 RMS 가 1.9배까지 벌어졌다).
+
+class _LevelTTS(_FakeTTS):
+    """문구마다 다른 크기로 내는 가짜 — 실제 Supertonic 이 그렇다."""
+
+    LEVELS = {"음~": 0.02, "그래?": 0.30, "아~": 0.06, "오~": 0.10}
+
+    def render(self, text):
+        self.calls.append(text)
+        return np.full(int(0.3 * self.sample_rate),
+                       self.LEVELS.get(text, 0.05), dtype=np.float32)
+
+
+def _speech_rms(audio, rate, pad_s):
+    pad = int(pad_s * rate)
+    core = audio[pad:audio.size - pad]
+    return float(np.sqrt(np.mean(core ** 2)))
+
+
+def test_the_tail_gets_silence_too_so_the_last_sound_is_not_cut(tmp_path):
+    """뒤 무음이 없으면 장치가 끝 샘플을 흘려 말끝이 '뚝' 끊긴다.
+
+    TTSModule.speak 는 앞뒤 둘 다 덧대는데(tts_module.py PLAY_PAD_S) SoundDeviceSink
+    는 안 붙인다 — 그러니 파일에 구워 넣어야 한다.
+    """
+    bank = _bank(tmp_path, pad_s=0.15)
+    bank.ensure(_FakeTTS())
+
+    audio, rate = bank.next()
+
+    pad = int(0.15 * rate)
+    assert np.all(audio[-pad:] == 0.0), "뒤 무음이 없다 — 말끝이 잘린다"
+    assert np.any(audio[pad:audio.size - pad] != 0.0), "무음만 있고 소리가 없다"
+
+
+def test_every_filler_comes_out_at_the_same_loudness(tmp_path):
+    """문구마다 크기가 다르면 어떤 맞장구는 안 들리고 어떤 건 놀랜다."""
+    bank = _bank(tmp_path)
+    bank.ensure(_LevelTTS())
+
+    levels = [_speech_rms(a, r, bank.pad_s) for a, r in bank._audio]
+
+    assert max(levels) / min(levels) < 1.05, f"음량이 제각각이다: {levels}"
+
+
+def test_the_loudness_matches_the_real_answer(tmp_path):
+    """답변 TTS 실측 RMS(=TARGET_RMS)에 맞춘다. 맞장구만 크거나 작으면 튄다."""
+    from app.filler import TARGET_RMS
+
+    bank = _bank(tmp_path)
+    bank.ensure(_LevelTTS())
+
+    audio, rate = bank._audio[0]
+
+    assert _speech_rms(audio, rate, bank.pad_s) == pytest.approx(TARGET_RMS, rel=0.02)
+
+
+def test_a_very_quiet_filler_is_not_amplified_into_clipping(tmp_path):
+    """RMS 를 맞추다 피크가 1.0 을 넘으면 찢어진 소리가 난다."""
+    from app.filler import PEAK_CEILING
+
+    class _Spiky(_FakeTTS):
+        def render(self, text):
+            a = np.full(int(0.3 * self.sample_rate), 1e-4, dtype=np.float32)
+            a[0] = 0.9          # RMS 는 바닥, 피크는 이미 높다
+            return a
+
+    bank = _bank(tmp_path, phrases=["음~"])
+    bank.ensure(_Spiky())
+
+    audio, _ = bank._audio[0]
+
+    assert np.max(np.abs(audio)) <= PEAK_CEILING + 1e-6, "찢어진다"
+
+
+def test_a_silent_render_does_not_blow_up(tmp_path):
+    """무음을 정규화하면 0 으로 나눈다. 필러 하나 때문에 기동이 죽으면 안 된다."""
+
+    class _Silent(_FakeTTS):
+        def render(self, text):
+            return np.zeros(int(0.3 * self.sample_rate), dtype=np.float32)
+
+    bank = _bank(tmp_path, phrases=["음~"])
+    bank.ensure(_Silent())
+
+    audio, _ = bank._audio[0]
+
+    assert np.all(np.isfinite(audio)), "NaN/inf 가 스피커로 나간다"
+
+
+def test_changing_the_target_loudness_rebuilds_the_cache(tmp_path):
+    """목소리와 같은 이유 — 기준이 바뀌었는데 옛 음량 파일을 쓰면 안 된다."""
+    tts = _FakeTTS()
+    quiet = FillerBank(PHRASES, cache_dir=tmp_path, target_rms=0.03)
+    loud = FillerBank(PHRASES, cache_dir=tmp_path, target_rms=0.09)
+
+    assert quiet.cache_key(tts) != loud.cache_key(tts)

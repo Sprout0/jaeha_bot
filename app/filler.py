@@ -35,6 +35,16 @@ log = logging.getLogger("jaeha_bot.filler")
 #    스트림 시작이 앞 샘플을 흘리므로, 파일에 구워 넣지 않으면 첫 음절이 잘린다.
 DEFAULT_PAD_S = 0.15
 
+# 필러의 목표 음량(말소리 구간 RMS). 답변 TTS 실측 중앙값이다
+# (2026-08-26, F2/speed 1.05, 문장 5개: 0.0538~0.0681, 중앙 0.0625).
+# 🔴 문구마다 그냥 두면 RMS 가 1.9배(피크로는 2.7배)까지 벌어진다 — 어떤 맞장구는
+#    안 들리고 어떤 건 놀랜다. 답변과 같은 크기로 들려야 한 사람 목소리로 들린다.
+TARGET_RMS = 0.0625
+# 조용한 문구를 끌어올리다 찢어지지 않게 하는 천장.
+PEAK_CEILING = 0.95
+# 무음 판정(≈-60dB). tts_module._trim 의 thr 과 같은 발상.
+_SILENCE_THR = 1e-3
+
 
 class FillerBank:
     """미리 합성해 캐시해 둔 맞장구 모음. 고르고, 튼다.
@@ -45,19 +55,20 @@ class FillerBank:
 
     def __init__(self, phrases, cache_dir, *, sink=None,
                  pad_s: float = DEFAULT_PAD_S, delay_s: float = 0.0,
-                 enabled: bool = True) -> None:
+                 target_rms: float = TARGET_RMS, enabled: bool = True) -> None:
         self.phrases = [p for p in (phrases or []) if p and p.strip()]
         self.cache_dir = Path(cache_dir)
         self.sink = sink
         self.pad_s = float(pad_s)
         self.delay_s = float(delay_s)
+        self.target_rms = float(target_rms)
         self.enabled = bool(enabled)
         self._audio: list[tuple[np.ndarray, int]] = []
         self._last = -1
 
     # ------------------------------------------------------------------ 캐시
     def cache_key(self, tts) -> str:
-        """목소리·speed·확산스텝·문구가 하나라도 다르면 다른 키가 된다.
+        """목소리·speed·확산스텝·문구·음량기준이 하나라도 다르면 다른 키가 된다.
 
         🔴 목소리를 갈아탔을 때 필러만 옛 목소리로 겉도는 사고를 구조로 막는다.
         """
@@ -66,6 +77,7 @@ class FillerBank:
             str(getattr(tts, "speed", "")),
             str(getattr(tts, "total_steps", "")),
             str(self.pad_s),
+            str(self.target_rms),
             *self.phrases,
         ])
         return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
@@ -103,10 +115,31 @@ class FillerBank:
         return made
 
     def _render(self, tts, phrase) -> tuple[np.ndarray, int]:
-        audio = np.asarray(tts.render(phrase), dtype=np.float32).reshape(-1)
+        audio = self._normalize(np.asarray(tts.render(phrase), dtype=np.float32).reshape(-1))
         rate = int(getattr(tts, "sample_rate", 44100))
+        # 🔴 앞뒤 **둘 다** 덧댄다. 뒤가 없으면 장치가 끝 샘플을 흘려 말끝이 '뚝' 끊긴다
+        #    (TTSModule.speak 가 PLAY_PAD_S 를 앞뒤로 붙이는 것과 같은 이유).
         pad = np.zeros(int(self.pad_s * rate), dtype=np.float32)
-        return np.concatenate([pad, audio]), rate
+        return np.concatenate([pad, audio, pad]), rate
+
+    def _normalize(self, audio: np.ndarray) -> np.ndarray:
+        """말소리 구간 RMS 를 target_rms 에 맞춘다. 피크는 PEAK_CEILING 을 안 넘는다.
+
+        ⚠️ 페이드는 하지 않는다 — tts_module._trim 이 '페이드아웃 금지'로 못 박아 둔
+           그 이유(예전 뚝 끊김의 원인)가 여기도 그대로 적용된다. 크기만 건드린다.
+        """
+        if audio.size == 0:
+            return audio
+        nz = np.where(np.abs(audio) > _SILENCE_THR)[0]
+        speech = audio[nz[0]:nz[-1] + 1] if nz.size else audio
+        rms = float(np.sqrt(np.mean(speech ** 2)))
+        if rms <= 0.0:                       # 통무음 — 0 으로 나누면 NaN 이 스피커로 간다
+            return audio
+        gain = self.target_rms / rms
+        peak = float(np.max(np.abs(audio)))
+        if peak * gain > PEAK_CEILING:       # 찢어지느니 조금 작은 편이 낫다
+            gain = PEAK_CEILING / peak
+        return (audio * gain).astype(np.float32)
 
     @property
     def size(self) -> int:

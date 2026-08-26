@@ -58,6 +58,14 @@ def main() -> int:
     # 실기 답변은 2~4초다. 줄이면 얼마나 주는지 재려고 둔다.
     # ⚠️ 값을 바꾸면 엔진을 다시 굽는다(확산 72s + 보코더 49s). 캐시 폴더도 나눠 쓴다.
     ap.add_argument("--trt-max-latent", type=int, default=None)
+    ap.add_argument("--trt-workspace", type=int, default=None,
+                    help="TRT 작업공간 상한(MB). 지금은 미설정 = ORT 기본값")
+    ap.add_argument("--trt-targets", default=None,
+                    help="쉼표 구분. 예: vector_estimator (보코더 TRT 를 뺀다)")
+    ap.add_argument("--no-trt-backup", action="store_true",
+                    help="⚠️ 원본 CUDA 세션을 안 들고 있는다 — 프로파일 밖 문장에서 소리가 안 난다")
+    ap.add_argument("--stt-compute", default=None,
+                    help="whisper compute_type override. 예: int8_float16")
     args = ap.parse_args()
 
     from app.config import settings  # noqa: E402
@@ -69,8 +77,27 @@ def main() -> int:
     from app.vision_module import VisionDetector  # noqa: E402
     s.mark("모듈 import")
 
-    stt = STTModule(**settings.models.get("stt", {}))
+    stt_cfg = dict(settings.models.get("stt", {}))
+    if args.stt_compute:
+        stt_cfg["compute_type"] = args.stt_compute
+        print(f"   (whisper compute_type={args.stt_compute})")
+    stt = STTModule(**stt_cfg)
     tts_cfg = dict(settings.models.get("tts", {}))
+    tag = []
+    if args.trt_workspace:
+        tts_cfg["trt_max_workspace_mb"] = args.trt_workspace
+        tag.append(f"ws{args.trt_workspace}")
+    if args.trt_targets:
+        tts_cfg["trt_targets"] = tuple(x.strip() for x in args.trt_targets.split(","))
+        tag.append("t-" + args.trt_targets.replace(",", "-"))
+    if args.no_trt_backup:
+        # 엔진 자체엔 영향이 없다 — 캐시를 새로 굽지 않게 tag 에 넣지 않는다.
+        tts_cfg["trt_keep_backup"] = False
+        print("   (원본 CUDA 세션 안 들고 있음)")
+    if tag:
+        # 엔진 캐시를 나눠 써야 운영 엔진을 안 덮어쓴다(빌드 조건이 다르면 다시 굽는다).
+        tts_cfg["trt_cache"] = "~/.cache/trt_probe_" + "_".join(tag)
+        print(f"   ({', '.join(tag)} — 엔진을 새로 구울 수 있다, 2분쯤)")
     if args.no_trt:
         tts_cfg["trt"] = False
         print("   (TRT 끔)")

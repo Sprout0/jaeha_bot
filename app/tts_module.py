@@ -205,6 +205,16 @@ class TTSModule:
         trt_cache: str = "~/.cache/trt_supertonic",
         trt_max_latent: int = 200,   # latent 200 ≈ 13.9초 발화. 답변은 2~4초라 넉넉하다
         trt_max_text: int = 256,
+        # TRT 작업공간 상한(MB). None = ORT-TRT 기본값(크게 잡는다).
+        # 🔴 2026-08-26: TRT 가 2,887MB 를 먹는 게 확인돼 손잡이만 달아 둔다.
+        #    기본 None 이라 **지금 동작은 안 바뀐다.** 값을 주면 엔진을 다시 굽는다.
+        trt_max_workspace_mb: int | None = None,
+        # TRT 를 붙일 대상. None = 둘 다(현행). ('vector_estimator',) 처럼 줄일 수 있다.
+        # 확산은 발화당 total_steps(24)번 돌고 보코더는 1번이라 값어치가 다르다.
+        trt_targets: tuple | list | None = None,
+        # 원본 CUDA 세션을 들고 있을지. True(현행)면 프로파일 밖 문장에 되돌아갈 수 있지만
+        # vector_estimator·vocoder 를 **두 벌** 물고 있는 셈이다.
+        trt_keep_backup: bool = True,
     ) -> None:
         self.model = model
         self.voice = voice
@@ -223,6 +233,9 @@ class TTSModule:
         self.openai_stream = openai_stream
         self.trt = trt
         self.trt_cache = trt_cache
+        self.trt_max_workspace_mb = trt_max_workspace_mb
+        self.trt_keep_backup = trt_keep_backup
+        self.trt_targets = trt_targets
         self.trt_max_latent = trt_max_latent
         self.trt_max_text = trt_max_text
         self._trt_backup = {}     # TRT 로 갈아끼우기 **전**의 세션. 폴백용으로 들고 있는다
@@ -329,6 +342,10 @@ class TTSModule:
             "trt_profile_max_shapes": self._trt_profile(
                 name, self.trt_max_latent, self.trt_max_text),
         }
+        if self.trt_max_workspace_mb:
+            # 빌드 때 TRT 가 전술을 고르며 쓸 수 있는 상한. 좁히면 메모리를 덜 쓰는
+            # 전술을 고른다 — 대신 느린 전술이 뽑힐 수 있어 속도를 같이 재야 한다.
+            opts["trt_max_workspace_size"] = int(self.trt_max_workspace_mb) * 1024 * 1024
         return ort.InferenceSession(
             str(path), sess_options=so,
             providers=[("TensorrtExecutionProvider", opts),
@@ -366,7 +383,9 @@ class TTSModule:
             log.info("TensorRT 확인 불가(%s) — 기존 프로바이더로 계속", type(e).__name__)
             return
 
-        for name, attr in self._TRT_TARGETS:
+        targets = [(n, a) for n, a in self._TRT_TARGETS
+                   if self.trt_targets is None or n in self.trt_targets]
+        for name, attr in targets:
             t0 = time.perf_counter()
             try:
                 sess = self._make_trt_session(name)
@@ -375,7 +394,10 @@ class TTSModule:
                             name, type(e).__name__, str(e)[:160])
                 continue
             # 원래 세션은 버리지 않는다 — 프로파일을 벗어난 문장이 오면 되돌아간다.
-            self._trt_backup[attr] = getattr(self._tts.model, attr)
+            # ⚠️ 그 대가로 이 모델을 **두 벌** 물고 있는 셈이다. trt_keep_backup: false 면
+            #    버려서 메모리를 아끼는 대신 프로파일 밖 문장에서 되돌아갈 수 없다.
+            if self.trt_keep_backup:
+                self._trt_backup[attr] = getattr(self._tts.model, attr)
             setattr(self._tts.model, attr, sess)
             log.info("TensorRT 적용 [%s] %.1fs", name, time.perf_counter() - t0)
 

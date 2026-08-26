@@ -316,3 +316,79 @@ def test_conversation_stt_has_no_wake_prompt():
         (Path(__file__).resolve().parent.parent / "configs" / "model_paths.yaml")
         .read_text(encoding="utf-8"))
     assert not (cfg.get("stt") or {}).get("initial_prompt")
+
+
+# ── 우회컷 (2026-08-26) ──────────────────────────────────────────────────
+# 🔴 왜: 2단계가 진짜 호출을 죽이고 있었다. 실음성 20건에서 1단계 19/20 -> 캐스케이드
+#    11/20. 죽은 것 중 1단계 점수 **0.873** 짜리가 있다(whisper 가 '하이치 루' 로 읽음).
+#    실제 거실 소음 3분의 최고 점수는 0.173 이라, 그 위는 소음이 만들 수 있는 값이 아니다.
+
+def test_high_score_skips_the_verifier_entirely():
+    """모델이 확신하면 whisper 를 안 부른다 — 0.873 이 '하이치 루' 로 기각된 실례가 있다."""
+    calls = []
+
+    def verifier(audio):
+        calls.append(1)
+        return False                      # 불렸다면 기각시켜 실패를 드러낸다
+
+    d, _ = _det([0.0, 0.9], verifier=verifier, verify_bypass=0.20)
+    r = d.wait_for_wake(max_frames=5)
+    assert r is not None, "우회컷 위인데 검증에 걸렸다"
+    assert calls == [], "우회컷 위에서 whisper 를 불렀다"
+
+
+def test_low_score_still_goes_through_the_verifier():
+    """우회는 확신할 때만이다. 낮은 점수까지 통과시키면 헛깨움이 폭발한다."""
+    calls = []
+
+    def verifier(audio):
+        calls.append(1)
+        return False
+
+    d, _ = _det([0.0, 0.10], verifier=verifier, verify_bypass=0.20)
+    assert d.wait_for_wake(max_frames=5) is None
+    assert calls == [1], "우회컷 아래인데 검증을 건너뛰었다"
+
+
+def test_bypass_is_off_by_default_so_rollback_is_a_config_line():
+    """기본값은 꺼짐이어야 한다 — 설정을 지우면 옛 동작으로 돌아가야 한다."""
+    calls = []
+    d, _ = _det([0.0, 0.99], verifier=lambda a: (calls.append(1), True)[1])
+    d.wait_for_wake(max_frames=5)
+    assert calls == [1], "설정 없이도 우회가 켜져 있다 — 점수는 1.0 을 못 넘어야 한다"
+
+
+def test_bypass_ignores_cooldown_and_hysteresis():
+    """🔴 우회는 쿨다운·히스테리시스 **위**에 있어야 한다.
+
+    아래에 두면 '방금 소음을 기각했다'는 이유로 바로 뒤따르는 진짜 호출이 막힌다.
+    실제로 그 순서 때문에 점수 0.226 짜리 진짜 호출을 통째로 흘려보낸 로그가 있다
+    (2026-08-12 14:11). 우회는 그 함정을 지나가야 한다.
+    """
+    d, _ = _det([0.0, 0.10, 0.9], verifier=lambda a: False,
+                verify_bypass=0.20, verify_cooldown_s=999.0)
+    r = d.wait_for_wake(max_frames=6)
+    assert r is not None and r.score == 0.9, "쿨다운이 우회를 막았다"
+
+
+def test_shipped_bypass_sits_above_the_measured_room_noise():
+    """🔴 설정값이 실측 방 소음(3분 최고 0.173) 위에 있어야 한다.
+
+    우회컷을 넘는 소음은 whisper 를 건너뛰므로 **곧바로 헛깨움**이 된다.
+    실측 사건율(환산 회·시간): 0.20 -> 0 / 0.15 -> 20 / 0.10 -> 40 / 0.05 -> 160.
+    ⚠️ 0.173 은 3분 표본의 최고치다. 더 길게 재서 이 값을 확정할 것.
+    """
+    from pathlib import Path
+
+    import yaml
+
+    cfg = yaml.safe_load(
+        (Path(__file__).resolve().parent.parent / "configs" / "model_paths.yaml")
+        .read_text(encoding="utf-8"))
+    v = (cfg["wake"]["onnx"].get("verify") or {})
+    byp = float(v.get("bypass_score", 1.01))
+    if byp >= 1.0:
+        return                                    # 우회 꺼짐 — 검사할 게 없다
+    assert byp > 0.173, f"우회컷 {byp} 이 실측 방 소음 최고치 0.173 아래다"
+    assert byp > float(cfg["wake"]["onnx"]["threshold"]), \
+        "우회컷이 1단계 임계보다 낮으면 2단계가 통째로 무력화된다"

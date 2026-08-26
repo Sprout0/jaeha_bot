@@ -65,7 +65,8 @@ class OnnxWakeDetector:
                  continuation_window: float = 0.5,
                  verifier=None, verify_cooldown_s: float = 1.0,
                  verify_min_rms: float = 0.005,
-                 verify_rearm_delta: float = 0.05) -> None:
+                 verify_rearm_delta: float = 0.05,
+                 verify_bypass: float = 1.01) -> None:
         import pathlib
 
         import onnxruntime as ort
@@ -86,12 +87,13 @@ class OnnxWakeDetector:
 
         self._init_state(threshold, trigger_frames, continuation_window, source,
                          verifier, verify_cooldown_s, verify_min_rms,
-                         verify_rearm_delta)
+                         verify_rearm_delta, verify_bypass)
 
     def _init_state(self, threshold, trigger_frames, continuation_window, source,
                     verifier=None, verify_cooldown_s: float = 1.0,
                     verify_min_rms: float = 0.005,
-                    verify_rearm_delta: float = 0.05):
+                    verify_rearm_delta: float = 0.05,
+                    verify_bypass: float = 1.01):
         """__init__ 과 테스트가 공유하는 순수 상태 초기화(ONNX 로드 없음).
 
         ⚠️ 새 상태는 **반드시 여기에** 둔다. __init__ 에만 두면 _init_state 로 만든
@@ -111,6 +113,13 @@ class OnnxWakeDetector:
         # 직전 검증보다 이만큼 높은 점수는 '새 사건'으로 보고 재무장한다.
         # 소음이 계속돼 점수가 임계 아래로 안 내려가는 상황의 유일한 탈출구다.
         self.verify_rearm_delta = float(verify_rearm_delta)
+        # 🟢 2026-08-26 우회컷. 이 점수를 넘으면 whisper 를 부르지 않고 바로 깨어난다.
+        #    근거: 실제 거실 녹음(유튜브 켠 3분)의 **최고 점수가 0.173** 이었다. 그보다
+        #    확실히 위인 점수는 소음이 만들 수 있는 값이 아니다. 반면 진짜 호출은 실음성
+        #    실측에서 0.39·0.66·0.87 까지 나온다 — 그런 걸 whisper 에게 물어 봐야
+        #    손해만 본다(0.873 짜리가 '하이치 루' 로 읽혀 기각된 실례가 있다).
+        #    1.01 = 사실상 끔(점수는 1.0 을 못 넘는다). 설정에서 켠다.
+        self.verify_bypass = float(verify_bypass)
         self._armed = True       # 히스테리시스: 기각 후에는 점수가 임계 아래로 내려가야 재무장
         self._last_verify = 0.0  # 쿨다운 기준 시각
         self._last_score = 0.0   # 직전 검증 때의 점수(재무장 판단용)
@@ -216,6 +225,19 @@ class OnnxWakeDetector:
              ② 쿨다운      — 그래도 최소 verify_cooldown_s 는 쉰다
         """
         import time
+
+        # ── 0) 우회 — 1단계가 확신하면 whisper 를 안 부른다 ──────────────
+        # 🔴 여기가 **검증 전에** 와야 한다. 쿨다운·히스테리시스 아래에 두면 확신하는
+        #    호출이 '방금 기각했다'는 이유로 같이 막힌다.
+        # 근거(2026-08-26 실측): 실제 거실 3분 최고 점수 0.173 vs 진짜 호출 0.39~0.87.
+        #    캐스케이드 재현율이 실음성 20건에서 11/20 -> 14/20 으로 오른다.
+        # ⚠️ 3분 표본의 최고치다. 더 길게 재면 더 높은 순간이 나온다 — 우회컷은
+        #    그 측정 뒤에 확정할 값이다. 낮출수록 whisper 를 건너뛴 헛깨움이 는다.
+        if score >= self.verify_bypass:
+            log.info("[검증] 건너뜀 — 점수 %.3f >= 우회컷 %.2f (방 소음 실측 최고 0.173)",
+                     score, self.verify_bypass)
+            self._hits = 0
+            return True
 
         # 🔴 재무장 조건이 둘이다. '임계 아래로 내려갔다 오기'만으로는 소음 속에서 영영
         #    재무장이 안 된다 — 유튜브가 계속 나오면 점수가 임계(0.05) 아래로 안 떨어져

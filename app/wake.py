@@ -214,6 +214,8 @@ def make_detector(wcfg: dict, stt, source):
             verify_cooldown_s=float(vcfg.get("cooldown_s", 1.0)),
             verify_min_rms=float(vcfg.get("min_rms", 0.005)),
             verify_rearm_delta=float(vcfg.get("rearm_delta", 0.05)),
+            # 1.01 = 끔. 점수는 1.0 을 못 넘으므로 설정이 없으면 옛 동작 그대로다.
+            verify_bypass=float(vcfg.get("bypass_score", 1.01)),
         )
     except Exception as e:
         log.warning("ONNX 호출어 감지기 로드 실패(%s: %s) → STT 감지기로 폴백",

@@ -49,6 +49,9 @@ class AudioSource:
         self.overflows = 0
         self._overflow_since_log = 0
         self._overflow_logged_at = 0.0
+        # drain() 안에서 난 넘침은 따로 센다 — 거기선 **일부러 버리는** 중이라 손실이 아니다.
+        self.drained_overflows = 0
+        self._draining = False
 
     # ------------------------------------------------------------- 스트림 수명
     def open(self, measure_noise: bool = True) -> "AudioSource":
@@ -115,6 +118,15 @@ class AudioSource:
         """
         import time
 
+        # 🔴 drain() 중의 넘침은 경고하지 않는다 (2026-08-26 실기에서 바로 드러났다).
+        #   drain() 은 봇이 말하고 생각하는 동안 쌓인 **자기 목소리를 일부러 버리는** 자리다.
+        #   턴이 끝날 때마다 버퍼가 넘쳐 있는 게 정상이고, 그때 '호출을 놓칠 수 있다'고
+        #   찍으면 거짓말이다. 실기 첫 세션에서 17회 중 **15회가 이것**이었다 —
+        #   이대로 두면 로그를 안 믿게 되고, 진짜 2회가 묻힌다.
+        if self._draining:
+            self.drained_overflows += 1
+            return
+
         self.overflows += 1
         self._overflow_since_log += 1
         now = time.monotonic()
@@ -176,9 +188,14 @@ class AudioSource:
         """
         dropped = 0
         # 한 프레임도 못 채울 만큼 남을 때까지 읽어서 버린다(최대 79ms 는 남을 수 있다).
-        while self._available() >= self.frame:
-            self._read_frame()
-            dropped += self.frame
+        # _draining 동안의 버퍼 넘침은 경고하지 않는다 — 여기가 버리는 자리다(note_overflow 참고).
+        self._draining = True
+        try:
+            while self._available() >= self.frame:
+                self._read_frame()
+                dropped += self.frame
+        finally:
+            self._draining = False
         self._ring.clear()
         self._verify_ring.clear()
         if dropped:

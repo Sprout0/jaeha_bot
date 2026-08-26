@@ -229,7 +229,8 @@ class MetricsLogger:
                     think_s: float, think_kind: str, tts_first_s: float,
                     tts_synth_s: float = 0.0,
                     tts_play_s: float = 0.0, reply: str = "",
-                    child_text: str = "", vad_tail_s: float = 0.0) -> None:
+                    child_text: str = "", vad_tail_s: float = 0.0,
+                    filler_wait_s: float = 0.0) -> None:
         """한 턴의 단계 지연을 기록한다.
 
         vad_tail_s : **말끝 → 녹음 종료**. 아이가 순전히 기다리는 구간이다.
@@ -249,6 +250,12 @@ class MetricsLogger:
            센다. 이게 '몇 초 만에 반응하나'에 해당하는 숫자다.
            ⚠️ 그래서 이 필드는 2026-08-09 이전 기록과 직접 비교하면 안 된다.
 
+        🔴 2026-08-26 추가: `filler_wait_s`. 필러가 아직 말하는 중이면 답이 그 말끝까지
+           기다렸다 이어받는다(filler.await_quiet). 그 대기는 think 측정이 끝난 뒤
+           speak 이 시작되기 **전**에 일어나서 꼬리·인식·생각·첫소리 어디에도 안 잡혔다
+           — 아이는 기다렸는데 지표만 몰랐다. 아래 08-09·08-13 과 **같은 종류의 구멍**이라
+           같은 방식으로 막는다: felt 에 더하고, 따로도 보이게 남긴다.
+
         🔴 2026-08-13 추가(metric_ver 3): 그 `resp_compute_s` 도 '말끝부터'가
            아니었다. **VAD 꼬리 대기가 빠져 있었다** — 말끝 뒤 조용해질 때까지
            기다리는 시간은 `stt_wait_s` 안에서 아이가 말한 시간과 섞여 있어
@@ -261,7 +268,7 @@ class MetricsLogger:
             return
         self.turn += 1
         resp = round(stt_rec_s + think_s + tts_first_s, 3)
-        felt = round(vad_tail_s + resp, 3)
+        felt = round(vad_tail_s + resp + filler_wait_s, 3)
         # 낱말을 파싱해서 개수를 봐야 한다 — 원본 문자열은 "..." 처럼 문장부호만
         # 있어도 truthy라서, 원본으로 판단하면 reuse(None)와 expansion_delta(숫자)가
         # 같은 턴에서 서로 다른 결론을 낸다. 반드시 _words() 결과로 판단할 것.
@@ -282,7 +289,8 @@ class MetricsLogger:
             "tts_synth_s": round(tts_synth_s, 3),
             "tts_play_s": round(tts_play_s, 3),     # 봇이 말하는 시간(지연 아님)
             "resp_compute_s": resp,           # 연산만(꼬리 제외). 옛 기록과 이어보기용
-            "resp_felt_s": felt,              # ★ 아이가 겪는 시간 = 꼬리 + 연산
+            "filler_wait_s": round(filler_wait_s, 3),
+            "resp_felt_s": felt,              # ★ 아이가 겪는 시간 = 꼬리 + 연산 + 필러대기
             "metric_ver": 3,                  # 1 = tts 재생시간 혼입 / 2 = 꼬리 누락
             # 🔴 자원은 **구간 최댓값**이다. 여기서 한 번 읽으면 턴이 끝나 조용해진
             #    순간을 찍게 되고, 그게 2026-08-19 의 'GPU 0%' 오진이었다.

@@ -352,8 +352,7 @@ def main() -> None:
             # 🔴 필러가 아직 말하는 중이면 그 말끝까지 기다렸다 이어받는다. 안 그러면
             #    답의 sd.play 가 앞 재생을 닫아 **필러를 말하다 말고 자른다**(그 '뚝').
             #    보통 턴은 필러가 이미 끝나 있어 대기가 0 이고, 아니어도 상한이 있다.
-            if filler is not None:
-                filler.await_quiet()
+            filler_wait = filler.await_quiet() if filler is not None else 0.0
 
             # 말하기 + 에코 쿨다운(재생 여운이 가라앉은 뒤 다시 듣기).
             # speak() 은 재생이 끝날 때까지 막힌다. 그래서 '첫 소리까지'와 '말하는 시간'을
@@ -368,7 +367,7 @@ def main() -> None:
                                 tts_first_s=tm.first_audio_s,
                                 tts_synth_s=tm.synth_s,
                                 tts_play_s=tm.play_s, reply=reply,
-                                child_text=text)
+                                child_text=text, filler_wait_s=filler_wait)
             time.sleep(ECHO_COOLDOWN)
             if source is not None:
                 source.drain()   # 답하는 동안 쌓인 자기 목소리 버리기

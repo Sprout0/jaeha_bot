@@ -8,6 +8,8 @@
 """
 import json
 
+import pytest
+
 from app.metrics import MetricsLogger
 from app.tts_module import PLAY_PAD_S, SpeakTiming
 
@@ -164,3 +166,29 @@ def test_the_head_silence_still_decides_when_the_first_sound_lands():
 
     assert "+ PLAY_PAD_S" in src, "첫 소리에는 **앞** 무음만 더해야 한다"
     assert "+ PLAY_TAIL_PAD_S" not in src
+
+
+# ── 필러 대기도 아이가 겪는 시간이다 ────────────────────────────────────────
+# 🔴 await_quiet() 은 think 측정이 끝난 뒤, speak 이 시작되기 **전**에 잔다. 그래서
+#    꼬리+인식+생각+첫소리 어디에도 안 잡힌다 — 아이는 기다렸는데 지표는 모른다.
+#    metrics.py 가 08-09·08-13 에 두 번 당한 것과 **같은 종류의 실수**다
+#    (이름과 내용이 어긋나 아무도 못 보는 구간이 생긴다).
+
+def test_the_filler_wait_lands_in_the_felt_time(tmp_path):
+    m = MetricsLogger(log_dir=str(tmp_path))
+    m.record_turn(stt_wait_s=1.0, stt_rec_s=0.5, vad_tail_s=1.2,
+                  think_s=1.0, think_kind="llm", tts_first_s=0.8,
+                  filler_wait_s=0.3)
+
+    rec = m.samples[-1]
+    assert rec["filler_wait_s"] == 0.3
+    assert rec["resp_felt_s"] == pytest.approx(1.2 + 0.5 + 1.0 + 0.8 + 0.3)
+
+
+def test_no_filler_wait_leaves_the_number_where_it_was(tmp_path):
+    """안 기다린 턴은 예전과 같은 값이어야 한다 — 지표가 통째로 어긋나면 안 된다."""
+    m = MetricsLogger(log_dir=str(tmp_path))
+    m.record_turn(stt_wait_s=1.0, stt_rec_s=0.5, vad_tail_s=1.2,
+                  think_s=1.0, think_kind="llm", tts_first_s=0.8)
+
+    assert m.samples[-1]["resp_felt_s"] == pytest.approx(3.5)

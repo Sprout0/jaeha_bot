@@ -206,6 +206,15 @@ class FillerBank:
             t.join(timeout)
 
     def _emit(self, audio, rate) -> bool:
+        # 🔴 이미 소리가 나고 있으면 포기한다. `sd.play()` 는 앞 재생을 닫으므로, 늦게
+        #    터진 맞장구가 **진짜 답을 중간에 끊는다** — 필러가 좀 잘리는 것보다 훨씬
+        #    나쁘다. delay_s 를 키울수록 이 창이 넓어진다.
+        try:
+            if getattr(self.sink, "is_playing", False):
+                log.debug("이미 재생 중이라 필러를 버린다(답을 끊지 않는다)")
+                return False
+        except Exception:       # is_playing 이 장치를 건드리다 터져도 필러는 내야 한다
+            pass
         try:
             self.sink.play(audio, rate, False)
             return True

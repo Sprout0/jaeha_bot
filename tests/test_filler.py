@@ -617,3 +617,49 @@ def test_changing_the_tail_padding_rebuilds_the_cache(tmp_path):
     long = FillerBank(PHRASES, cache_dir=tmp_path, tail_pad_s=0.8)
 
     assert short.cache_key(tts) != long.cache_key(tts)
+
+
+# ── 늦게 낼 때의 위험 ────────────────────────────────────────────────────────
+# 🔴 delay_s 를 키우면 필러가 **답이 말하는 도중에** 터질 수 있다. 그러면 필러의
+#    sd.play 가 앞 재생(=진짜 답)을 닫는다 — 맞장구 하나 내려다 **답을 중간에 끊는다.**
+#    필러가 조금 잘리는 것보다 훨씬 나쁘다. 이미 소리가 나고 있으면 포기한다.
+
+class _BusySink(_FakeSink):
+    def __init__(self, busy=True):
+        super().__init__()
+        self.is_playing = busy
+
+
+def test_the_filler_gives_up_when_the_answer_is_already_speaking(tmp_path):
+    sink = _BusySink(busy=True)
+    bank = _bank(tmp_path, sink=sink)
+    bank.ensure(_FakeTTS())
+
+    bank.play()
+    bank.wait(timeout=2.0)
+
+    assert sink.plays == [], "답 위에 끼어들어 답을 끊었다"
+
+
+def test_the_filler_still_goes_out_when_nothing_is_playing(tmp_path):
+    sink = _BusySink(busy=False)
+    bank = _bank(tmp_path, sink=sink)
+    bank.ensure(_FakeTTS())
+
+    bank.play()
+    bank.wait(timeout=2.0)
+
+    assert len(sink.plays) == 1
+
+
+def test_a_sink_without_the_flag_still_works(tmp_path):
+    """is_playing 이 없는 sink(테스트·다른 구현)도 그냥 내야 한다."""
+    sink = _FakeSink()
+    assert not hasattr(sink, "is_playing")
+    bank = _bank(tmp_path, sink=sink)
+    bank.ensure(_FakeTTS())
+
+    bank.play()
+    bank.wait(timeout=2.0)
+
+    assert len(sink.plays) == 1

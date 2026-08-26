@@ -4,6 +4,7 @@
 젯슨에서 나온 숫자를 이 함수들이 잘못 읽으면 멀쩡한 걸 기각하거나 그 반대가 된다.
 """
 import numpy as np
+import pytest
 
 from tools.check_filler import (ANSWER_AT_FAST_S, ANSWER_AT_TYPICAL_S,
                                 audible_span, overlap_verdict)
@@ -160,3 +161,23 @@ def test_the_index_is_the_device_index_not_the_candidate_number():
     devs = [_dev("mic", out=0, inp=2), _dev("mic2", out=0, inp=2), _dev("speaker")]
 
     assert output_candidates(devs)[0][0] == 2
+
+
+# ── 미뤄 내면 여유가 그만큼 준다 ─────────────────────────────────────────────
+# 🔴 delay_s 를 키우면 필러가 늦게 시작하므로 **말소리 끝도 그만큼 뒤로 밀린다.**
+#    판정이 그걸 안 세면 "안 잘림"이라 해놓고 실기에선 잘린다.
+
+def test_a_delayed_filler_loses_that_much_margin():
+    at_zero = overlap_verdict(1.79, 0.91 + 0.0, ANSWER_AT_FAST_S)
+    delayed = overlap_verdict(1.79, 0.91 + 0.6, ANSWER_AT_FAST_S)
+
+    assert at_zero["margin_s"] == pytest.approx(0.81, abs=1e-9)
+    assert delayed["margin_s"] == pytest.approx(0.21, abs=1e-9)
+    assert delayed["audible_cut"] is False, "0.6 은 아직 안전해야 한다"
+
+
+def test_pushing_the_delay_past_the_ceiling_cuts_the_filler():
+    """상한 0.81 을 넘기면 필러 말소리가 답에 잘린다 — 도구가 그걸 말해줘야 한다."""
+    v = overlap_verdict(1.99, 0.91 + 0.9, ANSWER_AT_FAST_S)
+
+    assert v["audible_cut"] is True

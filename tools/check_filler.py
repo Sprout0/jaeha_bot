@@ -159,16 +159,21 @@ def listen(bank, tts, sd, out_dev, reply: str, play_rate: int) -> int:
               f"{(audio.size / rate - e) * 1000:7.0f}ms  {_fmt_env(sp, rate)}")
 
     # 답이 가장 빨리 오는 턴에 필러가 잘리나 — 숫자로 먼저 답한다.
+    # 🔴 delay_s 를 세야 한다. 미뤄 내면 말소리 끝도 그만큼 뒤로 밀려 여유가 준다.
     print(f"\n답이 재생되는 시각(젯슨 실측 기반): 최악 {ANSWER_AT_FAST_S:.2f}s / "
-          f"보통 {ANSWER_AT_TYPICAL_S:.2f}s")
+          f"보통 {ANSWER_AT_TYPICAL_S:.2f}s   |   필러 지연 {bank.delay_s:.2f}s")
     worst = max(spans, key=lambda x: x[2])
-    v = overlap_verdict(worst[1], worst[2], ANSWER_AT_FAST_S)
+    v = overlap_verdict(worst[1] + bank.delay_s, worst[2] + bank.delay_s, ANSWER_AT_FAST_S)
+    ceiling = ANSWER_AT_FAST_S - worst[2]
     if v["audible_cut"]:
         print(f"🔴 최악의 턴에서 '{worst[0]}' 의 **말소리**가 잘린다 "
-              f"(말소리끝 {worst[2]:.2f}s > 답 {ANSWER_AT_FAST_S:.2f}s)")
+              f"(말소리끝 {worst[2] + bank.delay_s:.2f}s > 답 {ANSWER_AT_FAST_S:.2f}s)")
+        print(f"   delay_s 를 {ceiling:.2f} 아래로 내릴 것.")
     else:
         print(f"✅ 가장 늦게 끝나는 '{worst[0]}' 도 답보다 {v['margin_s']:.2f}s 먼저 끝난다"
               + (" (꼬리 무음만 잘림)" if v["cut"] else ""))
+        print(f"   더 붙이고 싶으면 delay_s 를 {ceiling:.2f} 까지 올릴 수 있다"
+              f"(지금 {bank.delay_s:.2f}).")
 
     input(f"\n[1/2] 필러를 하나씩 냅니다({play_rate}Hz, 장치 "
           f"{out_dev if out_dev is not None else '기본'}). 말끝이 맺히는지 들어보세요. Enter> ")

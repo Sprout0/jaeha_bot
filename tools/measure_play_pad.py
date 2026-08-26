@@ -171,7 +171,16 @@ def main(argv: list[str] | None = None) -> int:
     import sounddevice as sd
 
     from app.config import settings
+    from app.main import _setup_audio_device
     from app.tts_module import PLAY_PAD_S, TTSModule
+
+    # 🔴 2026-08-26: 이걸 안 부르면 **운영 경로가 아닌 걸 잰다.** 젯슨의 `default` 는
+    #    `plug -> hw:APE,0`(Tegra DMA 입구)이라 sd.play 가 성공하고도 소리가 아무 데도
+    #    안 간다. app.main 은 기동 때 audio.device(이름 부분일치 'ReSpeaker')로 콕 집는다.
+    #    ⚠️ 08-24 측정이 8회 중 0회 검출로 끝난 걸 '이어폰 음향누설 부족'으로 결론냈는데,
+    #       그때도 이 함수를 안 불렀다 — **죽은 장치로 쏘고 있었을 가능성이 크다.**
+    #       그 결론은 이 줄을 넣고 다시 재기 전까지 믿을 수 없다.
+    _setup_audio_device()
 
     tts = TTSModule(**settings.models.get("tts", {}))
     sr = tts.sample_rate

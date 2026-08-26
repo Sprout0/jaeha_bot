@@ -320,8 +320,16 @@ def main(argv: list[str] | None = None) -> int:
     out_dev = int(a.out_device) if a.out_device not in (None, "") else None
     in_dev = int(a.in_device) if a.in_device not in (None, "") else None
 
+    # 🔴 이걸 빼먹으면 **운영 경로가 아닌 걸 잰다.** 젯슨의 `default` 는 `plug -> hw:APE,0`
+    #    (Tegra DMA 입구)라 sd.play 가 성공하고도 소리가 아무 데도 안 간다. app.main 은
+    #    기동 때 이 함수로 audio.device(이름 부분일치, 'ReSpeaker')를 콕 집는다.
+    #    2026-08-26: 이 도구가 그걸 안 불러서 "젯슨에서 소리가 하나도 안 난다"가 나왔다.
+    from app.main import _setup_audio_device
+
     print(sd.query_devices())
-    print(f"\n기본 장치(입력, 출력) = {sd.default.device}")
+    print(f"\n지정 전 기본 장치(입력, 출력) = {sd.default.device}")
+    _setup_audio_device()
+    print(f"지정 후 기본 장치(입력, 출력) = {sd.default.device}  <- 운영 경로")
 
     tts = TTSModule(**settings.models.get("tts", {}))
     tts.load()

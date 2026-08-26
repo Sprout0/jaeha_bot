@@ -62,8 +62,8 @@ def main() -> int:
                     help="TRT 작업공간 상한(MB). 지금은 미설정 = ORT 기본값")
     ap.add_argument("--trt-targets", default=None,
                     help="쉼표 구분. 예: vector_estimator (보코더 TRT 를 뺀다)")
-    ap.add_argument("--no-trt-backup", action="store_true",
-                    help="⚠️ 원본 CUDA 세션을 안 들고 있는다 — 프로파일 밖 문장에서 소리가 안 난다")
+    ap.add_argument("--trt-backup-resident", action="store_true",
+                    help="옛 동작: 원본 CUDA 세션을 메모리에 상주시킨다(690MB)")
     ap.add_argument("--stt-compute", default=None,
                     help="whisper compute_type override. 예: int8_float16")
     args = ap.parse_args()
@@ -90,10 +90,10 @@ def main() -> int:
     if args.trt_targets:
         tts_cfg["trt_targets"] = tuple(x.strip() for x in args.trt_targets.split(","))
         tag.append("t-" + args.trt_targets.replace(",", "-"))
-    if args.no_trt_backup:
+    if args.trt_backup_resident:
         # 엔진 자체엔 영향이 없다 — 캐시를 새로 굽지 않게 tag 에 넣지 않는다.
-        tts_cfg["trt_keep_backup"] = False
-        print("   (원본 CUDA 세션 안 들고 있음)")
+        tts_cfg["trt_backup_resident"] = True
+        print("   (원본 CUDA 세션 상주 = 옛 동작)")
     if tag:
         # 엔진 캐시를 나눠 써야 운영 엔진을 안 덮어쓴다(빌드 조건이 다르면 다시 굽는다).
         tts_cfg["trt_cache"] = "~/.cache/trt_probe_" + "_".join(tag)

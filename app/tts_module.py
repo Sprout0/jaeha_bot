@@ -16,6 +16,7 @@ REPL 테스트: python -m app.tts_module
 from __future__ import annotations
 
 import contextlib
+import gc
 import logging
 import os
 import queue
@@ -212,9 +213,9 @@ class TTSModule:
         # TRT 를 붙일 대상. None = 둘 다(현행). ('vector_estimator',) 처럼 줄일 수 있다.
         # 확산은 발화당 total_steps(24)번 돌고 보코더는 1번이라 값어치가 다르다.
         trt_targets: tuple | list | None = None,
-        # 원본 CUDA 세션을 들고 있을지. True(현행)면 프로파일 밖 문장에 되돌아갈 수 있지만
-        # vector_estimator·vocoder 를 **두 벌** 물고 있는 셈이다.
-        trt_keep_backup: bool = True,
+        # 원본 CUDA 세션을 **메모리에 상주**시킬지. 기본 False = 필요할 때 다시 만든다.
+        # True 면 옛 동작(즉시 되돌아가지만 젯슨 실측 690MB 를 항상 문다).
+        trt_backup_resident: bool = False,
     ) -> None:
         self.model = model
         self.voice = voice
@@ -234,11 +235,14 @@ class TTSModule:
         self.trt = trt
         self.trt_cache = trt_cache
         self.trt_max_workspace_mb = trt_max_workspace_mb
-        self.trt_keep_backup = trt_keep_backup
+        self.trt_backup_resident = trt_backup_resident
         self.trt_targets = trt_targets
         self.trt_max_latent = trt_max_latent
         self.trt_max_text = trt_max_text
-        self._trt_backup = {}     # TRT 로 갈아끼우기 **전**의 세션. 폴백용으로 들고 있는다
+        # TRT 로 갈아끼우기 전 세션의 **경로**. 폴백 때 여기서 다시 만든다(세션을 안 든다).
+        self._trt_backup = {}
+        self._resident_backup = {}   # trt_backup_resident 일 때만 실제 세션이 들어간다
+        self.trt_fallbacks = 0       # CUDA 로 되돌아간 횟수(잦으면 설계를 다시 봐야 한다)
         self._oa = None           # OpenAI 클라이언트(첫 사용 때 1회 생성)
         self._tts = None
         self._style = None
@@ -393,29 +397,77 @@ class TTSModule:
                 log.warning("TensorRT 적용 실패 [%s] (%s: %s) — 기존 세션 유지",
                             name, type(e).__name__, str(e)[:160])
                 continue
-            # 원래 세션은 버리지 않는다 — 프로파일을 벗어난 문장이 오면 되돌아간다.
-            # ⚠️ 그 대가로 이 모델을 **두 벌** 물고 있는 셈이다. trt_keep_backup: false 면
-            #    버려서 메모리를 아끼는 대신 프로파일 밖 문장에서 되돌아갈 수 없다.
-            if self.trt_keep_backup:
-                self._trt_backup[attr] = getattr(self._tts.model, attr)
+            # 되돌아갈 길은 남기되 **세션이 아니라 경로**를 들고 있는다.
+            # 🔴 2026-08-26: 원래는 원본 CUDA 세션을 그대로 물고 있었다. 그러면 이 모델을
+            #    두 벌 무는 셈이라 젯슨에서 **690MB** 였다(실측). 그런데 이 폴백은
+            #    프로젝트 전체에서 **한 번** 탔다(08-24). 드문 경로 때문에 항상 690MB 를
+            #    무는 대신, 그때 가서 1~2초 들여 다시 만든다.
+            old = getattr(self._tts.model, attr)
+            path = getattr(old, "_model_path", None)
+            self._trt_backup[attr] = path
             setattr(self._tts.model, attr, sess)
+            # 🔴 경로를 못 얻으면 **옛 방식으로 물러난다**(세션을 그대로 든다).
+            #    _model_path 는 onnxruntime 내부 속성이라 버전이 오르면 사라질 수 있다.
+            #    그때 조용히 폴백을 잃는 것보다 690MB 를 무는 쪽이 낫다 —
+            #    폴백이 없으면 프로파일 밖 문장에서 **아이 앞에서 소리가 안 난다.**
+            if self.trt_backup_resident or not path:
+                if not path:
+                    log.warning("[%s] onnx 경로를 못 얻어 원본 세션을 들고 있는다"
+                                " (메모리를 더 쓰지만 폴백은 지킨다)", attr)
+                self._resident_backup[attr] = old
+            else:
+                del old
+                gc.collect()      # ORT 할당을 실제로 놓게 한다
             log.info("TensorRT 적용 [%s] %.1fs", name, time.perf_counter() - t0)
 
+    def _cuda_session(self, path: str):
+        """TRT 로 갈아끼우기 전과 같은 CUDA 세션을 경로에서 다시 만든다."""
+        import onnxruntime as ort
+
+        so = ort.SessionOptions()
+        so.intra_op_num_threads = self.threads
+        so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        return ort.InferenceSession(
+            str(path), sess_options=so,
+            providers=self.providers or ["CUDAExecutionProvider", "CPUExecutionProvider"])
+
     def _without_trt(self, fn):
-        """이번 한 번만 원래 CUDA 세션으로 돌려 실행하고, 끝나면 TRT 를 되돌린다.
+        """이번 한 번만 CUDA 세션으로 돌려 실행하고, 끝나면 TRT 를 되돌린다.
 
         ⚠️ 영구히 되돌리지 않는 이유: 긴 문장 하나 때문에 그 뒤 모든 발화를 두 배 느리게
            만들 이유가 없다. 긴 문장은 드물다.
+        🔴 2026-08-26: 세션을 들고 있지 않고 **여기서 만든다**(690MB 절약). 만드는 데
+           1~2초가 드는데, 이 경로는 프로젝트 전체에서 한 번 탔다. 자주 찍히면 그때
+           trt_backup_resident 를 켜거나 프로파일 상한을 올릴 것 — 그래서 횟수를 센다.
         """
-        swapped = {}
-        for attr, original in self._trt_backup.items():
-            swapped[attr] = getattr(self._tts.model, attr)
-            setattr(self._tts.model, attr, original)
+        made, swapped = [], {}
+        self.trt_fallbacks += 1
         try:
+            for attr, path in self._trt_backup.items():
+                sess = self._resident_backup.get(attr)
+                if sess is None:
+                    # 경로가 없으면 _apply_trt 가 상주로 물러났어야 한다(위 참고).
+                    # 여기 오면 배선이 깨진 것이므로 조용히 지나가지 않는다.
+                    if not path:
+                        log.error("[%s] 되돌릴 경로도 세션도 없다 — 폴백 배선 확인 필요", attr)
+                        continue
+                    t0 = time.perf_counter()
+                    sess = self._cuda_session(path)
+                    made.append(attr)
+                    log.info("CUDA 세션 재생성 [%s] %.1fs (누적 폴백 %d회)",
+                             attr, time.perf_counter() - t0, self.trt_fallbacks)
+                swapped[attr] = getattr(self._tts.model, attr)
+                setattr(self._tts.model, attr, sess)
+            if not swapped:
+                raise RuntimeError("되돌릴 CUDA 세션을 만들지 못했다")
             return fn()
         finally:
             for attr, sess in swapped.items():
                 setattr(self._tts.model, attr, sess)
+            if made:
+                # 여기서 만든 CUDA 세션은 아무도 안 붙들고 있다 — 들고 있으려고
+                # 만든 게 아니다. 실제로 놓게 gc 를 한 번 돌린다.
+                gc.collect()
 
     # ---------------------------------------------------- 보이스 스타일 해석(+블렌딩)
     def _parse_blend(self, spec: str) -> list[tuple[str, float]]:

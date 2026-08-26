@@ -270,3 +270,121 @@ def test_without_trt_a_failure_is_not_swallowed(monkeypatch):
 
     with pytest.raises(RuntimeError, match="진짜 고장"):
         t._infer_local("안녕")
+
+
+# ── 원본 세션을 들지 않고 필요할 때 만든다 (2026-08-26) ──────────────────────
+# 🔴 왜: 원본 CUDA 세션을 들고 있으면 vector_estimator·vocoder 를 **두 벌** 무는 셈이라
+#    젯슨 실측 **690MB** 였다. 그런데 이 폴백은 프로젝트 전체에서 **한 번** 탔다(08-24).
+#    드문 경로 때문에 항상 690MB 를 무는 대신 그때 가서 1~2초 들여 다시 만든다.
+# ⚠️ 절대 잃으면 안 되는 것: 폴백 자체. 없으면 프로파일 밖 문장에서 **소리가 안 난다**.
+
+class _Sess(str):
+    """_model_path 를 가진 세션. 문자열이라 기존 단언과 그대로 호환된다."""
+
+    def __new__(cls, name, path):
+        o = super().__new__(cls, name)
+        o._model_path = path
+        return o
+
+
+class _PathModel(_Model):
+    def __init__(self):
+        super().__init__()
+        self.vector_est_ort = _Sess("cuda-확산", "/m/vector_estimator.onnx")
+        self.vocoder_ort = _Sess("cuda-보코더", "/m/vocoder.onnx")
+
+
+def _tts_paths(*, fail_on_trt=False, **kw) -> TTSModule:
+    t = TTSModule(**kw)
+    t._tts = _Pipeline(_PathModel(), fail_on_trt=fail_on_trt)
+    return t
+
+
+def test_backup_holds_the_path_not_the_session(trt_available, monkeypatch):
+    """세션을 들고 있으면 모델을 두 벌 무는 것 — 젯슨에서 690MB 였다."""
+    t = _tts_paths(trt=True)
+    monkeypatch.setattr(t, "_make_trt_session", lambda name: f"trt-{name}")
+
+    t._apply_trt()
+
+    assert t._trt_backup == {"vector_est_ort": "/m/vector_estimator.onnx",
+                             "vocoder_ort": "/m/vocoder.onnx"}
+    assert t._resident_backup == {}, "세션을 아직도 들고 있다"
+
+
+def test_fallback_rebuilds_the_session_and_still_speaks(trt_available, monkeypatch):
+    """🔴 이게 지켜야 할 전부다 — 프로파일 밖 문장에도 소리가 나야 한다."""
+    t = _tts_paths(trt=True, fail_on_trt=True)
+    monkeypatch.setattr(t, "_make_trt_session", lambda name: f"trt-{name}")
+    t._apply_trt()
+    built = []
+    monkeypatch.setattr(t, "_cuda_session",
+                        lambda p: built.append(p) or _Sess("다시만든-" + p, p))
+
+    audio = t._infer_local("아주 긴 문장")
+
+    assert audio is not None and len(audio) == 8
+    assert sorted(built) == ["/m/vector_estimator.onnx", "/m/vocoder.onnx"]
+
+
+def test_rebuilt_session_is_not_kept(trt_available, monkeypatch):
+    """다시 만든 세션을 들고 있으면 아낀 690MB 를 도로 문다."""
+    t = _tts_paths(trt=True, fail_on_trt=True)
+    monkeypatch.setattr(t, "_make_trt_session", lambda name: f"trt-{name}")
+    t._apply_trt()
+    monkeypatch.setattr(t, "_cuda_session", lambda p: _Sess("다시만든", p))
+
+    t._infer_local("아주 긴 문장")
+
+    assert t._resident_backup == {}, "다시 만든 세션을 붙들고 있다"
+    assert t._tts.model.vector_est_ort == "trt-vector_estimator", "TRT 로 안 돌아왔다"
+
+
+def test_fallback_count_is_visible(trt_available, monkeypatch):
+    """자주 타면 설계를 다시 봐야 한다 — 셀 수 있어야 그걸 안다."""
+    t = _tts_paths(trt=True, fail_on_trt=True)
+    monkeypatch.setattr(t, "_make_trt_session", lambda name: f"trt-{name}")
+    t._apply_trt()
+    monkeypatch.setattr(t, "_cuda_session", lambda p: _Sess("다시만든", p))
+    assert t.trt_fallbacks == 0
+
+    t._infer_local("긴 문장 하나")
+    t._infer_local("긴 문장 둘")
+
+    assert t.trt_fallbacks == 2
+
+
+def test_resident_mode_keeps_the_old_behaviour(trt_available, monkeypatch):
+    """되돌릴 길 — 690MB 를 내고 즉시 되돌아가고 싶을 때."""
+    t = _tts_paths(trt=True, trt_backup_resident=True)
+    monkeypatch.setattr(t, "_make_trt_session", lambda name: f"trt-{name}")
+
+    t._apply_trt()
+
+    assert t._resident_backup["vector_est_ort"] == "cuda-확산"
+
+
+def test_missing_model_path_degrades_to_resident(trt_available, monkeypatch, caplog):
+    """🔴 _model_path 는 onnxruntime **내부** 속성이라 버전이 오르면 사라질 수 있다.
+
+    그때 조용히 폴백을 잃느니 690MB 를 무는 게 낫다 — 폴백이 없으면
+    프로파일 밖 문장에서 아이 앞에서 소리가 안 난다.
+    """
+    import logging
+    t = _tts(trt=True)                      # 경로 없는(문자열) 세션
+    monkeypatch.setattr(t, "_make_trt_session", lambda name: f"trt-{name}")
+
+    with caplog.at_level(logging.WARNING, logger="jaeha_bot.tts"):
+        t._apply_trt()
+
+    assert t._resident_backup["vector_est_ort"] == "cuda-확산", "폴백을 잃었다"
+    assert any("경로를 못 얻어" in r.message for r in caplog.records)
+
+
+def test_missing_path_still_falls_back_and_speaks(trt_available, monkeypatch):
+    """물러난 상태에서도 프로파일 밖 문장에 소리가 나야 한다."""
+    t = _tts(trt=True, fail_on_trt=True)
+    monkeypatch.setattr(t, "_make_trt_session", lambda name: f"trt-{name}")
+    t._apply_trt()
+
+    assert len(t._infer_local("아주 긴 문장")) == 8

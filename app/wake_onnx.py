@@ -331,7 +331,12 @@ class OnnxWakeDetector:
         if grab is not None:
             frames.extend(grab(int(self._MAX_BACKLOG_S * SAMPLE_RATE / FRAME)))
         # ② 그 다음 실시간으로 조금 더 듣는다 — 아직 말하는 중일 수 있다.
-        for _ in range(n):
+        #    🔴 2026-08-27 **밀린 것이 이미 창을 채웠으면 더 안 듣는다.** 여태는 무조건
+        #    0.5초를 더 기다렸는데, 그 앞에서 whisper 가 1.26초 도는 동안 그만큼이 이미
+        #    버퍼에 들어와 있다. 즉 있는 소리를 두고 같은 길이를 한 번 더 기다린 셈이고,
+        #    그게 그대로 깨움 지연이었다(실측 11:52:47.709 -> 48.124 = 0.42초).
+        #    판정에 쓸 오디오는 똑같고 기다림만 사라진다 — 대가가 없다.
+        for _ in range(max(0, n - len(frames))):
             try:
                 frames.append(self.source.read())
             except StopIteration:

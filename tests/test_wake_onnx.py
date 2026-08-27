@@ -342,6 +342,79 @@ def test_continuation_collects_the_audio_that_piled_up_during_verification():
         f"밀린 오디오를 안 거뒀다 — {r.preroll.size / FRAME:.0f}프레임뿐")
 
 
+def test_continuation_does_not_wait_when_the_backlog_already_covers_the_window():
+    """🔴 밀린 것이 창을 채웠으면 실시간으로 **한 프레임도 더 기다리면 안 된다.**
+
+    whisper 검증이 1.26초 도는 동안 그만큼이 이미 버퍼에 들어온다. 그걸 두고
+    0.5초를 또 기다리던 게 실기 깨움 지연 0.42초였다(11:52:47.709 -> 48.124).
+    판정에 쓰는 오디오는 그대로이므로 대가 없이 사라지는 시간이다.
+    """
+    loud = np.full(FRAME, 0.5, dtype=np.float32)
+
+    class _Counting(ScriptedSource):
+        """밀린 프레임을 넉넉히 주고, 실시간 read() 횟수를 따로 센다."""
+
+        def __init__(self, frames, buffered):
+            super().__init__(frames)
+            self.buffered = buffered
+            self.live_reads = 0
+            self._draining = False
+
+        def read_buffered(self, max_frames):
+            self._draining = True
+            try:
+                out = []
+                while len(out) < max_frames and self.buffered > 0:
+                    self.buffered -= 1
+                    out.append(self.read())
+                return out
+            finally:
+                self._draining = False
+
+        def read(self):
+            if not self._draining:
+                self.live_reads += 1
+            return super().read()
+
+        def preroll(self):
+            # 깨움이 확정된 그 순간 — 여기까지가 '대기 루프'가 쓴 몫이다.
+            self.at_wake = self.live_reads
+            return super().preroll()
+
+    # 뒷말 창은 0.5초 = 6프레임. 밀린 게 10프레임이면 더 들을 이유가 없다.
+    src = _Counting([loud] * 300, buffered=10)
+    d = make_detector(score=0.9, source=src)
+    d.wait_for_wake(max_frames=150)
+    live_after_wake = src.live_reads - src.at_wake
+    assert live_after_wake == 0, (
+        f"밀린 게 충분한데 실시간으로 {live_after_wake}프레임을 더 기다렸다")
+
+
+def test_continuation_still_listens_when_the_backlog_is_short():
+    """반대쪽 — 밀린 게 모자라면 모자란 만큼은 실시간으로 채워야 한다."""
+    loud = np.full(FRAME, 0.5, dtype=np.float32)
+
+    class _Short(ScriptedSource):
+        def __init__(self, frames):
+            super().__init__(frames)
+            self.buffered = 2       # 창(6프레임)보다 적다
+
+        def read_buffered(self, max_frames):
+            out = []
+            while len(out) < max_frames and self.buffered > 0:
+                self.buffered -= 1
+                out.append(self.read())
+            return out
+
+    src = _Short([loud] * 300)
+    d = make_detector(score=0.9, source=src)
+    r = d.wait_for_wake(max_frames=150)
+    assert r is not None and r.continued is True
+    # 프리롤(6) + 밀린 것(2) + 실시간으로 채운 것(4) = 12프레임
+    assert r.preroll.size == 12 * FRAME, (
+        f"모자란 만큼을 안 채웠다 — {r.preroll.size / FRAME:.0f}프레임")
+
+
 def test_continuation_works_on_sources_without_read_buffered():
     """폴백 소스·테스트 더미가 이 메서드를 안 가져도 깨움이 죽으면 안 된다."""
     loud = np.full(FRAME, 0.5, dtype=np.float32)

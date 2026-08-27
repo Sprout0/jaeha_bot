@@ -260,7 +260,10 @@ def test_a_late_guess_says_how_late(caplog):
 
     msgs = [r.message for r in caplog.records if "선행인식" in r.message]
     assert msgs, "못 넘겼는데 아무 말도 안 남겼다"
-    assert "못 끝냄" in msgs[0] or "빈 문자열" in msgs[0]
+    assert "못 끝냈다" in msgs[0] or "빈 문자열" in msgs[0]
+    # ⚠️ 여기서 '몇 초 늦었다'를 요구하면 안 된다. 이 시점엔 인식이 안 끝나서 모른다 —
+    #    처음엔 찍었다가 매번 예산과 똑같은 수(1.04)만 나왔다(동어반복). listen() 이 찍는다.
+    assert not any("경과" in m for m in msgs)
 
 
 def test_an_empty_guess_is_told_apart_from_a_late_one(caplog):
@@ -286,3 +289,50 @@ def test_nothing_is_logged_when_nobody_is_listening(caplog):
         stt.record_until_silence(source=ScriptedSource(_loud(4) + _quiet(40)))
 
     assert not [r for r in caplog.records if "선행인식" in r.message]
+
+
+# ── 얼마나 아깝게 놓쳤나 ────────────────────────────────────────────────────
+# 🔴 2026-08-27: 처음 붙인 로그가 **동어반복**이었다. "제출 후 1.04s 경과"는 제출부터
+#    녹음 종료까지의 시간인데, 그건 정의상 `silence_duration - 0.16` = 예산 그 자체다.
+#    매번 똑같은 1.04 가 찍혀 '얼마나 늦었나'를 하나도 못 알려줬다.
+#    ➡️ 진짜 답은 `_spec.take()` 가 돌려주는 **실제 인식 시간**과, 녹음이 끝난 뒤
+#       아이가 **더 기다린 시간**이다. 후자가 0.1초면 spec_after 를 당기면 되고,
+#       0.5초면 다른 수를 찾아야 한다. 실기에서 그 값이 0.08~0.15s 였다.
+
+def test_the_loop_records_whether_it_handed_over():
+    stt = STTModule(silence_duration=1.2, max_duration=10.0)
+    stt._spec = _Speculation(lambda a: ("칼 어딨어", 0.0))
+
+    stt.record_until_silence(source=ScriptedSource(_loud(4) + _quiet(40)),
+                             on_partial=lambda t: None)
+
+    assert stt.last_spec_handed is True
+
+
+def test_no_handover_is_recorded_too():
+    stt = STTModule(silence_duration=1.2, max_duration=10.0)
+    stt._spec = _Speculation(lambda a: ("", 0.0))
+
+    stt.record_until_silence(source=ScriptedSource(_loud(4) + _quiet(40)),
+                             on_partial=lambda t: None)
+
+    assert stt.last_spec_handed is False
+
+
+def test_a_near_miss_says_how_near(caplog, monkeypatch):
+    """아깝게 놓친 폭을 숫자로 남긴다 — 이게 spec_after 를 당길지 정하는 유일한 근거다."""
+    import logging
+
+    stt = STTModule(silence_duration=1.2, max_duration=10.0)
+    # 인식은 성공하지만 꼬리 안에는 못 끝난 척: 넘겨줄 텍스트가 없다가 뒤늦게 생긴다.
+    def _work(a):
+        time.sleep(0.05)            # 꼬리(즉시 끝나는 스크립트 소스) 안에는 못 끝난다
+        return ("늦게 나온 답", 1.12)
+
+    stt._spec = _Speculation(_work)
+    with caplog.at_level(logging.INFO, logger="jaeha_bot.stt"):
+        stt.listen(source=ScriptedSource(_loud(4) + _quiet(40)),
+                   on_partial=lambda t: None)
+
+    msgs = [r.message for r in caplog.records if "선행인식" in r.message]
+    assert any("1.12" in m for m in msgs), f"실제 인식 시간을 안 남겼다: {msgs}"

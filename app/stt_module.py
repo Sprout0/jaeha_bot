@@ -155,6 +155,14 @@ class STTModule:
         #    재서 이긴 뒤에만 켠다. 합성음에선 7/7 동일했는데 그건 깨끗한 음성뿐이다.
         batched: bool = False,
         batch_size: int = 8,             # 실측 4·8 동률, 16 은 오히려 느림
+        # --- 선행 인식 발동 시점 ---
+        # 말이 그친 뒤 이만큼 조용하면 그때까지의 발화를 백그라운드로 인식한다.
+        # 🔴 이 값이 곧 **예산**을 정한다: 예산 = 꼬리(silence_duration) − 이 값.
+        #    1.2 − 0.16 = 1.04s 안에 인식이 끝나야 답까지 미리 만든다.
+        # ⚠️ 당기면 예산이 늘지만, 말소리 사이 블립마다 GPU 를 돌린다. 그 헛도는 인식이
+        #    **진짜 인식을 줄 세워** 오히려 늦출 수 있다(작업 스레드 1개, GPU 는 이미 100%).
+        #    실기 로그의 `[선행인식] 아깝게 놓쳤다 … N초만 빨랐으면` 을 보고 정할 것.
+        spec_after_s: float = 0.16,
     ) -> None:
         self.model_size = model_size
         self.device = device
@@ -174,6 +182,7 @@ class STTModule:
         self.min_chars_to_reject = min_chars_to_reject
         self.batched = bool(batched)
         self.batch_size = int(batch_size)
+        self.spec_after_s = float(spec_after_s)
         # 직전 transcribe 가 '환각이라 버림'이었는지. main 이 이걸 봐야 '말이 없었다'와
         # 구분해 되물을 수 있다(빈 문자열만으로는 구분 불가 → 침묵하게 된다).
         self.last_rejected = False
@@ -187,6 +196,14 @@ class STTModule:
         # 람다로 감싸는 건 transcribe 를 **호출 시점에** 찾기 위해서다(테스트가 갈아끼운다).
         self._spec = _Speculation(lambda a: self.transcribe(a))
         self._spec_key = None
+        # 직전 녹음에서 선행 인식을 넘겼는가. listen() 이 '얼마나 아깝게 놓쳤나'를
+        # 찍을지 정하는 데 쓴다.
+        self.last_spec_handed = False
+
+    @property
+    def spec_budget_s(self) -> float:
+        """선행 인식이 이 안에 끝나야 답까지 미리 만든다 = 꼬리 − 발동시점."""
+        return max(0.0, self.silence_duration - self.spec_after_s)
 
     # ------------------------------------------------------------------ 모델
     def load(self):
@@ -354,7 +371,7 @@ class STTModule:
         quiet_needed = max(1, int(self.silence_duration * SAMPLE_RATE / frame_size))
         # 선행 인식 발동 시점. 너무 이르면 말소리 사이 블립마다 GPU 를 돌리고,
         # 너무 늦으면 겹칠 꼬리가 남지 않는다. 0.16s = 80ms 프레임 2개.
-        spec_after = max(1, int(0.16 * SAMPLE_RATE / frame_size))
+        spec_after = max(1, int(self.spec_after_s * SAMPLE_RATE / frame_size))
         # 샘플 수 기준 상한: prefix 가 여러 프레임을 하나의 배열로 합쳐 넘길 수 있어
         # (예: AudioSource 의 preroll) 리스트 길이로 세면 캡이 밀린다.
         max_samples = int(self.max_duration * SAMPLE_RATE)
@@ -405,14 +422,19 @@ class STTModule:
         #    고칠 곳이 다르다: 늦었으면 STT 를 줄여야 하고, 비었으면 VAD·발화 문제다.
         #    늦었을 땐 **얼마나** 늦었는지가 다음 결정의 전부다(0.02초면 spec_after 를
         #    당기면 되고, 0.5초면 다른 수를 찾아야 한다).
+        self.last_spec_handed = handed
         if on_partial is not None and not handed and spec_at is not None:
-            budget = max(0.0, self.silence_duration - 0.16)
             got = self._spec.peek(last_loud_samples)
             if got is not None and not got[0]:
-                log.info("[선행인식] 결과가 **빈 문자열** — 넘길 게 없었다(예산 %.2fs)", budget)
+                log.info("[선행인식] 결과가 **빈 문자열** — 넘길 게 없었다(예산 %.2fs)",
+                         self.spec_budget_s)
+            # ⚠️ 여기서 '몇 초 늦었다'를 찍으면 안 된다. 제출부터 녹음 종료까지는
+            #    정의상 항상 예산과 같아서(둘 다 같은 프레임 루프가 만든다) 매번 똑같은
+            #    수가 나온다 — 처음 붙였다가 실기에서 1.04 만 반복해 찍혔다(동어반복).
+            #    진짜 폭은 인식이 **끝나야** 알 수 있다. listen() 이 찍는다.
             else:
-                log.info("[선행인식] 꼬리 안에 못 끝냄 — 예산 %.2fs 를 넘겼다(%.2fs 경과)",
-                         budget, time.perf_counter() - spec_at)
+                log.info("[선행인식] 꼬리 안에 아직 못 끝냈다(예산 %.2fs) — 얼마나 늦었는지는 아래",
+                         self.spec_budget_s)
 
         if not collected:
             return np.zeros(0, dtype=np.float32)
@@ -513,6 +535,13 @@ class STTModule:
         if got is not None:
             text = got[0]
             tr_dt = time.perf_counter() - t_wait
+            # 🔴 여기가 '얼마나 아깝게 놓쳤나'를 알 수 있는 유일한 자리다. 인식이 끝나야
+            #    실제 걸린 시간(got[1])을 알기 때문이다. tr_dt 는 **아이가 녹음 종료 뒤
+            #    더 기다린 시간** — 이만큼만 빨랐으면 선행 생각이 터졌다.
+            if on_partial is not None and not self.last_spec_handed and text:
+                log.info("[선행인식] 아깝게 놓쳤다 — 인식 %.2fs(예산 %.2fs), "
+                         "%.2fs 만 빨랐으면 선행 생각이 터졌다",
+                         got[1], self.spec_budget_s, tr_dt)
         else:
             text, _compute = self.transcribe(audio)
             tr_dt = time.perf_counter() - t_wait

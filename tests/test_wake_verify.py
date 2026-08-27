@@ -460,3 +460,56 @@ def test_shipped_config_turned_two_pass_off():
     v = (cfg["wake"]["onnx"].get("verify") or {})
     assert v.get("two_pass") is False, "2패스가 켜져 있다 — 근거는 wake.py 주석 참고"
     assert v.get("initial_prompt"), "되돌릴 때 필요하니 힌트는 남겨 둔다"
+
+
+# ── 2패스 컷을 실기 전사로 고정 (2026-08-27) ──────────────────────────────
+# 🔴 왜: 컷 0.35 로 젯슨 실기 80초에서 **통과 0건**이었다. 재하님이 계속 부르는데
+#    한 번도 안 깨어났다. whisper 는 알아듣고 있었고(전부 '하이치X') 거리가 0.38~0.44 라
+#    **0.03 차이로** 전부 떨어진 것이다. 합성음(중앙 0.000)만 보고 정한 값이 실음성에서
+#    뒤집혔다 — 이 프로젝트가 같은 실수를 세 번째 하는 자리다.
+#    아래 세 테스트는 **실기 로그의 진짜 전사**로 컷을 양쪽에서 조인다.
+
+def _shipped_plain_cut() -> float:
+    from pathlib import Path
+
+    import yaml
+    cfg = yaml.safe_load(
+        (Path(__file__).resolve().parent.parent / "configs" / "model_paths.yaml")
+        .read_text(encoding="utf-8"))
+    return float(cfg["wake"]["onnx"]["verify"]["plain_max_ratio"])
+
+
+# 2026-08-27 11:12~11:13 젯슨 실기 로그 전수. 사람이 부른 것 / 아닌 것.
+REAL_CALLS = ["하이치카", "하이치테", "하이치티", "하이킥", "하이픽", "하이치켓", "하이키밤"]
+ROOM_NOISE = ["아이차티", "아이쿠", "아이스크림", "맛있게", "안녕히계세요", ""]
+
+
+def test_real_call_transcripts_pass_the_shipped_cut():
+    """🔴 실기에서 실제로 나온 전사가 안 통과하면 봇은 영영 안 깨어난다."""
+    from app.wake import best_wake_ratio
+    cut = _shipped_plain_cut()
+    bad = [(t, best_wake_ratio(t, "하이티드")) for t in REAL_CALLS
+           if best_wake_ratio(t, "하이티드") > cut]
+    assert not bad, f"컷 {cut} 이 진짜 호출을 막는다: {bad}"
+
+
+def test_room_noise_transcripts_stay_rejected():
+    """컷을 여는 건 좋지만 소음까지 받으면 2단계가 있을 이유가 없다."""
+    from app.wake import best_wake_ratio
+    cut = _shipped_plain_cut()
+    leaked = [(t or "(빈)", best_wake_ratio(t, "하이티드")) for t in ROOM_NOISE
+              if best_wake_ratio(t, "하이티드") <= cut]
+    assert not leaked, f"컷 {cut} 으로 소음이 샜다: {leaked}"
+
+
+def test_cut_never_admits_a_bare_hai():
+    """🔴 컷을 0.50 으로 열면 `하이`·`티드` 한 마디(둘 다 0.50)가 봇을 깨운다.
+
+    사람이 하루에 수십 번 하는 말이다. 0.44(관측된 진짜 호출 최대)와 0.50 사이가
+    **반드시 컷이 있어야 할 자리**다. 넉넉해 보인다고 올리지 말 것.
+    """
+    from app.wake import best_wake_ratio
+    cut = _shipped_plain_cut()
+    for word in ("하이", "티드", "아이디", "하이볼"):
+        r = best_wake_ratio(word, "하이티드")
+        assert r > cut, f"'{word}' 자모거리 {r:.2f} <= 컷 {cut} — 이 한 마디로 깨어난다"

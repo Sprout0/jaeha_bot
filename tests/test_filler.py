@@ -279,7 +279,7 @@ def test_a_game_turn_stays_silent(tmp_path):
     reply, kind = _respond(_Agent(), _Games(handle="잘했어!"), "빨간색", filler)
 
     assert (reply, kind) == ("잘했어!", "game")
-    assert filler.plays == 0, "놀이는 즉답인데 필러가 답을 늦췄다"
+    assert filler.plays == 0, "놀이 답 자체가 맞장구다 — 맞장구가 두 번 나갔다"
 
 
 def test_a_game_start_turn_stays_silent(tmp_path):
@@ -288,7 +288,7 @@ def test_a_game_start_turn_stays_silent(tmp_path):
     filler = _RecordingFiller()
     _respond(_Agent(), _Games(start="동물 소리 놀이 하자!"), "놀자", filler)
 
-    assert filler.plays == 0
+    assert filler.plays == 0, "놀이 첫 멘트도 맞장구로 시작한다 — 두 번 나갔다"
 
 
 def test_a_free_talk_turn_gets_a_filler(tmp_path):

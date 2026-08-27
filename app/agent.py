@@ -12,6 +12,7 @@ import logging
 import os
 import re
 import threading
+import time
 from pathlib import Path
 
 log = logging.getLogger("jaeha_bot.agent")
@@ -46,6 +47,9 @@ class _Speculation:
         self._key: str | None = None
         self._thread: threading.Thread | None = None
         self._result: str | None = None
+        # 직전 take() 의 결과. 위 docstring 참고. 계측·로그가 이걸 읽는다.
+        self.last_outcome = "no_guess"
+        self.last_wait_s = 0.0
 
     def start(self, text: str) -> None:
         with self._lock:
@@ -68,17 +72,35 @@ class _Speculation:
                 self._result = out
 
     def take(self, text: str, timeout: float = 15.0) -> str | None:
-        """그 말에 대한 추측을 (돌고 있으면 기다렸다) 돌려준다. 없으면 None."""
+        """그 말에 대한 추측을 (돌고 있으면 기다렸다) 돌려준다. 없으면 None.
+
+        🔴 왜 결과를 기록하나 (2026-08-27): "선행 생각이 08-19 이후 실기 발동 0회"를
+           **여태 몰랐다.** 맞았는지 틀렸는지 남기는 데가 없어서 `think_s` 를 보고
+           짐작할 뿐이었다. 이 프로젝트가 반복해 당한 조용한 실패다.
+           **왜** 못 썼는지까지 갈라 둔다 — 원인마다 고칠 곳이 다르다:
+             no_guess  선행 인식이 꼬리 안에 못 끝났다        -> STT 를 더 빠르게
+             different 아이가 말을 이어가 최종 인식이 달라졌다 -> 정상, 손해 없음
+             hit       그대로 썼다                            -> 이때만 -1.75s 를 번다
+        """
+        self.last_wait_s = 0.0
         with self._lock:
+            if self._key is None:
+                self.last_outcome = "no_guess"
+                return None
             if text != self._key:
-                return None               # 다른 말이었다 = 추측은 버린다
+                self.last_outcome = "different"   # 다른 말이었다 = 추측은 버린다
+                self._key = self._thread = self._result = None
+                return None
             th = self._thread
         if th is not None:
+            t0 = time.perf_counter()
             th.join(timeout)
+            self.last_wait_s = time.perf_counter() - t0
         with self._lock:
             out = self._result
             self._key, self._thread, self._result = None, None, None
-            return out
+        self.last_outcome = "hit" if out is not None else "failed"
+        return out
 
 # 대화 이력은 최근 N턴(=사용자+로봇 2N개 메시지)만 유지한다.
 # 컨텍스트를 짧게 유지해야 n_ctx 안에서 3초 목표를 지키기 쉽다.
@@ -471,8 +493,14 @@ class LLMAgent:
         # 인식이 바뀌었으면 자동으로 버려진다(_Speculation 주석 참조).
         # ⚠️ 비전이 붙는 턴은 재사용하지 않는다 — 추측은 카메라 상태 없이 만들어졌다.
         raw = None if vision_context else self._spec.take(user_text)
+        # 🔴 발동했는지 사후에 셀 수 있어야 한다. 남기지 않으면 '0회'인 걸 또 못 본다.
+        self.last_spec = "vision" if vision_context else self._spec.last_outcome
+        self.last_spec_wait_s = 0.0 if vision_context else self._spec.last_wait_s
         if raw is None:
             raw = self._complete(self._build_messages(user_text, vision_context))
+        else:
+            log.info("[선행생각] 미리 만든 답을 그대로 씀(대기 %.2fs) — 생각 시간 0",
+                     self.last_spec_wait_s)
         reply = self._postprocess(raw)
         if reply:
             self._remember(user_text, reply)

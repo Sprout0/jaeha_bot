@@ -419,7 +419,8 @@ def main() -> None:
                                 tts_first_s=tm.first_audio_s,
                                 tts_synth_s=tm.synth_s,
                                 tts_play_s=tm.play_s, reply=reply,
-                                child_text=text, filler_wait_s=filler_wait)
+                                child_text=text, filler_wait_s=filler_wait,
+                                spec=getattr(agent, "last_spec", ""))
             time.sleep(ECHO_COOLDOWN)
             if source is not None:
                 source.drain()   # 답하는 동안 쌓인 자기 목소리 버리기

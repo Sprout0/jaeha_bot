@@ -138,3 +138,57 @@ def test_empty_text_is_not_speculated():
     time.sleep(0.05)
 
     assert a.calls == []
+
+
+# ── 발동했는지 사후에 셀 수 있어야 한다 ─────────────────────────────────────
+# 🔴 2026-08-27: "선행 생각이 08-19 이후 실기 발동 0회"를 **여태 몰랐다.** 맞았는지
+#    틀렸는지 알려주는 로그도 계측도 없어서, `think_s` 가 0 으로 안 떨어지는 걸 보고
+#    짐작할 뿐이었다. 이 프로젝트가 반복해 당한 조용한 실패다 — 안 남기면 못 센다.
+#    그래서 **왜 못 썼는지까지** 구분해 남긴다. 원인마다 고칠 곳이 다르기 때문이다:
+#      no_guess  = 선행 인식이 꼬리 안에 못 끝났다      -> STT 를 더 빠르게
+#      different = 아이가 말을 이어가 최종 인식이 달라졌다 -> 정상. 손해 없음
+#      hit       = 그대로 썼다                          -> 이때만 -1.75s 를 번다
+
+def test_a_reused_guess_is_recorded_as_a_hit():
+    a = _Agent()
+    a.speculate("강아지 좋아")
+    a.respond("강아지 좋아")
+
+    assert a.last_spec == "hit"
+
+
+def test_no_guess_at_all_is_told_apart_from_a_wrong_one():
+    """둘을 뭉뚱그리면 'STT 를 더 줄여야 하나'를 영영 못 정한다."""
+    a = _Agent()
+
+    a.respond("아무 추측도 없었다")
+
+    assert a.last_spec == "no_guess"
+
+
+def test_a_guess_for_different_words_is_recorded_as_different():
+    a = _Agent()
+    a.speculate("강아지")
+    a.respond("강아지 좋아")        # 아이가 말을 이어갔다
+
+    assert a.last_spec == "different"
+
+
+def test_the_wait_for_an_unfinished_guess_is_measured():
+    """추측이 아직 돌고 있으면 take() 가 기다린다 — 그 시간도 아이가 겪는 지연이다."""
+    a = _Agent(delay=0.3)
+    a.speculate("강아지 좋아")
+    a.respond("강아지 좋아")
+
+    assert a.last_spec == "hit"
+    assert a.last_spec_wait_s > 0.1, "기다린 시간을 안 쟀다"
+
+
+def test_a_finished_guess_costs_no_wait():
+    a = _Agent()
+    a.speculate("강아지 좋아")
+    time.sleep(0.2)                  # 추측이 끝날 시간을 준다
+    a.respond("강아지 좋아")
+
+    assert a.last_spec == "hit"
+    assert a.last_spec_wait_s < 0.05

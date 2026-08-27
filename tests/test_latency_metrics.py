@@ -192,3 +192,32 @@ def test_no_filler_wait_leaves_the_number_where_it_was(tmp_path):
                   think_s=1.0, think_kind="llm", tts_first_s=0.8)
 
     assert m.samples[-1]["resp_felt_s"] == pytest.approx(3.5)
+
+
+# ── 선행 생각이 몇 번 터졌나 ────────────────────────────────────────────────
+# 🔴 2026-08-27: "08-19 이후 실기 발동 0회"를 **여태 몰랐다.** 남기는 데가 없었다.
+#    턴마다 결과를 남기고 세션 요약에서 세면, 다음엔 로그만 보고 안다.
+
+def test_the_speculation_outcome_is_kept_per_turn(tmp_path):
+    from app.metrics import MetricsLogger
+
+    m = MetricsLogger(log_dir=str(tmp_path))
+    m.record_turn(stt_wait_s=1.0, stt_rec_s=0.5, vad_tail_s=1.2,
+                  think_s=0.02, think_kind="llm", tts_first_s=0.8, spec="hit")
+
+    assert m.samples[-1]["spec"] == "hit"
+
+
+def test_the_summary_counts_the_hits(tmp_path, capsys):
+    """세션이 끝났을 때 '몇 턴 중 몇 번' 을 한 줄로 알 수 있어야 한다."""
+    from app.metrics import MetricsLogger
+
+    m = MetricsLogger(log_dir=str(tmp_path))
+    for s in ("hit", "no_guess", "different", "hit"):
+        m.record_turn(stt_wait_s=1.0, stt_rec_s=0.5, vad_tail_s=1.2,
+                      think_s=0.5, think_kind="llm", tts_first_s=0.8, spec=s)
+    m.summary()
+
+    out = capsys.readouterr().out
+    assert "선행생각" in out
+    assert "2/4" in out, f"발동 횟수가 요약에 없다:\n{out}"

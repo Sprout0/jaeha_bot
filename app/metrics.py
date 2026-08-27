@@ -230,7 +230,7 @@ class MetricsLogger:
                     tts_synth_s: float = 0.0,
                     tts_play_s: float = 0.0, reply: str = "",
                     child_text: str = "", vad_tail_s: float = 0.0,
-                    filler_wait_s: float = 0.0) -> None:
+                    filler_wait_s: float = 0.0, spec: str = "") -> None:
         """한 턴의 단계 지연을 기록한다.
 
         vad_tail_s : **말끝 → 녹음 종료**. 아이가 순전히 기다리는 구간이다.
@@ -290,6 +290,10 @@ class MetricsLogger:
             "tts_play_s": round(tts_play_s, 3),     # 봇이 말하는 시간(지연 아님)
             "resp_compute_s": resp,           # 연산만(꼬리 제외). 옛 기록과 이어보기용
             "filler_wait_s": round(filler_wait_s, 3),
+            # 선행 생각 결과: hit(그대로 씀) / no_guess(추측 자체가 없었다) /
+            # different(아이가 말을 이어가 키가 안 맞음) / failed / vision.
+            # 🔴 08-19 이후 '발동 0회'인 걸 여태 몰랐다 — 남기는 데가 없었다.
+            "spec": spec,
             "resp_felt_s": felt,              # ★ 아이가 겪는 시간 = 꼬리 + 연산 + 필러대기
             "metric_ver": 3,                  # 1 = tts 재생시간 혼입 / 2 = 꼬리 누락
             # 🔴 자원은 **구간 최댓값**이다. 여기서 한 번 읽으면 턴이 끝나 조용해진
@@ -367,6 +371,15 @@ class MetricsLogger:
               f" | TTS {summ['tts_first_median_s']:.2f}s")
         print(f"    (참고) 봇이 말하는 시간 {summ['tts_play_median_s']:.2f}s"
               " — 지연이 아니라 발화 길이다")
+        # 🔴 선행 생각은 터지면 '생각'을 통째로 0 으로 만든다(-1.75s). 몇 번 터졌는지
+        #    안 세면 켜 뒀는지조차 모른다 — 실제로 08-19~08-27 내내 0회인 걸 몰랐다.
+        specs = [s.get("spec") for s in self.samples if s.get("spec")]
+        if specs:
+            from collections import Counter
+            c = Counter(specs)
+            rest = " / ".join(f"{k} {v}" for k, v in c.most_common() if k != "hit")
+            print(f"    선행생각 발동 {c['hit']}/{len(specs)}턴"
+                  + (f"  (못 쓴 이유: {rest})" if rest else ""))
         res = []
         if summ["rss_peak_mb"]:
             res.append(f"RSS {summ['rss_peak_mb']:.0f}MB")

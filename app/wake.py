@@ -246,6 +246,22 @@ def make_wake_verifier(vcfg: dict, stt, word: str):
     return verify
 
 
+def _make_embed_rescue(vcfg: dict):
+    """설정에서 임베딩 대조 장치를 만든다. 꺼져 있거나 본보기가 없으면 None.
+
+    기본이 **꺼짐**인 이유: 컷(min_similarity)이 아직 3분짜리 소음 표본으로만
+    정해져 있다. 이 프로젝트는 같은 크기의 표본으로 두 번 틀린 적이 있다
+    (08-26 우회컷: 3분 최고 0.173 -> 같은 날 실기 0.725). 긴 녹음으로 다시 잡기 전엔
+    켜지 않는다. 자세한 근거는 app/wake_embed.py 머리말.
+    """
+    ecfg = vcfg.get("embed_rescue", {}) or {}
+    if not ecfg.get("enabled", False):
+        return None
+    from .wake_embed import load_rescue
+    return load_rescue(ecfg.get("templates"),
+                       float(ecfg.get("min_similarity", 0.85)))
+
+
 def make_detector(wcfg: dict, stt, source):
     """설정에 따라 감지기를 고른다. ONNX 로드 실패 시 STT 로 폴백한다.
 
@@ -278,6 +294,8 @@ def make_detector(wcfg: dict, stt, source):
             verify_bypass=float(vcfg.get("bypass_score", 1.01)),
             # 후보가 뜬 순간의 창은 호출어를 자르고 있을 수 있다 — 이만큼 더 듣고 본다.
             verify_settle_s=float(vcfg.get("settle_s", 0.0)),
+            # whisper 가 지어낸 글 때문에 죽은 진짜 호출을 소리로 건진다(꺼져 있으면 None).
+            embed_rescue=_make_embed_rescue(vcfg),
         )
     except Exception as e:
         log.warning("ONNX 호출어 감지기 로드 실패(%s: %s) → STT 감지기로 폴백",

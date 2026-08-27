@@ -11,6 +11,8 @@
   · 기각 후 재호출 폭주 방지(히스테리시스 + 쿨다운). 없으면 초당 12번 whisper 를 부른다
   · 검증 버퍼(2.0s)와 프리롤(0.5s)이 서로 오염되지 않아야 한다
 """
+import logging
+
 import numpy as np
 
 from app.audio_source import FRAME, SAMPLE_RATE, AudioSource
@@ -710,3 +712,86 @@ def test_empty_transcript_still_gets_a_filename(tmp_path):
     v = _saving_verifier(tmp_path, "")
     assert v(np.zeros(32000, dtype=np.float32)) is False
     assert len(list(tmp_path.glob("*무음*.wav"))) == 1
+
+
+# ── 임베딩 대조는 OR 로만 붙는다 (2026-08-27) ──────────────────────────────
+# 🔴 왜 있나: whisper 가 소리와 무관한 글을 지어내 진짜 호출이 죽는다. 증거가 디스크에
+#    있다 — data/wake_real/.../빠르게_00.wav 는 어른이 '하이 티드'라고 부른 녹음인데
+#    whisper 가 '안녕히계세요' 라고 적는다. 자모컷으로는 손쓸 방법이 없다.
+# ⚠️ 이 장치는 **재현율만 올리고 정밀도를 내준다.** 그래서 절대로 whisper 의 '통과'를
+#    막아서는 안 되고(그건 순손실이다), 컷은 긴 소음 녹음으로만 정한다.
+
+class _FakeRescue:
+    """유사도를 정해 놓은 가짜 대조기. 몇 번 불렸는지 센다."""
+
+    def __init__(self, sim, cut=0.85):
+        self.sim = float(sim)
+        self.min_similarity = float(cut)
+        self.calls = 0
+
+    def passes(self, embs):
+        self.calls += 1
+        return self.sim >= self.min_similarity, self.sim
+
+
+def _det_with_rescue(sim, whisper_ok, **kw):
+    d, src = _det([0.0, 0.9], verifier=lambda a: whisper_ok,
+                  embed_rescue=_FakeRescue(sim), **kw)
+    d.embed_sequence = lambda audio: np.zeros((20, 96), dtype=np.float32)
+    return d, src
+
+
+def test_embedding_rescues_a_call_that_whisper_threw_away():
+    """🔴 이게 이 장치의 존재 이유다 — whisper 가 기각해도 소리가 맞으면 깨운다."""
+    d, _ = _det_with_rescue(sim=0.91, whisper_ok=False)
+    assert d.wait_for_wake(max_frames=5) is not None, "임베딩이 건지지 못했다"
+
+
+def test_embedding_below_the_cut_stays_rejected():
+    d, _ = _det_with_rescue(sim=0.80, whisper_ok=False)
+    assert d.wait_for_wake(max_frames=5) is None
+
+
+def test_embedding_is_not_consulted_when_whisper_already_passed():
+    """⚠️ whisper 가 통과시킨 걸 임베딩이 뒤집으면 **순손실**이다. 묻지도 말아야 한다."""
+    d, _ = _det_with_rescue(sim=0.0, whisper_ok=True)
+    assert d.wait_for_wake(max_frames=5) is not None
+    assert d.embed_rescue.calls == 0, "통과한 호출에 임베딩을 물었다"
+
+
+def test_a_broken_rescue_never_kills_the_bot():
+    """진단·구제 장치가 봇을 죽이면 안 된다 — 터지면 그냥 whisper 판정을 따른다."""
+    class _Boom:
+        min_similarity = 0.85
+
+        def passes(self, embs):
+            raise RuntimeError("본보기가 깨졌다")
+
+    d, _ = _det([0.0, 0.9], verifier=lambda a: False, embed_rescue=_Boom())
+    d.embed_sequence = lambda audio: np.zeros((20, 96), dtype=np.float32)
+    assert d.wait_for_wake(max_frames=5) is None      # 예외가 아니라 기각
+
+
+def test_rescue_logs_which_path_woke_the_bot(caplog):
+    """어느 관문으로 깨어났는지 로그에 없으면 헛깨움의 출처를 못 가린다 —
+    08-26 에 헛깨움 2건이 전부 우회로 들어온 걸 그 로그로 알아냈다."""
+    d, _ = _det_with_rescue(sim=0.91, whisper_ok=False)
+    with caplog.at_level(logging.INFO, logger="jaeha_bot.wake_onnx"):
+        d.wait_for_wake(max_frames=5)
+    assert any("임베딩으로 건짐" in r.message for r in caplog.records)
+
+
+def test_off_by_default_means_the_old_path_exactly():
+    """embed_rescue 가 None 이면 코드 경로가 예전과 완전히 같아야 한다(롤백 보장)."""
+    d, _ = _det([0.0, 0.9], verifier=lambda a: False, embed_rescue=None)
+    assert d.wait_for_wake(max_frames=5) is None
+
+
+def test_rejection_log_carries_the_rms_so_a_quiet_call_is_tellable(caplog):
+    """🔴 여태 기각 로그에 '점수'와 '길이'만 있어서, 그 후보에 **사람 목소리가
+    있었는지조차** 알 수가 없었다. 조용한 호출과 시끄러운 TV 는 처방이 정반대다."""
+    d, _ = _det([0.0, 0.9], verifier=lambda a: False)
+    with caplog.at_level(logging.INFO, logger="jaeha_bot.wake_onnx"):
+        d.wait_for_wake(max_frames=5)
+    line = next(r.message for r in caplog.records if "후보 기각" in r.message)
+    assert "RMS" in line, f"기각 로그에 RMS 가 없다: {line}"

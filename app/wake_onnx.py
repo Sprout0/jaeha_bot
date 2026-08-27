@@ -67,7 +67,8 @@ class OnnxWakeDetector:
                  verify_min_rms: float = 0.005,
                  verify_rearm_delta: float = 0.05,
                  verify_bypass: float = 1.01,
-                 verify_settle_s: float = 0.0) -> None:
+                 verify_settle_s: float = 0.0,
+                 embed_rescue=None) -> None:
         import pathlib
 
         import onnxruntime as ort
@@ -88,14 +89,16 @@ class OnnxWakeDetector:
 
         self._init_state(threshold, trigger_frames, continuation_window, source,
                          verifier, verify_cooldown_s, verify_min_rms,
-                         verify_rearm_delta, verify_bypass, verify_settle_s)
+                         verify_rearm_delta, verify_bypass, verify_settle_s,
+                         embed_rescue)
 
     def _init_state(self, threshold, trigger_frames, continuation_window, source,
                     verifier=None, verify_cooldown_s: float = 1.0,
                     verify_min_rms: float = 0.005,
                     verify_rearm_delta: float = 0.05,
                     verify_bypass: float = 1.01,
-                    verify_settle_s: float = 0.0):
+                    verify_settle_s: float = 0.0,
+                    embed_rescue=None):
         """__init__ 과 테스트가 공유하는 순수 상태 초기화(ONNX 로드 없음).
 
         ⚠️ 새 상태는 **반드시 여기에** 둔다. __init__ 에만 두면 _init_state 로 만든
@@ -129,9 +132,39 @@ class OnnxWakeDetector:
         #    이만큼 더 듣고 나서 창을 뜬다. 검증창은 '최근 N초' 라 읽는 만큼 뒤로 따라온다.
         #    ⚠️ 이 시간은 그대로 깨움 지연에 더해진다 — 짧게 잡을 것.
         self.verify_settle_s = float(verify_settle_s)
+        # 🔴 whisper 가 지어낸 글 때문에 죽은 진짜 호출을 소리로 건지는 장치(없으면 None).
+        #    app/wake_embed.py 참고. **whisper 를 대체하지 않고 OR 로 붙는다.**
+        self.embed_rescue = embed_rescue
         self._armed = True       # 히스테리시스: 기각 후에는 점수가 임계 아래로 내려가야 재무장
         self._last_verify = 0.0  # 쿨다운 기준 시각
         self._last_score = 0.0   # 직전 검증 때의 점수(재무장 판단용)
+
+    # --------------------------------------------------------- 임베딩 대조용 체인
+    def embed_sequence(self, audio) -> np.ndarray:
+        """오디오 한 덩어리를 임베딩 열(N, 96)로. 분류기는 안 탄다.
+
+        🔴 **살아 있는 링버퍼를 건드리면 안 된다.** self._mel/_emb 는 지금 흐르는
+           소리를 담고 있고, 검증은 그 흐름 도중에 끼어든다. 여기서 그걸 쓰면
+           검증 한 번이 감지 상태를 통째로 날려 다음 호출을 놓친다.
+           그래서 지역 deque 를 새로 만든다.
+        """
+        mel: deque[np.ndarray] = deque(maxlen=MEL_WINDOW)
+        out = []
+        a = np.asarray(audio, dtype=np.float32).reshape(-1)
+        mel_name = self._mel_sess.get_inputs()[0].name
+        emb_name = self._emb_sess.get_inputs()[0].name
+        for i in range(0, a.size - FRAME + 1, FRAME):
+            chunk = a[i:i + FRAME].reshape(1, -1) * INT16_SCALE
+            rows = np.squeeze(self._mel_sess.run(None, {mel_name: chunk})[0])
+            for row in rows.reshape(-1, MEL_BANDS) / 10.0 + 2.0:
+                mel.append(row.astype(np.float32))
+            if len(mel) < MEL_WINDOW:
+                continue
+            window = np.stack(list(mel))[None, :, :, None].astype(np.float32)
+            e = np.squeeze(self._emb_sess.run(None, {emb_name: window})[0])
+            out.append(e.reshape(EMB_DIM).astype(np.float32))
+        return (np.stack(out) if out
+                else np.zeros((0, EMB_DIM), dtype=np.float32))
 
     # ------------------------------------------------------------------ 체인
     def reset(self) -> None:
@@ -306,11 +339,33 @@ class OnnxWakeDetector:
             #    ⚠️ 예외가 나도 갱신해야 한다(그래서 finally). 안 그러면 검증기가
             #       고장난 동안 폭주가 더 심해진다.
             self._last_verify = time.monotonic()
+        if not ok and self.embed_rescue is not None:
+            # 🔴 whisper 가 **소리와 무관한 글을 지어내서** 죽은 진짜 호출을 여기서 건진다.
+            #    증거: data/wake_real/.../빠르게_00.wav 는 어른이 '하이 티드'라고 부른
+            #    녹음인데 whisper 가 '안녕히계세요'로 적는다. 글자로는 손쓸 방법이 없다.
+            #    자세한 근거·한계는 app/wake_embed.py 머리말에 있다.
+            try:
+                saved, sim = self.embed_rescue.passes(self.embed_sequence(audio))
+            except Exception as e:      # noqa: BLE001 — 구제 장치가 봇을 죽이면 안 된다
+                log.warning("[검증] 임베딩 대조 실패(무시): %s: %s", type(e).__name__, e)
+            else:
+                if saved:
+                    log.info("[검증] 임베딩으로 건짐 — 유사도 %.3f >= %.2f "
+                             "(whisper 는 기각했다, 점수 %.3f)",
+                             sim, self.embed_rescue.min_similarity, score)
+                    self._hits = 0
+                    return True
+                log.info("[검증] 임베딩도 기각 — 유사도 %.3f < %.2f",
+                         sim, self.embed_rescue.min_similarity)
         if not ok:
             # 실기 튜닝의 근거가 되는 줄이다. 실제 가정 소음에서 무엇이 후보로 뜨는지
             # 이 로그로만 알 수 있다(합성 부정으로는 확인이 안 된다).
-            log.info("[검증] 후보 기각 — 점수 %.3f, 오디오 %.2fs",
-                     score, audio.size / SAMPLE_RATE)
+            # 🔴 2026-08-27 RMS 를 같이 남긴다. 여태 '점수'와 '길이'만 남겨서, 기각된
+            #    후보에 **사람 목소리가 있었는지조차** 알 수가 없었다. 조용한 호출과
+            #    시끄러운 TV 는 처방이 정반대인데 로그가 둘을 구분해 주지 않았다.
+            log.info("[검증] 후보 기각 — 점수 %.3f, 오디오 %.2fs, 최대 RMS %.4f "
+                     "(소음바닥 %.4f)", score, audio.size / SAMPLE_RATE, loudest,
+                     float(getattr(self.source, "noise_floor", 0.0) or 0.0))
         self._hits = 0
         return ok
 

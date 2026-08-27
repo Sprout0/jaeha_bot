@@ -361,6 +361,7 @@ class STTModule:
         total_samples = sum(int(np.asarray(b).size) for b in collected)
         quiet = 0
         handed = False          # 추측 텍스트는 턴당 한 번만 흘린다
+        spec_at = None          # 선행 인식을 제출한 시각(늦었으면 얼마나 늦었는지 재려고)
         speech_peak = threshold
         last_loud_samples = total_samples   # 마지막 말소리까지 모인 양(꼬리 계산 기준)
         while total_samples < max_samples:
@@ -378,6 +379,7 @@ class STTModule:
                 # 백그라운드로 인식시킨다. 남은 꼬리가 그 연산을 덮는다.
                 if quiet == spec_after:
                     self._spec.submit(_snapshot(collected), key=last_loud_samples)
+                    spec_at = time.perf_counter()
                 # 선행 인식이 꼬리 안에서 끝났으면 그 텍스트를 곧바로 흘려준다.
                 # 받는 쪽(main)이 남은 꼬리 동안 LLM 을 미리 친다 — 안 흘려주면
                 # '아이가 한 말을 이미 아는데도' 꼬리가 끝날 때까지 놀린다.
@@ -385,6 +387,8 @@ class STTModule:
                     got = self._spec.peek(last_loud_samples)
                     if got and got[0]:
                         handed = True
+                        log.info("[선행인식] 꼬리 안에 끝남(%.2fs) — 답을 미리 만들기 시작",
+                                 time.perf_counter() - (spec_at or time.perf_counter()))
                         try:
                             on_partial(got[0])
                         except Exception as e:   # 최적화가 본 기능을 죽이면 안 된다
@@ -396,6 +400,19 @@ class STTModule:
                 last_loud_samples = total_samples
         self.last_vad_tail_s = (total_samples - last_loud_samples) / SAMPLE_RATE
         self._spec_key = last_loud_samples
+        # 🔴 못 넘겼으면 **왜** 못 넘겼는지 남긴다 (2026-08-27). 실기 8턴에서 선행 생각이
+        #    0/8 이었는데, 선행 인식이 늦은 건지 결과가 비었던 건지 로그로 갈 수가 없었다.
+        #    고칠 곳이 다르다: 늦었으면 STT 를 줄여야 하고, 비었으면 VAD·발화 문제다.
+        #    늦었을 땐 **얼마나** 늦었는지가 다음 결정의 전부다(0.02초면 spec_after 를
+        #    당기면 되고, 0.5초면 다른 수를 찾아야 한다).
+        if on_partial is not None and not handed and spec_at is not None:
+            budget = max(0.0, self.silence_duration - 0.16)
+            got = self._spec.peek(last_loud_samples)
+            if got is not None and not got[0]:
+                log.info("[선행인식] 결과가 **빈 문자열** — 넘길 게 없었다(예산 %.2fs)", budget)
+            else:
+                log.info("[선행인식] 꼬리 안에 못 끝냄 — 예산 %.2fs 를 넘겼다(%.2fs 경과)",
+                         budget, time.perf_counter() - spec_at)
 
         if not collected:
             return np.zeros(0, dtype=np.float32)

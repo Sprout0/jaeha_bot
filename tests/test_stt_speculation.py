@@ -226,3 +226,63 @@ def test_peek_does_not_block_when_nothing_is_ready():
     t = time.perf_counter()
     assert s.peek(999) is None
     assert time.perf_counter() - t < 0.05, "peek 가 기다리고 있다 — 꼬리 루프가 멈춘다"
+
+
+# ── 왜 못 넘겼는지 남긴다 ────────────────────────────────────────────────────
+# 🔴 2026-08-27 젯슨 실기 8턴: 선행생각 발동 **0/8**, 이유는 전부 `no_guess` —
+#    즉 추측이 시작조차 안 됐다. 그런데 그게 (a)선행 인식이 꼬리 안에 못 끝나서인지
+#    (b)끝났는데 빈 문자열이라 안 넘긴 건지 **로그로 갈 수가 없었다.**
+#    고칠 곳이 다르다: (a)는 STT 를 더 줄여야 하고 (b)는 VAD·발화가 문제다.
+#    ⚠️ 그리고 (a)면 **얼마나 늦었는지**가 다음 결정의 전부다 — 0.02초 차이면
+#       spec_after 를 당기면 되고, 0.5초면 다른 수를 찾아야 한다.
+
+def test_a_handover_says_so(caplog):
+    import logging
+    stt = STTModule(silence_duration=1.2, max_duration=10.0)
+    stt._spec = _Speculation(lambda a: ("칼 어딨어", 0.0))
+
+    with caplog.at_level(logging.INFO, logger="jaeha_bot.stt"):
+        stt.record_until_silence(source=ScriptedSource(_loud(4) + _quiet(40)),
+                                 on_partial=lambda t: None)
+
+    assert any("선행인식" in r.message and "끝남" in r.message for r in caplog.records)
+
+
+def test_a_late_guess_says_how_late(caplog):
+    """예산을 얼마나 넘겼는지가 다음 결정의 전부다."""
+    import logging
+    stt = STTModule(silence_duration=1.2, max_duration=10.0)
+    stt._spec = _Speculation(lambda a: (_ for _ in ()).throw(RuntimeError("안 끝남")))
+
+    with caplog.at_level(logging.INFO, logger="jaeha_bot.stt"):
+        stt.record_until_silence(source=ScriptedSource(_loud(4) + _quiet(40)),
+                                 on_partial=lambda t: None)
+
+    msgs = [r.message for r in caplog.records if "선행인식" in r.message]
+    assert msgs, "못 넘겼는데 아무 말도 안 남겼다"
+    assert "못 끝냄" in msgs[0] or "빈 문자열" in msgs[0]
+
+
+def test_an_empty_guess_is_told_apart_from_a_late_one(caplog):
+    import logging
+    stt = STTModule(silence_duration=1.2, max_duration=10.0)
+    stt._spec = _Speculation(lambda a: ("", 0.0))
+
+    with caplog.at_level(logging.INFO, logger="jaeha_bot.stt"):
+        stt.record_until_silence(source=ScriptedSource(_loud(4) + _quiet(40)),
+                                 on_partial=lambda t: None)
+
+    assert any("빈 문자열" in r.message for r in caplog.records), \
+        "빈 결과를 '늦었다'로 뭉뚱그리면 엉뚱한 걸 고치게 된다"
+
+
+def test_nothing_is_logged_when_nobody_is_listening(caplog):
+    """on_partial 이 없으면 선행 인식을 흘릴 데가 없다 — 그 turn 을 실패로 세면 안 된다."""
+    import logging
+    stt = STTModule(silence_duration=1.2, max_duration=10.0)
+    stt._spec = _Speculation(lambda a: ("안녕", 0.0))
+
+    with caplog.at_level(logging.INFO, logger="jaeha_bot.stt"):
+        stt.record_until_silence(source=ScriptedSource(_loud(4) + _quiet(40)))
+
+    assert not [r for r in caplog.records if "선행인식" in r.message]

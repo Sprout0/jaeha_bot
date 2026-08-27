@@ -66,7 +66,8 @@ class OnnxWakeDetector:
                  verifier=None, verify_cooldown_s: float = 1.0,
                  verify_min_rms: float = 0.005,
                  verify_rearm_delta: float = 0.05,
-                 verify_bypass: float = 1.01) -> None:
+                 verify_bypass: float = 1.01,
+                 verify_settle_s: float = 0.0) -> None:
         import pathlib
 
         import onnxruntime as ort
@@ -87,13 +88,14 @@ class OnnxWakeDetector:
 
         self._init_state(threshold, trigger_frames, continuation_window, source,
                          verifier, verify_cooldown_s, verify_min_rms,
-                         verify_rearm_delta, verify_bypass)
+                         verify_rearm_delta, verify_bypass, verify_settle_s)
 
     def _init_state(self, threshold, trigger_frames, continuation_window, source,
                     verifier=None, verify_cooldown_s: float = 1.0,
                     verify_min_rms: float = 0.005,
                     verify_rearm_delta: float = 0.05,
-                    verify_bypass: float = 1.01):
+                    verify_bypass: float = 1.01,
+                    verify_settle_s: float = 0.0):
         """__init__ 과 테스트가 공유하는 순수 상태 초기화(ONNX 로드 없음).
 
         ⚠️ 새 상태는 **반드시 여기에** 둔다. __init__ 에만 두면 _init_state 로 만든
@@ -120,6 +122,13 @@ class OnnxWakeDetector:
         #    손해만 본다(0.873 짜리가 '하이치 루' 로 읽혀 기각된 실례가 있다).
         #    1.01 = 사실상 끔(점수는 1.0 을 못 넘는다). 설정에서 켠다.
         self.verify_bypass = float(verify_bypass)
+        # 🔴 2026-08-27 후보가 뜬 **그 순간**의 창은 호출어를 자르고 있을 수 있다.
+        #    1단계는 '하이' 까지만 듣고도 임계(0.05)를 넘기고, 그러면 검증창의 끝이
+        #    '티'·'드' 앞이라 whisper 가 그대로 '하이' 라고 받아쓴다 — 자모거리 0.50 이라
+        #    기각된다. 실기 로그 11:51:53 이 그 모습이다(점수 0.272 인데 전사가 '하이').
+        #    이만큼 더 듣고 나서 창을 뜬다. 검증창은 '최근 N초' 라 읽는 만큼 뒤로 따라온다.
+        #    ⚠️ 이 시간은 그대로 깨움 지연에 더해진다 — 짧게 잡을 것.
+        self.verify_settle_s = float(verify_settle_s)
         self._armed = True       # 히스테리시스: 기각 후에는 점수가 임계 아래로 내려가야 재무장
         self._last_verify = 0.0  # 쿨다운 기준 시각
         self._last_score = 0.0   # 직전 검증 때의 점수(재무장 판단용)
@@ -255,6 +264,13 @@ class OnnxWakeDetector:
         self._armed = False          # 판정 전에 내린다 — 예외가 나도 폭주하지 않게
         self._last_verify = now
         self._last_score = score
+        # 호출어 끝을 창 안에 넣는다(위 verify_settle_s 주석 참고). 읽는 프레임은
+        # 버려지지 않는다 — 프리롤·검증창 링버퍼로 그대로 들어간다.
+        for _ in range(int(self.verify_settle_s * SAMPLE_RATE / FRAME)):
+            try:
+                self.source.read()
+            except StopIteration:
+                break
         audio = self.source.verify_window()
 
         # 에너지 게이트 — **디지털 무음만** 거른다. whisper 를 헛되이 부르지 않기 위한 것뿐이다.

@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from collections import deque
 
 import numpy as np
@@ -19,6 +20,12 @@ log = logging.getLogger("jaeha_bot.audio")
 
 SAMPLE_RATE = 16000  # faster-whisper·openWakeWord 공통
 FRAME = 1280         # 80ms @16kHz — openWakeWord 규격(멜 한 묶음 = 임베딩 보폭 1칸)
+
+# 콜백이 쌓아 두는 오디오 길이(초). 처리가 멈춰 있는 동안 이만큼은 안 잃는다.
+# 🔴 봇이 말하는 시간(실측 발화 2.7~4.2초)까지 담아야 한다. 안 그러면 말하는 내내
+#    버리면서 '넘침'을 세고, 그게 drain() 밖이라 **거짓 경고가 매 턴 뜬다.**
+#    16kHz float32 기준 12초 = 768KB. 젯슨에서도 부담이 아니다.
+BUFFER_S = 12.0
 
 
 class AudioSource:
@@ -45,6 +52,9 @@ class AudioSource:
         self._verify_ring: deque[np.ndarray] = deque(maxlen=self.verify_frames)
         self._stream = None
         self.noise_floor = 0.0
+        # 마이크가 순수한 0 만 주면 True. 어떤 마이크도 자체잡음이 있으므로 0 은
+        # '조용하다'가 아니라 '장치가 죽었다'는 뜻이다.
+        self.mic_is_dead = False
         # 마이크 버퍼 넘침 — 넘친 만큼 **소리가 버려졌다**. 아래 _note_overflow 참고.
         self.overflows = 0
         self._overflow_since_log = 0
@@ -52,24 +62,50 @@ class AudioSource:
         # drain() 안에서 난 넘침은 따로 센다 — 거기선 **일부러 버리는** 중이라 손실이 아니다.
         self.drained_overflows = 0
         self._draining = False
+        # 콜백이 채우고 _read_frame 이 비우는 큐. maxlen 이 차면 append 가 **가장
+        # 오래된 것을 밀어낸다** — 최신 소리가 더 중요하므로 그게 맞는 방향이다.
+        self._queue: deque[np.ndarray] = deque()
+        self._filled = threading.Event()
 
     # ------------------------------------------------------------- 스트림 수명
     def open(self, measure_noise: bool = True) -> "AudioSource":
         """마이크를 열고 주변 소음 바닥을 한 번만 잰다(STT 가 재측정하지 않게)."""
         import sounddevice as sd
 
+        # 🔴 블로킹 read 가 아니라 **콜백**이다. 블로킹이면 처리가 멈춘 동안 아무도
+        #    마이크를 안 읽어 PortAudio 버퍼가 넘치고 그 소리가 통째로 사라진다
+        #    (호출어 검증 whisper ~0.85s, 인식 ~1.2s 마다 매번). 콜백은 우리가 뭘 하든
+        #    계속 돌아서, 그 시간만큼을 큐에 쌓아 둔다.
+        self._start_buffer()
         self._stream = sd.InputStream(
             samplerate=self.samplerate, channels=1,
-            dtype="float32", blocksize=self.frame,
+            dtype="float32", blocksize=self.frame, callback=self._on_audio,
         )
         self._stream.start()
         if measure_noise:
-            vals = []
-            for _ in range(10):  # 10프레임 = 0.8초
-                vals.append(_rms(self._read_frame()))
-            self.noise_floor = float(np.mean(vals)) if vals else 0.0
-            log.info("소음 바닥 측정: %.5f", self.noise_floor)
+            self._measure_noise()
         return self
+
+    def _measure_noise(self) -> None:
+        """주변 소음 바닥을 한 번 잰다. 겸사겸사 **마이크가 살아 있는지**도 본다.
+
+        🔴 2026-08-27 젯슨: `_setup_audio_device` 가 ReSpeaker 입력을 못 찾아(그 순간
+           장치가 다른 프로세스에 잡혀 있었다) 죽은 `default` 로 폴백했고, 그 세션은
+           소음바닥 0.00000 / 모든 프레임 RMS 0.0 — **귀머거리인 채로 계속 돌았다.**
+           경고 한 줄로는 못 막는다. 순수한 0 은 물리적으로 불가능하니(어떤 마이크도
+           자체잡음이 있다) 그건 '조용하다'가 아니라 '장치가 죽었다'는 뜻이다.
+        """
+        vals = []
+        for _ in range(10):  # 10프레임 = 0.8초
+            vals.append(_rms(self._read_frame()))
+        self.noise_floor = float(np.mean(vals)) if vals else 0.0
+        self.mic_is_dead = all(v == 0.0 for v in vals)
+        if self.mic_is_dead:
+            log.warning("🔴 마이크가 0 만 준다 — 장치가 죽었거나 엉뚱한 걸 잡았다. "
+                        "봇이 아무 말도 못 듣는다. configs 의 audio.device 와 "
+                        "`python -c \"import sounddevice;print(sounddevice.query_devices())\"` 확인할 것")
+        else:
+            log.info("소음 바닥 측정: %.5f", self.noise_floor)
 
     def close(self) -> None:
         if self._stream is not None:
@@ -89,12 +125,33 @@ class AudioSource:
         self.close()
 
     # ------------------------------------------------------------- 프레임 공급
+    def _start_buffer(self, buffer_s: float = BUFFER_S) -> None:
+        """콜백 큐를 연다(또는 비운다). open() 이 부르고, 테스트가 직접 부른다."""
+        self._queue = deque(maxlen=max(1, int(buffer_s * self.samplerate / self.frame)))
+        self._filled.clear()
+
+    def _on_audio(self, indata, frames, time_info, status) -> None:
+        """마이크와 닿는 지점 0 — PortAudio 스레드가 부른다. **절대 오래 붙잡지 않는다.**"""
+        if status is not None and getattr(status, "input_overflow", False):
+            self.note_overflow()          # 장치 쪽에서 이미 흘렸다
+        q = self._queue
+        if q.maxlen is not None and len(q) == q.maxlen:
+            self.note_overflow()          # 큐가 꽉 차 가장 오래된 것이 밀려난다
+        q.append(np.asarray(indata, dtype=np.float32).reshape(-1).copy())
+        self._filled.set()
+
     def _read_frame(self) -> np.ndarray:
         """마이크와 닿는 지점 1 — 프레임 하나를 읽는다. 테스트는 여기를 오버라이드한다."""
-        block, overflowed = self._stream.read(self.frame)
-        if overflowed:
-            self.note_overflow()
-        return np.asarray(block, dtype=np.float32).reshape(-1)
+        while True:
+            try:
+                return self._queue.popleft()
+            except IndexError:
+                self._filled.clear()
+                # 프레임 하나는 80ms 다. 넉넉히 기다리되 영원히는 아니다 —
+                # 장치가 죽으면 여기서 영영 안 돌아오면 안 된다.
+                if not self._filled.wait(timeout=2.0) and not self._queue:
+                    log.warning("마이크가 2초째 프레임을 안 준다 — 무음으로 잇는다")
+                    return np.zeros(self.frame, dtype=np.float32)
 
     # 넘침 로그 최소 간격(초). 넘치는 상황에선 프레임마다 넘치므로 그대로 찍으면
     # 초당 12줄이 쌓여 정작 봐야 할 [검증]·[호출] 줄이 묻힌다.
@@ -143,10 +200,12 @@ class AudioSource:
 
         drain() 이 '버퍼가 빌 때까지' 를 판단하는 유일한 근거다. 이걸 심으로 빼둬야
         drain() 도 _read_frame() 만 쓰게 되어(=마이크 직접 호출 없음) 테스트가 된다.
+
+        🔴 이제 콜백 큐를 본다. 예전엔 `stream.read_available` 이었는데, 콜백 방식에선
+           그 값이 **항상 0** 이다(PortAudio 가 우리에게 이미 넘겨줬으므로). 그대로 뒀다면
+           drain() 이 아무것도 안 버리고, 봇이 방금 한 말이 다음 턴 입력으로 들어간다.
         """
-        if self._stream is None:
-            return 0
-        return int(getattr(self._stream, "read_available", 0))
+        return len(self._queue) * self.frame
 
     def read(self) -> np.ndarray:
         """프레임 하나를 읽고 두 링버퍼(프리롤·검증창)에도 넣는다."""

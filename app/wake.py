@@ -236,6 +236,8 @@ def make_detector(wcfg: dict, stt, source):
             verify_rearm_delta=float(vcfg.get("rearm_delta", 0.05)),
             # 1.01 = 끔. 점수는 1.0 을 못 넘으므로 설정이 없으면 옛 동작 그대로다.
             verify_bypass=float(vcfg.get("bypass_score", 1.01)),
+            # 후보가 뜬 순간의 창은 호출어를 자르고 있을 수 있다 — 이만큼 더 듣고 본다.
+            verify_settle_s=float(vcfg.get("settle_s", 0.0)),
         )
     except Exception as e:
         log.warning("ONNX 호출어 감지기 로드 실패(%s: %s) → STT 감지기로 폴백",

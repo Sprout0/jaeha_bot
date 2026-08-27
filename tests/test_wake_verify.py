@@ -564,3 +564,69 @@ def test_cooldown_is_refreshed_even_when_the_verifier_raises():
     d, _ = _det([0.9, 0.0, 0.9, 0.0, 0.9], verifier=boom, verify_cooldown_s=99.0)
     d.wait_for_wake(max_frames=8)
     assert len(calls) == 1, f"예외 뒤 쿨다운이 안 걸렸다({len(calls)}회)"
+
+
+# ── 검증창을 뜨기 전에 조금 더 듣는다 (2026-08-27) ──────────────────────
+# 🔴 왜: 1단계가 '하이' 까지만 듣고도 임계(0.05)를 넘긴다. 그 순간 창을 뜨면 끝이
+#    '티드' 앞이라 whisper 가 '하이' 라고 받아쓰고 자모거리 0.50 으로 기각된다.
+#    실기 11:51:53 — **점수 0.272 로 높은데 전사가 '하이'**.
+
+def test_settle_reads_exactly_the_configured_frames():
+    """호출어 끝이 창 안에 들어오도록 정확히 그만큼 더 읽어야 한다."""
+    at_verify = []
+
+    d, src = _det([0.9] * 12, verify_settle_s=0.24)   # 0.24s = 80ms 프레임 3개
+    d.verifier = lambda _a: at_verify.append(src._i) or False
+    d.wait_for_wake(max_frames=12)
+
+    assert at_verify, "검증기가 안 불렸다"
+    d2, src2 = _det([0.9] * 12, verify_settle_s=0.0)
+    plain = []
+    d2.verifier = lambda _a: plain.append(src2._i) or False
+    d2.wait_for_wake(max_frames=12)
+    assert at_verify[0] - plain[0] == 3, (
+        f"프레임 3개를 더 읽어야 한다(실제 {at_verify[0] - plain[0]}개)")
+
+
+def test_settle_zero_keeps_the_old_behaviour():
+    """되돌리기가 설정 한 줄이어야 한다 — 0 이면 프레임을 더 읽지 않는다."""
+    reads = []
+
+    def spy(_audio):
+        reads.append(src._i)
+        return False
+
+    d, src = _det([0.9] * 12, verify_settle_s=0.0)
+    d.verifier = spy
+    d.wait_for_wake(max_frames=12)
+    at_zero = reads[0]
+
+    reads2 = []
+
+    def spy2(_audio):
+        reads2.append(src2._i)
+        return False
+
+    d2, src2 = _det([0.9] * 12, verify_settle_s=0.24)
+    d2.verifier = spy2
+    d2.wait_for_wake(max_frames=12)
+    assert reads2[0] > at_zero, (
+        f"settle 을 줬는데 더 안 읽었다({reads2[0]} vs {at_zero})")
+
+
+def test_settle_survives_a_source_that_runs_out():
+    """프레임이 떨어져도 예외로 깨움 경로를 무너뜨리면 안 된다."""
+    d, _ = _det([0.9], verifier=lambda a: True, verify_settle_s=2.0)
+    d.wait_for_wake(max_frames=30)          # 예외 없이 끝나면 통과
+
+
+def test_shipped_settle_is_small_enough_to_not_hurt_wake_latency():
+    """깨움이 이미 1.3초다 — settle 이 크면 그만큼 아이가 더 기다린다."""
+    from pathlib import Path
+
+    import yaml
+    cfg = yaml.safe_load(
+        (Path(__file__).resolve().parent.parent / "configs" / "model_paths.yaml")
+        .read_text(encoding="utf-8"))
+    s = float((cfg["wake"]["onnx"]["verify"] or {}).get("settle_s", 0.0))
+    assert 0.0 <= s <= 0.5, f"settle_s {s} 는 깨움 지연에 그대로 더해진다"

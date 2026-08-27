@@ -630,3 +630,57 @@ def test_shipped_settle_is_small_enough_to_not_hurt_wake_latency():
         .read_text(encoding="utf-8"))
     s = float((cfg["wake"]["onnx"]["verify"] or {}).get("settle_s", 0.0))
     assert 0.0 <= s <= 0.5, f"settle_s {s} 는 깨움 지연에 그대로 더해진다"
+
+
+# ── 기각된 후보를 소리로 남긴다 (2026-08-27) ────────────────────────────
+# 🔴 왜: 실기 11:51:43 — 점수 0.459 인데 전사가 '안녕히계세요'(자모거리 0.79).
+#    이게 놓친 호출인지 정상 기각인지 **로그로는 구분할 방법이 없다.** 추측으로
+#    임계를 정했다가 이미 두 번 틀렸다(우회컷 0.2, 컷 0.35).
+
+def _saving_verifier(tmp_path, text="안녕히계세요", **kw):
+    from app.wake import make_wake_verifier
+
+    class _Stt:
+        def transcribe(self, audio, initial_prompt=None):
+            return text, 0.0
+
+    cfg = {"enabled": True, "plain_max_ratio": 0.45, "two_pass": False,
+           "save_rejects_dir": str(tmp_path), **kw}
+    return make_wake_verifier(cfg, _Stt(), "하이티드")
+
+
+def test_rejected_audio_is_saved_for_listening(tmp_path):
+    v = _saving_verifier(tmp_path, "안녕히계세요")
+    assert v(np.zeros(32000, dtype=np.float32)) is False
+    wavs = list(tmp_path.glob("*.wav"))
+    assert len(wavs) == 1, "기각인데 소리를 안 남겼다"
+    assert "0.79" in wavs[0].name, f"파일명에 자모거리가 없다: {wavs[0].name}"
+    assert "안녕히계세요" in wavs[0].name, f"파일명에 전사가 없다: {wavs[0].name}"
+
+
+def test_passing_audio_is_not_saved(tmp_path):
+    """통과까지 남기면 디스크가 금방 찬다 — 진단 대상은 기각뿐이다."""
+    v = _saving_verifier(tmp_path, "하이티드")
+    assert v(np.zeros(32000, dtype=np.float32)) is True
+    assert list(tmp_path.glob("*.wav")) == []
+
+
+def test_saving_is_off_by_default(tmp_path):
+    v = _saving_verifier(tmp_path, "안녕히계세요", save_rejects_dir=None)
+    assert v(np.zeros(32000, dtype=np.float32)) is False
+    assert list(tmp_path.glob("*.wav")) == []
+
+
+def test_a_save_failure_never_breaks_the_wake_path(tmp_path):
+    """🔴 진단 기능이 봇을 못 깨우게 만들면 본말전도다."""
+    blocked = tmp_path / "파일이라_폴더가_안된다"
+    blocked.write_text("x", encoding="utf-8")
+    v = _saving_verifier(blocked)
+    assert v(np.zeros(32000, dtype=np.float32)) is False   # 예외 없이 정상 기각
+
+
+def test_empty_transcript_still_gets_a_filename(tmp_path):
+    """빈 전사가 가장 궁금한 경우다 — 이름이 비면 파일이 안 만들어진다."""
+    v = _saving_verifier(tmp_path, "")
+    assert v(np.zeros(32000, dtype=np.float32)) is False
+    assert len(list(tmp_path.glob("*무음*.wav"))) == 1

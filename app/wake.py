@@ -158,6 +158,28 @@ def make_wake_verifier(vcfg: dict, stt, word: str):
     # 🟢 2026-08-26: 2패스를 끌 수 있게 했다. 기본 True 는 옛 설정을 그대로 읽기 위한 것이고,
     #    지금 우리 설정은 False 다 — 아래 2)번 주석에 근거가 있다.
     two_pass = bool(vcfg.get("two_pass", True))
+    # 🔴 2026-08-27 기각된 후보를 **소리로 남긴다**(null = 끔).
+    #    왜: 로그의 전사만으로는 그게 (a)진짜 호출인데 whisper 가 지어낸 것인지
+    #    (b)정말 다른 소리였는지 **구분할 방법이 없다.** 실기에서 점수 0.459 짜리가
+    #    '안녕히계세요' 로 전사돼 기각됐는데, 그게 놓친 호출인지 TV 소리인지 모른다.
+    #    이 프로젝트는 추측으로 임계를 정했다가 두 번 틀렸다(우회컷 0.2, 컷 0.35).
+    #    ➡️ 들어 보면 1초에 끝난다. 파일명에 점수·자모거리·전사가 들어간다.
+    #    ⚠️ 계속 켜 두면 디스크가 찬다(후보 하나당 2초 = 128KB). 진단할 때만 켤 것.
+    reject_dir = vcfg.get("save_rejects_dir") or None
+
+    def _save_reject(audio, text: str, ratio: float) -> None:
+        try:
+            from datetime import datetime
+            from pathlib import Path
+
+            import soundfile as sf
+            d = Path(reject_dir).expanduser()
+            d.mkdir(parents=True, exist_ok=True)
+            safe = "".join(c for c in (text or "무음") if c.isalnum())[:20] or "무음"
+            name = f"{datetime.now():%H%M%S}_r{ratio:.2f}_{safe}.wav"
+            sf.write(str(d / name), audio, 16000)
+        except Exception as e:      # noqa: BLE001 — 진단 기능이 봇을 죽이면 안 된다
+            log.debug("기각 오디오 저장 실패(무시): %s: %s", type(e).__name__, e)
 
     def verify(audio) -> bool:
         # ── 1) 힌트 **없이** 먼저 듣는다 ──────────────────────────────
@@ -173,6 +195,8 @@ def make_wake_verifier(vcfg: dict, stt, word: str):
         if r2 > plain_ratio:
             log.info("[검증] 기각 — 힌트없이 '%s' 자모거리 %.2f > %.2f",
                      (plain or "")[:26], r2, plain_ratio)
+            if reject_dir:
+                _save_reject(audio, plain or "", r2)
             return False
 
         # ── 2) 힌트를 주고 다시 듣는다 ───────────────────────────────

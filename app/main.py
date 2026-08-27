@@ -357,6 +357,13 @@ def main() -> None:
                     time.sleep(ECHO_COOLDOWN)
                     if source is not None:
                         source.drain()
+                elif action == "wait":
+                    # 🔴 2026-08-27 이 갈래가 **로그를 한 줄도 안 남기고 있었다.**
+                    #    실기(11:41)에서 호출 뒷말이 STT 로 넘어갔는데 봇이 아무 말도
+                    #    안 했고, 로그만 봐서는 인식이 빈 건지 답이 빈 건지조차 알 수
+                    #    없었다. 침묵은 정상 동작이지만 **왜 침묵했는지는 남겨야 한다.**
+                    log.info("인식 결과 없음 → 계속 듣는다 (버림아님, 무응답 %.0f초)",
+                             time.time() - last_active)
                 elif action == "sleep":
                     log.info("무응답 %.0f초 → 대기 모드로", sleep_timeout)
                     awake = False

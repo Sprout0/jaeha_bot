@@ -309,3 +309,44 @@ def test_silence_still_reads_as_no_continuation():
     d = make_detector(score=0.9, source=src)
     r = d.wait_for_wake(max_frames=150)
     assert r is not None and r.continued is False
+
+
+def test_continuation_collects_the_audio_that_piled_up_during_verification():
+    """🔴 검증 1.2~1.5초 동안 아이가 말한 '이거 뭐야?'를 되찾아야 한다.
+
+    실기(2026-08-27 11:41): 뒷말 이어짐 판정은 떴는데 STT 로 넘어간 건 1.12초뿐이라
+    전사가 비고 봇이 침묵했다. 밀린 오디오를 안 거뒀기 때문이다.
+    """
+    loud = np.full(FRAME, 0.5, dtype=np.float32)
+
+    class _Backlogged(ScriptedSource):
+        """검증 동안 15프레임(1.2초)이 밀려 있는 소스."""
+
+        def __init__(self, frames):
+            super().__init__(frames)
+            self.buffered = 15
+
+        def read_buffered(self, max_frames):
+            out = []
+            while out.__len__() < max_frames and self.buffered > 0:
+                self.buffered -= 1
+                out.append(self.read())
+            return out
+
+    src = _Backlogged([loud] * 200)
+    d = make_detector(score=0.9, source=src)
+    r = d.wait_for_wake(max_frames=150)
+    assert r is not None and r.continued is True
+    # 프리롤(6프레임) + 밀린 것(15) + 실시간(6) 이 다 실려야 한다.
+    assert r.preroll.size >= 20 * FRAME, (
+        f"밀린 오디오를 안 거뒀다 — {r.preroll.size / FRAME:.0f}프레임뿐")
+
+
+def test_continuation_works_on_sources_without_read_buffered():
+    """폴백 소스·테스트 더미가 이 메서드를 안 가져도 깨움이 죽으면 안 된다."""
+    loud = np.full(FRAME, 0.5, dtype=np.float32)
+    src = ScriptedSource([loud] * 200)      # read_buffered 없음
+    assert not hasattr(src, "read_buffered")
+    d = make_detector(score=0.9, source=src)
+    r = d.wait_for_wake(max_frames=150)
+    assert r is not None and r.continued is True

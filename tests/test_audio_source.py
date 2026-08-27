@@ -276,3 +276,35 @@ def test_real_overflow_still_warns_after_a_drain(caplog):
         s._read_frame()             # 대기 중 읽기
     assert s.overflows == 1
     assert any("넘침" in r.message for r in caplog.records)
+
+
+# ── 밀린 오디오를 버리지 말고 돌려준다 (2026-08-27) ──────────────────────
+# 🔴 왜: 2단계 검증(whisper 1.2~1.5초) 동안 읽기 루프가 멈추는데, 아이가
+#    '하이 티드 **이거 뭐야?**' 의 뒷말을 하는 게 정확히 그 구간이다. 그 오디오는
+#    이미 버퍼에 있는데 깨어난 뒤 0.5초만 읽고 나머지를 버렸다 — 실기에서 STT 로
+#    1.12초만 넘어갔고 전사가 비어 봇이 침묵했다.
+
+def test_read_buffered_returns_what_piled_up():
+    src = DrainableSource(_ramp(10, 0), pending=4)
+    got = src.read_buffered(10)
+    assert [int(f[0]) for f in got] == [0, 1, 2, 3], "쌓인 걸 순서대로 돌려줘야 함"
+
+
+def test_read_buffered_does_not_block_when_nothing_is_waiting():
+    """🔴 블로킹하면 인사말 경로가 그만큼 느려진다 — 공짜라는 전제가 깨진다."""
+    src = DrainableSource(_ramp(10, 0), pending=0)
+    assert src.read_buffered(10) == []
+    assert src._i == 0, "버퍼가 비었는데 읽었다(다음 입력을 삼킨다)"
+
+
+def test_read_buffered_respects_the_cap():
+    """상한이 없으면 몇 초 전 TV 소리까지 딸려와 whisper 가 그걸 받아쓴다."""
+    src = DrainableSource(_ramp(20, 0), pending=12)
+    assert len(src.read_buffered(5)) == 5
+
+
+def test_read_buffered_feeds_the_preroll_like_a_normal_read():
+    """걷어온 프레임도 정상 읽기다 — 프리롤에 안 들어가면 뒤 계산이 어긋난다."""
+    src = DrainableSource(_ramp(10, 0), pending=3, preroll=0.5)
+    src.read_buffered(3)
+    assert src.preroll().size == 3 * FRAME

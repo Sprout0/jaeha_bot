@@ -298,10 +298,23 @@ class OnnxWakeDetector:
         self._hits = 0
         return ok
 
+    # 검증 동안 밀린 오디오를 거두되 상한을 둔다. 무한정 거두면 몇 초 전 TV 소리까지
+    # 딸려와 whisper 가 그걸 받아쓴다(2026-08-12 에 프리롤을 0.5초로 묶은 것과 같은 이유).
+    _MAX_BACKLOG_S = 2.0
+
     def _observe_continuation(self) -> tuple[np.ndarray, bool]:
         """감지 직후 잠깐 들어 말이 이어지는지 본다. (읽은 오디오, 이어짐 여부)."""
         n = max(1, int(self.continuation_window * SAMPLE_RATE / FRAME))
         frames = []
+        # ① 🔴 2026-08-27 **밀린 것부터 거둔다.** 2단계 검증(whisper)이 도는 1.2~1.5초
+        #    동안 읽기 루프가 멈춰 있고, 아이가 뒷말을 하는 게 정확히 그 구간이다.
+        #    그 오디오는 이미 버퍼에 있는데 여태 0.5초만 읽고 나머지를 버렸다 —
+        #    실기(11:41)에서 STT 에 1.12초만 넘어갔고 전사가 비어 봇이 침묵했다.
+        #    이미 들어와 있는 것이라 **읽는 시간이 0** 이다(인사말 경로도 안 느려진다).
+        grab = getattr(self.source, "read_buffered", None)
+        if grab is not None:
+            frames.extend(grab(int(self._MAX_BACKLOG_S * SAMPLE_RATE / FRAME)))
+        # ② 그 다음 실시간으로 조금 더 듣는다 — 아직 말하는 중일 수 있다.
         for _ in range(n):
             try:
                 frames.append(self.source.read())

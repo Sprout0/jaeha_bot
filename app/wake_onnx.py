@@ -310,8 +310,19 @@ class OnnxWakeDetector:
         if not frames:
             return np.zeros(0, dtype=np.float32), False
         tail = np.concatenate(frames).astype(np.float32)
-        # 말소리 판정: STT VAD 와 같은 기준(소음 바닥의 2배, 하한 0.005)을 쓴다.
-        floor = getattr(self.source, "noise_floor", 0.0)
-        thr = max(floor * 2.0, 0.005)
+        # 🔴🔴 2026-08-27 **소음 바닥에 비례시키지 않는다.** 원래 `max(floor*2, 0.005)`
+        #    였는데, 이건 08-12 에 에너지 게이트에서 똑같이 잡아낸 함정이다(커밋 038c620).
+        #    거기만 고치고 **여기는 같은 코드가 그대로 남아 있었다.** 아무도 못 본 이유는
+        #    이 판정이 로그를 한 줄도 안 남겼기 때문이다 — 실패해도 흔적이 없다.
+        #    실측: 소음바닥 0.0081 -> 기준 0.0162 로 고정값의 3.2배. 유튜브를 틀면 더 오른다.
+        #    즉 **시끄러울수록 "이어 말했다"를 못 알아본다** — 인사말을 하고, 그 사이
+        #    '이거 뭐야?'가 통째로 날아간다. 정확히 게이트 때 겪은 그 고장이다.
+        thr = self.verify_min_rms
         loudest = max(float(np.sqrt(np.mean(np.square(f)))) for f in frames)
-        return tail, loudest >= thr
+        continued = loudest >= thr
+        # 🔴 판정을 **항상** 남긴다. 이 줄이 없어서 '호출 직후 뒷말'이 언제부터 안 되는지
+        #    아무도 몰랐다. 숫자가 없으면 다음에 또 추측만 하게 된다.
+        log.info("[호출] 뒷말 %s — 최대 RMS %.4f %s 기준 %.4f (%.2fs 들음)",
+                 "이어짐" if continued else "없음", loudest,
+                 ">=" if continued else "<", thr, tail.size / SAMPLE_RATE)
+        return tail, continued

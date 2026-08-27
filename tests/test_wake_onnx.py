@@ -270,3 +270,42 @@ def test_continued_false_when_silence_follows():
     assert r is not None
     assert r.continued is False
     assert r.preroll.size == 0, "인사말 경로에선 프리롤을 버려야 함"
+
+
+# ── 뒷말 판정이 소음 바닥을 따라가면 안 된다 (2026-08-27) ──────────────
+# 🔴 왜: `thr = max(noise_floor*2, 0.005)` 였다. 08-12 에 에너지 게이트에서 **똑같은
+#    코드를 찾아 고쳤는데**(커밋 038c620) 여기는 그대로 남아 있었다. 아무도 못 본
+#    이유는 이 판정이 로그를 한 줄도 안 남겨서다.
+#    소음바닥 0.0081(실측) -> 기준 0.0162 = 고정값의 3.2배. TV 를 틀면 더 오른다.
+#    결과: 시끄러울수록 '하이 티드 이거 뭐야?' 의 뒷말을 못 알아보고 인사말을 해서
+#    아이 말을 통째로 덮는다.
+
+def test_continuation_gate_does_not_scale_with_noise_floor():
+    """🔴 조용한 방에서 이어짐으로 잡히는 소리는 시끄러운 방에서도 잡혀야 한다."""
+    speech = np.full(FRAME, 0.010, dtype=np.float32)   # 고정 기준(0.005)은 넘고
+    src = ScriptedSource([speech] * 200)               # 옛 기준(바닥×2)엔 걸리는 크기
+    src.noise_floor = 0.008                            # 실기 실측값(2026-08-27)
+    d = make_detector(score=0.9, source=src)
+    r = d.wait_for_wake(max_frames=150)
+    assert r is not None
+    assert r.continued is True, (
+        "소음 바닥이 올랐다고 뒷말을 못 알아봤다 — 시끄러울수록 귀를 닫는 설계다")
+
+
+def test_continuation_decision_is_always_logged(caplog):
+    """🔴 판정이 흔적을 안 남기면 언제부터 고장났는지 영영 모른다."""
+    import logging
+    src = ScriptedSource([np.zeros(FRAME, dtype=np.float32)] * 200)
+    d = make_detector(score=0.9, source=src)
+    with caplog.at_level(logging.INFO, logger="jaeha_bot.wake_onnx"):
+        d.wait_for_wake(max_frames=150)
+    assert any("뒷말" in r.message for r in caplog.records), "뒷말 판정 로그가 없다"
+
+
+def test_silence_still_reads_as_no_continuation():
+    """게이트를 낮췄다고 무음이 '이어짐'이 되면 인사말이 영영 안 나온다."""
+    src = ScriptedSource([np.zeros(FRAME, dtype=np.float32)] * 200)
+    src.noise_floor = 0.0
+    d = make_detector(score=0.9, source=src)
+    r = d.wait_for_wake(max_frames=150)
+    assert r is not None and r.continued is False

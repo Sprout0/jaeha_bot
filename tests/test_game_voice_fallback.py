@@ -125,3 +125,43 @@ def test_clamped_fallback_still_carries_every_required_token():
     """문장을 합치다가 require 토큰을 잃으면 '검증이 요구하는 것'과 갈린다."""
     for beat in _all_beats():
         assert all(tok in beat["fallback"] for tok in beat["require"]), beat
+
+
+# ── 대화 도중에 "안녕!" 이 나오면 안 된다 ────────────────────────────────────
+# 🔴 2026-08-26 젯슨 실기, 대화 4턴째:
+#      아이 "동물 소리도 이리 밖에 못해?" -> 티드 "**안녕!** 강아지는 멍?"
+#    가드가 뚫린 게 아니라 **지시문이 그렇게 시켰다**: "첫 문장은 놀이를 하자는 밝은 인사".
+#    LLM 은 '인사'를 '안녕'으로 읽었고, 시킨 대로 한 것이다. 폴백 템플릿
+#    ("좋아, 동물 소리 놀이 하자!")이 뜻하던 건 첫인사가 아니라 **신난 대답**이었다.
+# ⚠️ _bye_beat 의 "마무리하는 인사"는 작별이라 맞다 — 그건 건드리지 않는다.
+
+import pytest
+
+from app.education_modes import AnimalSoundGame, RepeatWordGame
+
+
+@pytest.mark.parametrize("game", [AnimalSoundGame(), RepeatWordGame()])
+def test_the_intro_forbids_the_greeting_it_used_to_ask_for(game):
+    """`"인사" not in instruction` 으로 재려다 실패했다 — 금지 문구에도 '첫인사'가
+    들어가서 자기 자신을 잡는다. 볼 것은 낱말의 유무가 아니라 **금지했는가**다."""
+    instruction = game.start()["instruction"]
+
+    assert "안녕" in instruction and "쓰지 마" in instruction,         f"'안녕' 을 쓰지 말라고 명시해야 한다: {instruction}"
+    assert "밝은 인사" not in instruction, "이 문구가 '안녕!'을 부른 그 지시다"
+
+
+@pytest.mark.parametrize("game", [AnimalSoundGame(), RepeatWordGame()])
+def test_the_intro_shows_what_to_say_instead(game):
+    """금지만 주면 모델이 뭘 할지 모른다 — 대신 할 말을 예시로 줘야 한다."""
+    instruction = game.start()["instruction"]
+
+    assert "하자!" in instruction, f"대신 할 말의 예시가 없다: {instruction}"
+
+
+def test_the_farewell_may_still_greet():
+    """놀이를 끝낼 때의 인사는 맞는 자리다 — 같이 지우면 안 된다."""
+    game = AnimalSoundGame()
+    game.start()
+    beat = game._bye_beat()
+
+    assert "인사" in beat["instruction"]

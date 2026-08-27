@@ -479,9 +479,14 @@ def _shipped_plain_cut() -> float:
     return float(cfg["wake"]["onnx"]["verify"]["plain_max_ratio"])
 
 
-# 2026-08-27 11:12~11:13 젯슨 실기 로그 전수. 사람이 부른 것 / 아닌 것.
-REAL_CALLS = ["하이치카", "하이치테", "하이치티", "하이킥", "하이픽", "하이치켓", "하이키밤"]
-ROOM_NOISE = ["아이차티", "아이쿠", "아이스크림", "맛있게", "안녕히계세요", ""]
+# 2026-08-27 11:12~11:13 + 14:36~14:37 젯슨 실기 로그 전수. 사람이 부른 것 / 아닌 것.
+# '하이치테오름' = 호출어 뒤에 뒷말이 검증창에 같이 들어와 whisper 가 붙여 적은 것.
+REAL_CALLS = ["하이치카", "하이치테", "하이치티", "하이킥", "하이픽", "하이치켓", "하이키밤",
+              "하이치드", "하이티브", "하이티즈", "파이티드", "하이치테오름"]
+# 14:36 세션은 소음 바닥이 0.02126(아침의 4.5배)이라 TV 말소리가 그대로 후보로 떴다.
+ROOM_NOISE = ["아이차티", "아이쿠", "아이스크림", "맛있게", "안녕히계세요", "",
+              "고맙습니다", "알겠습니다.", "할 수 있도록 하겠습니다.", "아이쿠도",
+              "다음 영상에서 만나요!", "오늘도 시청해주셔서 감사합니다."]
 
 
 def test_real_call_transcripts_pass_the_shipped_cut():
@@ -500,6 +505,27 @@ def test_room_noise_transcripts_stay_rejected():
     leaked = [(t or "(빈)", best_wake_ratio(t, "하이티드")) for t in ROOM_NOISE
               if best_wake_ratio(t, "하이티드") <= cut]
     assert not leaked, f"컷 {cut} 으로 소음이 샜다: {leaked}"
+
+
+def test_long_transcript_is_matched_by_its_opening_syllables():
+    """🔴 호출어 뒤에 뒷말이 붙어 적혀도 앞머리로 알아봐야 한다.
+
+    실기 14:37:07 '하이치테오름' — 안에 '하이치테'(0.38)가 멀쩡히 있는데 6음절을
+    통째로 재느라 0.54 로 기각됐다. 재하님이 부르고 곧바로 말을 잇는 게 정상 사용이라
+    이 모양은 계속 나온다.
+    """
+    from app.wake import best_wake_ratio
+    assert best_wake_ratio("하이치테오름", "하이티드") <= _shipped_plain_cut()
+
+
+def test_opening_syllable_match_does_not_open_a_hole_for_long_noise():
+    """앞머리를 보되 **토큰 경계는 지켜야** 한다 — 문장 한복판까지 뒤지면 소음이 샌다."""
+    from app.wake import best_wake_ratio
+    cut = _shipped_plain_cut()
+    for t in ("오늘도 시청해 주셔서 감사합니다.", "할 수 있도록 하겠습니다.",
+              "MBC 뉴스 이재경입니다.", "아이스크림"):
+        r = best_wake_ratio(t, "하이티드")
+        assert r > cut, f"'{t}' 자모거리 {r:.2f} <= 컷 {cut} — 긴 문장이 샜다"
 
 
 def test_cut_never_admits_a_bare_hai():

@@ -513,3 +513,54 @@ def test_cut_never_admits_a_bare_hai():
     for word in ("하이", "티드", "아이디", "하이볼"):
         r = best_wake_ratio(word, "하이티드")
         assert r > cut, f"'{word}' 자모거리 {r:.2f} <= 컷 {cut} — 이 한 마디로 깨어난다"
+
+
+# ── 쿨다운은 검증이 '끝난' 시각부터 (2026-08-27) ────────────────────────
+# 🔴 왜: `_last_verify` 를 whisper 를 부르기 **전에** 찍어서, whisper 가 도는
+#    1.2~2.0초가 쿨다운 1.0초를 통째로 먹었다. 실기 로그:
+#      11:13:26.841 검증 끝 → 11:13:26.939 다음 검증 (0.10초 뒤)
+#    같은 발화 하나를 3~5번 검증하고 그동안 읽기 루프가 멈춰 버퍼가 넘쳤다(29회).
+
+def test_cooldown_is_measured_from_when_verification_finished():
+    """🔴 느린 검증기가 자기 쿨다운을 다 먹어버리면 안 된다."""
+    import time as _t
+    calls = []
+
+    def slow(_audio):
+        calls.append(1)
+        _t.sleep(0.25)          # whisper 가 도는 동안
+        return False
+
+    # 쿨다운 0.2s < 검증 0.25s. 시작 기준이면 다음 후보가 곧바로 통과해 버린다.
+    d, _ = _det([0.9, 0.0, 0.9, 0.0, 0.9], verifier=slow, verify_cooldown_s=0.2)
+    d.wait_for_wake(max_frames=8)
+    assert len(calls) == 1, (
+        f"검증기를 {len(calls)}번 불렀다 — 쿨다운을 검증 시간이 먹었다")
+
+
+def test_cooldown_still_expires_so_a_later_call_is_heard():
+    """폭주를 막자고 영영 안 듣게 되면 그건 더 나쁜 고장이다."""
+    import time as _t
+    calls = []
+
+    def slow(_audio):
+        calls.append(1)
+        _t.sleep(0.05)
+        return False
+
+    d, _ = _det([0.9, 0.0, 0.9, 0.0, 0.9], verifier=slow, verify_cooldown_s=0.0)
+    d.wait_for_wake(max_frames=8)
+    assert len(calls) >= 2, f"쿨다운 0 인데도 한 번만 불렀다({len(calls)}회)"
+
+
+def test_cooldown_is_refreshed_even_when_the_verifier_raises():
+    """검증기가 고장난 동안이 폭주하기 가장 쉬운 때다 — 거기서도 쿨다운이 살아야 한다."""
+    calls = []
+
+    def boom(_audio):
+        calls.append(1)
+        raise RuntimeError("whisper 죽음")
+
+    d, _ = _det([0.9, 0.0, 0.9, 0.0, 0.9], verifier=boom, verify_cooldown_s=99.0)
+    d.wait_for_wake(max_frames=8)
+    assert len(calls) == 1, f"예외 뒤 쿨다운이 안 걸렸다({len(calls)}회)"

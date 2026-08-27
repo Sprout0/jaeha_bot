@@ -5,6 +5,7 @@ STEP 6: 말하면 -> 듣고 -> 답을 소리로. (비전=vision 은 STEP 9 라 �
 """
 from __future__ import annotations
 import logging
+import os
 import sys
 import time
 
@@ -40,6 +41,34 @@ def _add_file_log() -> None:
 
 
 _add_file_log()
+
+
+def _quiet_onnxruntime() -> None:
+    """onnxruntime 의 경고 도배를 끈다. **에러는 그대로 남긴다.**
+
+    🔴 왜 (2026-08-27): 기동 로그 150줄 중 약 130줄이 같은 경고 세 종류였다.
+       `setComputePrecision ignored`(TRT 가 레이어마다 한 줄씩 = 70줄) ·
+       `Memcpy nodes are added`(supertonic 이 만드는 CUDA 세션) ·
+       `GPU device discovery failed`(/sys/class/drm 을 못 읽음 — 젯슨에선 정상).
+       전부 **동작에 영향이 없고 매 기동 똑같이 나온다.** 이대로 두면 진짜 경고
+       (마이크 넘침·TRT 폴백)가 그 사이에 묻힌다 — 이 프로젝트가 반복해 당한 실패다.
+
+    ⚠️ 지우는 게 아니라 **가리는 것**이다. 이상하면 `ORT_LOG_WARNINGS=1` 로 되살린다.
+    ⚠️ 같이 묻히는 것 중 하나는 의미가 있다: `engine plan file across different
+       models of devices`(다른 GPU 에서 구운 엔진을 쓴다). 젯슨 한 대만 쓰는 동안은
+       무해하지만, **기계를 바꾸면 이걸 못 보게 된다.** 그땐 이 스위치를 켜고 볼 것.
+    """
+    if os.environ.get("ORT_LOG_WARNINGS") == "1":
+        log.info("onnxruntime 경고를 그대로 낸다(ORT_LOG_WARNINGS=1)")
+        return
+    try:
+        import onnxruntime as ort
+        ort.set_default_logger_severity(3)   # 0=Verbose 1=Info 2=Warning 3=Error
+    except Exception as e:      # noqa: BLE001 — 로그 설정 실패로 봇이 죽으면 안 된다
+        log.debug("onnxruntime 로그 조정 실패(무시): %s", e)
+
+
+_quiet_onnxruntime()
 
 # 되묻기 문구는 configs/prompt_templates.yaml 의 `recovery` 한 곳에서만 온다.
 # 🔴 예전엔 여기 하드코딩과 yaml 이 각자 있어서, yaml 만 고친 변경이 운영에 하나도

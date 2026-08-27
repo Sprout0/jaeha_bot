@@ -146,6 +146,15 @@ class STTModule:
                                                  # None 이면 끔(옛 동작). 근거는 tests/ 와 config 주석.
         min_chars_to_reject: int = 20,   # 이 길이 미만은 아무리 빨라도 버리지 않는다.
                                          # 짧은 유아 발화 보호용(진짜 폭주는 본질적으로 길다).
+        # --- 배치 추론(BatchedInferencePipeline) ---
+        # 🔴 젯슨 실측(2026-08-27, 실음성 85개): 중앙 1.155->1.012s, **p90 1.552->1.048s(-32%)**.
+        #    선행 생각 예산(1.04s = 꼬리 1.20 − spec_after 0.16) 통과가 20/85 -> 67/85.
+        #    편차가 무너지는 게 요점이다 — 선행 생각을 처음으로 예산 안에 넣는 레버다.
+        # ⚠️ **기본 꺼짐.** 같은 85개에서 전사가 36개(42%) 달랐고 배치가 말끝을 흘린
+        #    사례가 있었다("… 아니야 아니야" -> "…"). 정답 있는 실아동 음성으로 CER 을
+        #    재서 이긴 뒤에만 켠다. 합성음에선 7/7 동일했는데 그건 깨끗한 음성뿐이다.
+        batched: bool = False,
+        batch_size: int = 8,             # 실측 4·8 동률, 16 은 오히려 느림
     ) -> None:
         self.model_size = model_size
         self.device = device
@@ -163,6 +172,8 @@ class STTModule:
         self.initial_prompt = initial_prompt
         self.max_chars_per_sec = max_chars_per_sec
         self.min_chars_to_reject = min_chars_to_reject
+        self.batched = bool(batched)
+        self.batch_size = int(batch_size)
         # 직전 transcribe 가 '환각이라 버림'이었는지. main 이 이걸 봐야 '말이 없었다'와
         # 구분해 되물을 수 있다(빈 문자열만으로는 구분 불가 → 침묵하게 된다).
         self.last_rejected = False
@@ -184,10 +195,14 @@ class STTModule:
             kw = {}
             if self.cpu_threads:
                 kw["cpu_threads"] = self.cpu_threads
-            self._model = WhisperModel(
+            model = WhisperModel(
                 self.model_size, device=self.device, compute_type=self.compute_type,
                 **kw,
             )
+            if self.batched:
+                from faster_whisper import BatchedInferencePipeline
+                model = BatchedInferencePipeline(model=model)
+            self._model = model
         return self._model
 
     # -------------------------------------------------------------- 인식(STT)
@@ -233,6 +248,8 @@ class STTModule:
             # 호출별 인자가 있으면 그것을, 없으면 인스턴스 기본값을 쓴다.
             initial_prompt=(initial_prompt if initial_prompt is not None
                             else self.initial_prompt),
+            # 순차 모델은 batch_size 를 안 받는다 — 켠 경우에만 넘긴다.
+            **({"batch_size": self.batch_size} if self.batched else {}),
         )
         text = " ".join(s.text for s in segments).strip()
         # ① 반복 환각 제거(같은 구절 무한반복) — 실아동 음성서 유일 치명오류(24%). 모델무관 후처리.

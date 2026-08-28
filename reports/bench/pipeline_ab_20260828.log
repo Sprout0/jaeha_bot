@@ -1,0 +1,21 @@
+=== 순서 A: gpt 먼저 ===
+[0;93m2026-08-28 13:25:41.224666128 [W:onnxruntime:Default, device_discovery.cc:211 DiscoverDevicesForPlatform] GPU device discovery failed: device_discovery.cc:91 ReadFileContents Failed to open file: "/sys/class/drm/card1/device/vendor"[m
+  [경고] OpenAI LLM 실패(APITimeoutError: Request timed out.) — 로컬 EXAONE 으로 폴백
+32문항 × 1회 | 프롬프트 4182자 | 재생(첫 소리)
+
+  openai:gpt-4o-mini+supertonic LLM  1.580s | TTS(첫소리)  0.778s | 말하기  3.356s | 체감  6.118s | p95  8.482s | 답변 20자 (최대 45자)
+  openai:HCX-005+supertonic  LLM  1.080s | TTS(첫소리)  0.807s | 말하기  4.366s | 체감  6.482s | p95  9.502s | 답변 26자 (최대 97자)
+
+  가장 빠른 조합: openai:gpt-4o-mini+supertonic (6.118s)
+  wav -> /home/jaeha_bot/jaeha_bot/logs/bench
+=== 순서 B: HCX 먼저 ===
+[0;93m2026-08-28 13:33:22.377753547 [W:onnxruntime:Default, device_discovery.cc:211 DiscoverDevicesForPlatform] GPU device discovery failed: device_discovery.cc:91 ReadFileContents Failed to open file: "/sys/class/drm/card1/device/vendor"[m
+32문항 × 1회 | 프롬프트 4182자 | 재생(첫 소리)
+
+  openai:HCX-005+supertonic  LLM  1.208s | TTS(첫소리)  0.946s | 말하기  4.833s | 체감  7.210s | p95 10.302s | 답변 29자 (최대 57자)
+  openai:gpt-4o-mini+supertonic LLM  1.503s | TTS(첫소리)  0.777s | 말하기  3.717s | 체감  5.879s | p95  7.938s | 답변 22자 (최대 33자)
+
+  가장 빠른 조합: openai:gpt-4o-mini+supertonic (5.879s)
+  wav -> /home/jaeha_bot/jaeha_bot/logs/bench
+
+[exited with code 0]

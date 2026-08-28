@@ -7,9 +7,12 @@
     python tools/bench_pipeline.py --combos openai+openai
     python tools/bench_pipeline.py --play                   # 실제 재생 + 말하는 시간까지
 
-조합 표기는 `<llm>+<tts>` — llm 은 local|openai, tts 는 supertonic|openai.
-llm 쪽에 `:모델`을 붙이면 그 모델로 고정한다 — gpt 와 HCX 를 같은 표에서 비교할 때:
+조합 표기는 `<llm>[:모델][/문장상한]+<tts>` — llm 은 local|openai, tts 는 supertonic|openai.
+`:모델`을 붙이면 그 모델로 고정한다 — gpt 와 HCX 를 같은 표에서 비교할 때:
     --combos "openai:gpt-4o-mini+supertonic,openai:HCX-005+supertonic" --play
+`/문장상한`을 붙이면 그 팔만 답변 길이를 조인다 — 말하기 시간은 글자 수에 정확히
+비례하므로(2026-08-28 실측 0.167~0.169초/자, 모델 무관), 길이를 맞추면 뒤집히는지:
+    --combos "openai:HCX-005/1+supertonic,openai:gpt-4o-mini+supertonic" --play
 
 🔴 `--play` 로 재면 '체감' 열이 **LLM + 첫 소리 + 말하는 시간**이다. speak() 는 재생이
    끝날 때까지 블로킹하므로 아이가 다음 말을 할 수 있게 되는 시점은 말이 끝난 뒤다.
@@ -32,6 +35,7 @@ llm 쪽에 `:모델`을 붙이면 그 모델로 고정한다 — gpt 와 HCX 를
 from __future__ import annotations
 
 import argparse
+import gc
 import logging
 import statistics
 import sys
@@ -54,19 +58,34 @@ def pct(values: list[float], p: int) -> float:
     return v[min(len(v) - 1, int(round(p / 100 * (len(v) - 1))))]
 
 
-def parse_combo(combo: str) -> tuple[str, str | None, str]:
-    """'openai:HCX-005+supertonic' -> ('openai', 'HCX-005', 'supertonic').
+def parse_combo(combo: str) -> tuple[str, str | None, int | None, str]:
+    """'openai:HCX-005/1+supertonic' -> ('openai', 'HCX-005', 1, 'supertonic').
+
+    표기는 `<llm>[:<모델>][/<문장상한>]+<tts>` 다.
 
     모델 이름을 조합에 적을 수 있어야 gpt 와 HCX 를 **같은 표에서** 비교할 수 있다.
     안 적으면 설정값(api_model)을 따라가므로 '무엇과 비교했는지'가 흐려진다.
+
+    🔴 문장 상한이 팔마다 필요한 이유 (2026-08-28 실측): HCX 가 LLM 에서 0.40초를
+       벌고 말하기에서 1.06초를 도로 뱉었다. 그런데 글자당 말하기 속도는 네 팔 모두
+       0.167~0.169s 로 같았다 — TTS 가 느린 게 아니라 HCX 가 글자를 더 쓴 것이다.
+       남는 질문은 "길이를 맞추면 뒤집히는가" 하나이고, 그걸 재려면 **같은 실행 안에서**
+       팔마다 상한을 다르게 걸 수 있어야 한다(실행을 나누면 회선 변화가 섞인다).
     """
     parts = combo.split("+")
     if len(parts) != 2 or not all(parts):
         raise SystemExit(f"조합은 '<llm>+<tts>' 다: {combo!r}")
-    llm, _, model = parts[0].partition(":")
+    left, _, cap_text = parts[0].partition("/")
+    llm, _, model = left.partition(":")
     if not llm:
         raise SystemExit(f"조합은 '<llm>+<tts>' 다: {combo!r}")
-    return llm, (model or None), parts[1]
+    cap = None
+    if "/" in parts[0]:
+        # 조용히 무시하면 '길이를 걸었다'고 믿는데 안 걸린 값이 표에 들어간다.
+        if not cap_text.isdigit() or int(cap_text) < 1:
+            raise SystemExit(f"문장 상한은 1 이상 정수다: {combo!r}")
+        cap = int(cap_text)
+    return llm, (model or None), cap, parts[1]
 
 
 def felt_total(llm_s: float, first_audio_s: float, play_s: float) -> float:
@@ -81,11 +100,14 @@ def felt_total(llm_s: float, first_audio_s: float, play_s: float) -> float:
     return llm_s + first_audio_s + play_s
 
 
-def build(llm_backend: str, tts_backend: str, system: str, api_model: str | None = None):
+def build(llm_backend: str, tts_backend: str, system: str, api_model: str | None = None,
+          max_sentences: int | None = None):
     """조합대로 만들고 예열까지 끝낸 (agent, tts) 를 돌려준다."""
     lcfg = {**settings.models["llm"], "backend": llm_backend}
     if api_model:
         lcfg["api_model"] = api_model
+    if max_sentences is not None:
+        lcfg["max_sentences"] = max_sentences
     agent = LLMAgent(model_path=lcfg.pop("model_path"), system_prompt=system, **lcfg)
     tts = TTSModule(**{**settings.models["tts"], "backend": tts_backend})
     agent.warm()          # 로컬 폴백 + API 커넥션
@@ -126,6 +148,24 @@ def run_combo(label: str, agent, tts, rows, repeat: int, play: bool, out_dir: Pa
     return statistics.median(total)
 
 
+def measure_combo(combo: str, system: str, rows, repeat: int, play: bool, out_dir):
+    """조합 하나를 재고 **쓴 것을 놓고** 돌아온다.
+
+    🔴 놓는 게 이 함수의 존재 이유다 (2026-08-28 실측). build() 가 조합마다
+       TTSModule 을 새로 만드는데, 앞 것을 놓기 전에 만들면 TRT 엔진 두 개가 겹친다
+       (하나에 ~2.9GB, 젯슨은 8GB). 실제로 팔 3번째부터 TRT 가 236MB 할당에 실패해
+       CUDA 세션으로 폴백했고 그 팔들의 '첫 소리'가 0.73s -> 1.43s 로 두 배가 됐다.
+    ⚠️ 조용히 느려진다 — 표에는 그냥 '그 조합이 느리다'로 찍힌다.
+    """
+    llm_b, api_model, cap, tts_b = parse_combo(combo)
+    agent, tts = build(llm_b, tts_b, system, api_model=api_model, max_sentences=cap)
+    try:
+        return run_combo(combo, agent, tts, rows, repeat, play, out_dir)
+    finally:
+        del agent, tts
+        gc.collect()
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -152,10 +192,8 @@ def main() -> None:
     results = {}
     for combo in args.combos.split(","):
         combo = combo.strip()
-        llm_b, api_model, tts_b = parse_combo(combo)
-        agent, tts = build(llm_b, tts_b, system, api_model=api_model)
-        results[combo] = run_combo(combo, agent, tts, rows,
-                                   args.repeat, args.play, out_dir)
+        results[combo] = measure_combo(combo, system, rows,
+                                       args.repeat, args.play, out_dir)
 
     if len(results) > 1:
         best = min(results, key=results.get)

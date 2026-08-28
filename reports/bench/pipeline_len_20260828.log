@@ -1,0 +1,27 @@
+[0;93m2026-08-28 13:47:24.276597272 [W:onnxruntime:Default, device_discovery.cc:211 DiscoverDevicesForPlatform] GPU device discovery failed: device_discovery.cc:91 ReadFileContents Failed to open file: "/sys/class/drm/card1/device/vendor"[m
+  [경고] OpenAI LLM 실패(APITimeoutError: Request timed out.) — 로컬 EXAONE 으로 폴백
+NvMapMemAllocInternalTagged: 1075072515 error 12
+NvMapMemHandleAlloc: error 0
+NvMapMemAllocInternalTagged: 1075072515 error 12
+NvMapMemHandleAlloc: error 0
+[1;31m2026-08-28 13:52:38.433962134 [E:onnxruntime:Default, tensorrt_execution_provider.h:90 log] [2026-08-28 04:52:38   ERROR] [defaultAllocator.cpp::allocate::31] Error Code 1: Cuda Runtime (out of memory)[m
+[1;31m2026-08-28 13:52:38.446508475 [E:onnxruntime:Default, tensorrt_execution_provider.h:90 log] [2026-08-28 04:52:38   ERROR] [safeDeserialize.cpp::load::284] Error Code 2: OutOfMemory (Requested size was 236112448 bytes.)[m
+  [경고] TensorRT 적용 실패 [vector_estimator] (Fail: [ONNXRuntimeError] : 1 : FAIL : TensorRT EP could not deserialize engine from cache: /home/jaeha_bot/.cache/trt_supertonic/TensorrtExecutionProvider_TRTKernel_g) — 기존 세션 유지
+NvMapMemAllocInternalTagged: 1075072515 error 12
+NvMapMemHandleAlloc: error 0
+NvMapMemAllocInternalTagged: 1075072515 error 12
+NvMapMemHandleAlloc: error 0
+[1;31m2026-08-28 13:56:12.628961637 [E:onnxruntime:Default, tensorrt_execution_provider.h:90 log] [2026-08-28 04:56:12   ERROR] [defaultAllocator.cpp::allocate::31] Error Code 1: Cuda Runtime (out of memory)[m
+[1;31m2026-08-28 13:56:12.630821239 [E:onnxruntime:Default, tensorrt_execution_provider.h:90 log] [2026-08-28 04:56:12   ERROR] [safeDeserialize.cpp::load::284] Error Code 2: OutOfMemory (Requested size was 236112448 bytes.)[m
+  [경고] TensorRT 적용 실패 [vector_estimator] (Fail: [ONNXRuntimeError] : 1 : FAIL : TensorRT EP could not deserialize engine from cache: /home/jaeha_bot/.cache/trt_supertonic/TensorrtExecutionProvider_TRTKernel_g) — 기존 세션 유지
+32문항 × 1회 | 프롬프트 4182자 | 재생(첫 소리)
+
+  openai:HCX-005/1+supertonic LLM  0.891s | TTS(첫소리)  0.728s | 말하기  2.108s | 체감  3.818s | p95  5.634s | 답변 11자 (최대 30자)
+  openai:gpt-4o-mini/1+supertonic LLM  1.609s | TTS(첫소리)  0.730s | 말하기  2.085s | 체감  4.394s | p95  6.758s | 답변 10자 (최대 21자)
+  openai:gpt-4o-mini+supertonic LLM  1.505s | TTS(첫소리)  1.429s | 말하기  3.572s | 체감  6.346s | p95  8.662s | 답변 21자 (최대 37자)
+  openai:HCX-005+supertonic  LLM  1.097s | TTS(첫소리)  1.527s | 말하기  4.880s | 체감  7.626s | p95 13.294s | 답변 32자 (최대 74자)
+
+  가장 빠른 조합: openai:HCX-005/1+supertonic (3.818s)
+  wav -> /home/jaeha_bot/jaeha_bot/logs/bench
+
+[exited with code 0]

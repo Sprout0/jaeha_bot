@@ -26,6 +26,7 @@ import os
 import statistics
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -40,10 +41,131 @@ except ImportError:
 
 from app.agent import _augment_system, load_fewshot  # noqa: E402
 from app.config import settings  # noqa: E402
-from tools.eval_llm import CLOVA_BASE_URL, load_eval_set, required_key  # noqa: E402
+from tools.eval_llm import (  # noqa: E402
+    _RATE_LIMIT, CLOVA_BASE_URL, load_eval_set, required_key)
 
 # 네트워크 왕복 하한을 재기 위한 최소 프롬프트. 내용은 중요하지 않다 — 짧다는 것만 중요하다.
 FLOOR_SYSTEM = "너는 다섯 살 아이의 친구 로봇 티드야. 밝은 반말로 한두 문장만 말해."
+
+# 문장 경계는 **TTS 가 실제로 자르는 그 규칙**을 그대로 빌려 온다. 여기서 따로 정의하면
+# "첫 문장이 0.6s 에 준비된다"고 재 놓고 정작 TTS 는 다른 자리에서 잘라, 잰 값이
+# 운영에서 재현되지 않는다. 규칙이 둘이면 측정은 거짓말이 된다.
+from app.tts_module import _SENT_SPLIT  # noqa: E402
+
+
+@dataclass
+class StreamTrace:
+    """스트림 한 번을 조각낸 결과.
+
+    ttft_s            첫 **내용 있는** 청크까지 = 왕복 + 프롬프트 처리
+    gen_s             첫 내용 청크 -> 마지막 내용 청크 = 순수 생성
+    first_sentence_s  TTS 가 첫 문장을 넘겨받을 수 있게 되는 순간(한 문장짜리 답이면 None)
+    """
+
+    ttft_s: float | None
+    gen_s: float
+    first_sentence_s: float | None
+    chars: int
+    text: str
+
+
+def summarize_stream(t0: float, events) -> StreamTrace:
+    """(시각, delta) 목록 -> 조각난 시간. **네트워크를 안 탄다** — 그래서 시험할 수 있다.
+
+    🔴 빈 delta 는 버린다. 첫 청크는 대개 role 만 담고 content 가 비어 있는데, 그걸
+       첫 토큰으로 세면 TTFT 가 과소평가되고 그만큼 생성이 부푼다. 즉 "병목은 생성"
+       이라는 **정반대 결론**이 나온다. 이 도구가 답하려는 질문이 딱 그거라 치명적이다.
+    ⚠️ 첫 문장 시각은 최대 청크 하나만큼 **늦게** 잡힌다. _SENT_SPLIT 이 종결부호
+       **뒤의 공백**으로 가르기 때문에 다음 문장의 첫 글자가 와야 두 조각이 된다.
+       늦게 잡히는 쪽이라 스트리밍 이득을 과장하지 않는다 — 그래서 그냥 둔다.
+    """
+    content = [(t, d) for t, d in events if d]
+    if not content:
+        return StreamTrace(ttft_s=None, gen_s=0.0, first_sentence_s=None, chars=0, text="")
+
+    buf = ""
+    first_sentence = None
+    for t, d in content:
+        buf += d
+        if first_sentence is None and len([p for p in _SENT_SPLIT.split(buf) if p.strip()]) >= 2:
+            first_sentence = t - t0
+    return StreamTrace(
+        ttft_s=content[0][0] - t0,
+        gen_s=content[-1][0] - content[0][0],
+        first_sentence_s=first_sentence,
+        chars=len(buf),
+        text=buf,
+    )
+
+
+def is_rate_limited(exc: BaseException) -> bool:
+    """429 인가. 판정 낱말은 eval_llm 것을 그대로 쓴다 — 두 도구의 '실패'가 같은 뜻이라야 한다."""
+    msg = str(exc).lower()
+    return any(k.lower() in msg for k in _RATE_LIMIT)
+
+
+def reject_unstreamable(models: list[str], stream: bool) -> None:
+    """local 은 흘려줄 수 없다. 20분짜리 실행이 끝물에 터지지 않도록 **시작 전에** 막는다."""
+    if stream and "local" in models:
+        print("--stream 은 원격 팔에만 됩니다. local 을 빼거나 --stream 을 끄세요.")
+        sys.exit(1)
+
+
+def call_once(client, model: str, sysp: str, text: str, max_tokens: int,
+              stream: bool = False) -> tuple[float, StreamTrace]:
+    """한 번 치고 (총 시간, 조각) 을 돌려준다.
+
+    🔴 stream 을 안 켜면 `stream` 인자를 **아예 넘기지 않는다.** 넘기면(False 라도)
+       요청 모양이 달라져 예전 측정과 비교할 수 없다.
+    """
+    messages = [{"role": "system", "content": sysp}, {"role": "user", "content": text}]
+    kw = {"stream": True} if stream else {}
+
+    t0 = time.perf_counter()
+    out = client.chat.completions.create(
+        model=model, max_completion_tokens=max_tokens, messages=messages, **kw)
+
+    if not stream:
+        total = time.perf_counter() - t0
+        reply = out.choices[0].message.content or ""
+        return total, StreamTrace(None, 0.0, None, len(reply), reply)
+
+    events = []
+    for chunk in out:
+        choices = getattr(chunk, "choices", None)
+        delta = ""
+        if choices:   # 끝에 choices 가 빈 사용량 청크를 주는 서버가 있다
+            delta = getattr(choices[0].delta, "content", None) or ""
+        events.append((time.perf_counter(), delta))
+    return time.perf_counter() - t0, summarize_stream(t0, events)
+
+
+def describe_split(rtt: float, ttft_real: float, gen: float, total: float,
+                   chars: float) -> list[str]:
+    """분해를 사람이 읽을 줄로 만든다. **읽는 법까지 같이 찍는다.**
+
+    🔴 왜 읽는 법이 필요한가: 08-21 의 "생각의 87% 가 왕복"이 잘못 읽은 숫자였다.
+       숫자만 던져 놓으면 같은 일이 또 난다. 특히 두 모양을 그냥 두면 안 된다.
+       - 프롬프트 대가가 음수: 바닥 팔이 더 느리게 나온 것이다. '프롬프트가 시간을
+         줄여준다'가 아니라 **효과가 잰 잡음보다 작다**는 뜻이다.
+       - 생성이 0 에 가까움: 서버가 안 흘려주고 한 번에 준 것이다. 그 서버로는
+         문장 스트리밍으로 벌 게 없다. 단, **짧은 답은 원래 청크 한둘**이라 제외한다.
+    """
+    prompt_cost = ttft_real - rtt
+    out = [
+        f"      왕복      {rtt:6.3f}s ({rtt / total * 100:4.1f}%)  <- [바닥] 팔의 TTFT",
+        f"      프롬프트  {prompt_cost:6.3f}s ({prompt_cost / total * 100:4.1f}%)"
+        f"  <- 실제 TTFT - 바닥 TTFT",
+        f"      생성      {gen:6.3f}s ({gen / total * 100:4.1f}%)",
+        f"      총        {total:6.3f}s",
+    ]
+    if prompt_cost <= 0:
+        out.append("      -> 프롬프트 대가가 0 이하 = 잰 잡음보다 작다는 뜻이다."
+                   " 시간을 벌어준다는 뜻이 아니다.")
+    if gen < 0.05 and chars > 10:
+        out.append("      ⚠️ 생성이 0 에 가깝다 = 서버가 안 흘려주고 한 번에 줬다.")
+        out.append("         이 서버로는 문장 스트리밍으로 벌 게 없다.")
+    return out
 
 
 class LocalClient:
@@ -159,6 +281,9 @@ def main() -> None:
     ap.add_argument("--gap", type=float, default=0.0, metavar="SEC",
                     help="호출 사이에 쉬는 시간. 운영은 봇이 3.5초 말하는 동안 호출이 없다. "
                          "기본 0(연달아 치기 — 예전 측정과 비교 가능)")
+    ap.add_argument("--stream", action="store_true",
+                    help="스트리밍으로 받아 첫 토큰까지(TTFT)와 생성 시간을 가른다. "
+                         "기본 꺼짐 — 켜면 요청 모양이 달라져 예전 값과 직접 비교가 안 된다")
     ap.add_argument("--list-models", metavar="PREFIX",
                     help="쓸 수 있는 모델 이름만 찍고 끝낸다(예: HCX)")
     args = ap.parse_args()
@@ -168,6 +293,7 @@ def main() -> None:
         return
 
     models = [m.strip() for m in args.models.split(",") if m.strip()]
+    reject_unstreamable(models, args.stream)
     system = _augment_system(settings.prompts["system"],
                              load_fewshot(settings.models["llm"].get("fewshot_path")))
     rows = load_eval_set(BASE / args.eval_set)
@@ -183,6 +309,10 @@ def main() -> None:
     lat: dict[str, list[float]] = {a[0]: [] for a in arms}
     lens: dict[str, list[int]] = {a[0]: [] for a in arms}
     fail: dict[str, int] = {a[0]: 0 for a in arms}
+    ttft: dict[str, list[float]] = {a[0]: [] for a in arms}
+    gen: dict[str, list[float]] = {a[0]: [] for a in arms}
+    early: dict[str, list[float]] = {a[0]: [] for a in arms}   # 첫 문장으로 당길 수 있는 시간
+    rate: dict[str, int] = {a[0]: 0 for a in arms}             # 그중 429
     gap_note = f" · 호출 간격 {args.gap}s" if args.gap else " · 연달아"
     print(f"{len(rows)}문항 × {args.repeat}회 · 팔 {len(arms)}개 교차 · 재시도 끔 · "
           f"프롬프트 {len(system)}자{gap_note}\n")
@@ -191,17 +321,24 @@ def main() -> None:
             k = i % len(arms)
             for label, model, sysp in arms[k:] + arms[:k]:   # 문항마다 순서 회전
                 pace(args.gap)
-                t = time.perf_counter()
                 try:
-                    out = clients[model].chat.completions.create(
-                        model=model, max_completion_tokens=args.max_tokens,
-                        messages=[{"role": "system", "content": sysp},
-                                  {"role": "user", "content": r["text"]}])
-                    lat[label].append(time.perf_counter() - t)
-                    lens[label].append(len(out.choices[0].message.content or ""))
+                    total, tr = call_once(clients[model], model, sysp, r["text"],
+                                          args.max_tokens, stream=args.stream)
+                    lat[label].append(total)
+                    lens[label].append(tr.chars)
+                    if tr.ttft_s is not None:
+                        ttft[label].append(tr.ttft_s)
+                        gen[label].append(tr.gen_s)
+                        # 첫 문장이 안 닫혔으면(한 문장짜리 답) 스트리밍으로 벌 게 **0** 이다.
+                        # None 을 빼고 세면 '2문장짜리 답만' 모아 평균 내는 셈이라 이득이 부푼다.
+                        early[label].append(0.0 if tr.first_sentence_s is None
+                                            else max(0.0, total - tr.first_sentence_s))
                 except Exception as e:
                     fail[label] += 1
-                    print(f"  실패 {label}: {type(e).__name__}", flush=True)
+                    if is_rate_limited(e):
+                        rate[label] += 1
+                    print(f"  실패 {label}: {type(e).__name__}"
+                          f"{' (429)' if is_rate_limited(e) else ''}", flush=True)
         print(f"  ...{rep + 1}/{args.repeat}회", flush=True)
 
     print(f"\n{'팔':28} {'n':>4} {'중앙':>8} {'평균':>8} {'p95':>8} {'최대':>8} {'답변':>6} {'실패':>5}")
@@ -212,6 +349,39 @@ def main() -> None:
             continue
         print(f"{label:28} {len(v):4} {statistics.median(v):7.3f}s {statistics.mean(v):7.3f}s "
               f"{p95(v):7.3f}s {max(v):7.3f}s {statistics.median(lens[label]):5.0f}자 {fail[label]:5}")
+
+    if any(rate.values()):
+        hit = ", ".join(f"{k} {v}회" for k, v in rate.items() if v)
+        print(f"\n  ⚠️ 429(분당 한도) {hit} — 테스트 앱 키의 한도다.")
+        print("     이 실행의 p95·최대에는 그 대기가 섞여 있다. 중앙값만 믿을 것.")
+
+    if args.stream:
+        print(f"\n{'팔':28} {'TTFT중앙':>10} {'생성중앙':>10} {'첫문장절감':>12} {'2문장이상':>11}")
+        for label, _, _ in arms:
+            if not ttft[label]:
+                continue
+            e = early[label]
+            multi = sum(1 for x in e if x > 0)
+            print(f"{label:28} {statistics.median(ttft[label]):9.3f}s "
+                  f"{statistics.median(gen[label]):9.3f}s "
+                  f"{statistics.median(e):11.3f}s "
+                  f"{multi:6}/{len(e):<4}")
+
+        print("\n  생각을 세 조각으로 (각각의 중앙값):")
+        for m in models:
+            floor_label, real = f"{m} [바닥]", m
+            if not ttft.get(floor_label) or not ttft.get(real):
+                continue
+            rtt = statistics.median(ttft[floor_label])
+            t_real = statistics.median(ttft[real])
+            g = statistics.median(gen[real])
+            tot = statistics.median(lat[real])
+            print(f"    {m}")
+            for line in describe_split(rtt, t_real, g, tot, statistics.median(lens[real])):
+                print(line)
+        print("\n  ⚠️ 조각은 **각각의 중앙값**이라 서로 더해도 총 중앙값과 딱 맞지 않는다.")
+        print("  '첫문장절감' = 총 시간 - 첫 문장이 닫힌 시각. 한 문장짜리 답은 0 으로 센다")
+        print("               (빼고 세면 2문장 답만 모아 평균 내는 셈이라 이득이 부푼다).")
 
     print()
     print("  '[바닥]' = 42자 프롬프트로 \"안녕\"만 물은 값.")

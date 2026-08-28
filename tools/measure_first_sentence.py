@@ -15,23 +15,43 @@
 """
 from __future__ import annotations
 
+import argparse
 import json
 import statistics as st
 import sys
 import time
 from pathlib import Path
 
-REPO = Path("/home/jaeha_bot/jaeha_bot")
-sys.path.insert(0, str(REPO))
+BASE = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(BASE))
+
+# 기본 입력: 08-28 에 gpt 가 실제로 낸 답 32개. 손으로 만든 문장은 길이 분포가
+# 운영과 달라 숫자가 안 옮겨간다.
+DEFAULT_REPLIES = "reports/eval/eval_20260828_145622.json"
+DEFAULT_ARM = "gpt-4o-mini"
 
 from app.config import settings          # noqa: E402
 from app.tts_module import TTSModule     # noqa: E402
 
 
 def main():
-    src = json.load(open(REPO / "eval_20260828_145622.json", encoding="utf-8"))
-    replies = [r["reply"] for a in src if a["model"] == "gpt-4o-mini"
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--replies", default=DEFAULT_REPLIES,
+                    help=f"eval_llm 결과 json. 기본 {DEFAULT_REPLIES}")
+    ap.add_argument("--arm", default=DEFAULT_ARM,
+                    help=f"그 json 안의 모델 이름. 기본 {DEFAULT_ARM}")
+    ap.add_argument("--out", default="", help="상세 json 저장 경로(비우면 저장 안 함)")
+    args = ap.parse_args()
+
+    path = Path(args.replies)
+    if not path.is_absolute():
+        path = BASE / path
+    src = json.load(open(path, encoding="utf-8"))
+    replies = [r["reply"] for a in src if a["model"] == args.arm
                for r in a["records"] if r.get("reply")]
+    if not replies:
+        raise SystemExit(f"{path} 안에 '{args.arm}' 팔의 답변이 없습니다.")
 
     tts = TTSModule(**settings.models["tts"])
     tts.load()
@@ -77,9 +97,11 @@ def main():
         for r in sorted(ok, key=lambda x: x["slack"])[:3]:
             print(f"     여유 {r['slack']:+.3f}s ({r['chars']}자): {r['text']}")
 
-    out = Path("/tmp/tts_first_sentence.json")
-    out.write_text(json.dumps(rows, ensure_ascii=False, indent=1), encoding="utf-8")
-    print(f"\n상세 -> {out}")
+    if args.out:
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(rows, ensure_ascii=False, indent=1), encoding="utf-8")
+        print(f"\n상세 -> {out}")
 
 
 if __name__ == "__main__":

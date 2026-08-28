@@ -417,3 +417,28 @@ def test_short_answer_with_zero_generation_is_not_flagged_as_buffering():
     lines = "\n".join(describe_split(rtt=1.0, ttft_real=1.4, gen=0.01, total=1.45, chars=8))
 
     assert "안 흘려주고" not in lines
+
+
+def test_buffering_flag_defers_to_the_floor_arm():
+    """[바닥] 팔이 흘렸으면 서버는 흘려주는 것이다 — 짧은 답과 버퍼링을 혼동하면 안 된다.
+
+    🔴 2026-08-28 실측에서 실제로 오판했다. HCX 실제 팔은 26자 답에 생성 0.015s 라
+       "서버가 안 흘려준다"고 찍혔는데, 같은 서버 [바닥] 팔은 63자 답을 0.324s 에
+       걸쳐 흘렸다. 못 흘리는 게 아니라 우리 답이 짧아 청크가 하나였던 것이다.
+    """
+    from tools.bench_llm_latency import describe_split
+
+    lines = "\n".join(describe_split(rtt=0.7, ttft_real=0.71, gen=0.015, total=0.75,
+                                     chars=26, floor_gen=0.324))
+
+    assert "안 흘려주고" not in lines, "짧은 답을 서버 탓으로 돌리고 있다"
+    assert "짧아" in lines
+
+
+def test_buffering_is_still_flagged_when_the_floor_arm_also_came_in_one_chunk():
+    from tools.bench_llm_latency import describe_split
+
+    lines = "\n".join(describe_split(rtt=0.7, ttft_real=0.71, gen=0.015, total=0.75,
+                                     chars=26, floor_gen=0.004))
+
+    assert "안 흘려주고" in lines

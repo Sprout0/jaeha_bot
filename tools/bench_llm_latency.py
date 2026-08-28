@@ -141,7 +141,7 @@ def call_once(client, model: str, sysp: str, text: str, max_tokens: int,
 
 
 def describe_split(rtt: float, ttft_real: float, gen: float, total: float,
-                   chars: float) -> list[str]:
+                   chars: float, floor_gen: float | None = None) -> list[str]:
     """분해를 사람이 읽을 줄로 만든다. **읽는 법까지 같이 찍는다.**
 
     🔴 왜 읽는 법이 필요한가: 08-21 의 "생각의 87% 가 왕복"이 잘못 읽은 숫자였다.
@@ -163,8 +163,15 @@ def describe_split(rtt: float, ttft_real: float, gen: float, total: float,
         out.append("      -> 프롬프트 대가가 0 이하 = 잰 잡음보다 작다는 뜻이다."
                    " 시간을 벌어준다는 뜻이 아니다.")
     if gen < 0.05 and chars > 10:
-        out.append("      ⚠️ 생성이 0 에 가깝다 = 서버가 안 흘려주고 한 번에 줬다.")
-        out.append("         이 서버로는 문장 스트리밍으로 벌 게 없다.")
+        if floor_gen is not None and floor_gen >= 0.05:
+            # [바닥] 팔이 흘렸다면 서버는 흘려줄 줄 안다. 짧은 답을 서버 탓으로 돌리면
+            # '클로바로는 문장 스트리밍 불가'라는 없는 제약을 만들어 낸다.
+            out.append(f"      -> 생성이 0 에 가깝지만 [바닥] 팔은 흘렸다(생성 {floor_gen:.3f}s)."
+                       f" 서버는 흘려준다.")
+            out.append(f"         우리 답이 {chars:.0f}자로 짧아 청크가 사실상 하나인 것뿐이다.")
+        else:
+            out.append("      ⚠️ 생성이 0 에 가깝다 = 서버가 안 흘려주고 한 번에 줬다.")
+            out.append("         이 서버로는 문장 스트리밍으로 벌 게 없다.")
     return out
 
 
@@ -377,7 +384,9 @@ def main() -> None:
             g = statistics.median(gen[real])
             tot = statistics.median(lat[real])
             print(f"    {m}")
-            for line in describe_split(rtt, t_real, g, tot, statistics.median(lens[real])):
+            floor_gen = statistics.median(gen[floor_label]) if gen[floor_label] else None
+            for line in describe_split(rtt, t_real, g, tot, statistics.median(lens[real]),
+                                       floor_gen=floor_gen):
                 print(line)
         print("\n  ⚠️ 조각은 **각각의 중앙값**이라 서로 더해도 총 중앙값과 딱 맞지 않는다.")
         print("  '첫문장절감' = 총 시간 - 첫 문장이 닫힌 시각. 한 문장짜리 답은 0 으로 센다")

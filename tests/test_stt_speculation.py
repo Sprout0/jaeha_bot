@@ -43,6 +43,29 @@ class ScriptedSource:
         return f
 
 
+class InstantSpeculation(_Speculation):
+    """작업을 **제출하는 그 자리에서** 끝내는 선행 인식. 시험 전용.
+
+    🔴 왜 필요한가 (2026-08-28): 진짜 _Speculation 은 작업 스레드를 쓰고 peek() 은
+       설계상 논블로킹이다 — 운영에선 그게 옳다(꼬리 루프에서 기다리면 아이가 다시
+       말하는 걸 못 듣는다). 그런데 ScriptedSource 는 **실시간을 쓰지 않는다.**
+       제출부터 루프 종료까지 마이크로초밖에 안 지나서 작업 스레드가 한 번도
+       스케줄되지 않을 수 있다. 실측으로 **300회 중 1회** len(seen)==0 으로 졌다.
+       운영은 프레임마다 80ms 실시간이 흐르므로 이 경합이 없다 — **시험만의 문제다.**
+    ⚠️ peek/take/reset 은 진짜 구현을 그대로 쓴다. 작업 함수도 진짜 _run() 에 태운다
+       (예외 삼키기까지 같은 경로다). 갈아끼우는 건 '언제 끝나는가' 하나뿐이다.
+    ⚠️ **'꼬리 안에 못 끝난' 상황을 재는 시험에는 쓰면 안 된다** — 거기선 안 끝나는
+       것이 시험 대상이다(test_a_near_miss_says_how_near).
+    """
+
+    def submit(self, audio, key) -> None:
+        with self._cv:
+            if key == self._busy_key or key in self._done:
+                return
+            self._pending = (audio, key)
+        self._run()        # 스레드를 띄우지 않고 진짜 작업 루프를 그 자리에서 돈다
+
+
 # ── _Speculation 단위 ────────────────────────────────────────────────────────
 
 def test_result_is_returned_for_the_key_it_was_submitted_with():
@@ -167,7 +190,7 @@ def test_resumed_speech_gets_the_full_utterance(monkeypatch):
 def test_partial_text_is_handed_over_during_the_tail():
     seen = []
     stt = STTModule(silence_duration=1.2, max_duration=10.0)
-    stt._spec = _Speculation(lambda a: ("칼 어딨어", 0.0))
+    stt._spec = InstantSpeculation(lambda a: ("칼 어딨어", 0.0))
 
     stt.record_until_silence(source=ScriptedSource(_loud(4) + _quiet(40)),
                              on_partial=seen.append)
@@ -179,7 +202,7 @@ def test_partial_is_handed_over_only_once():
     """매 프레임마다 부르면 LLM 을 꼬리 동안 수십 번 친다."""
     seen = []
     stt = STTModule(silence_duration=1.2, max_duration=10.0)
-    stt._spec = _Speculation(lambda a: ("안녕", 0.0))
+    stt._spec = InstantSpeculation(lambda a: ("안녕", 0.0))
 
     stt.record_until_silence(source=ScriptedSource(_loud(4) + _quiet(40)),
                              on_partial=seen.append)
@@ -190,7 +213,7 @@ def test_partial_is_handed_over_only_once():
 def test_empty_recognition_is_not_handed_over():
     seen = []
     stt = STTModule(silence_duration=1.2, max_duration=10.0)
-    stt._spec = _Speculation(lambda a: ("", 0.0))
+    stt._spec = InstantSpeculation(lambda a: ("", 0.0))
 
     stt.record_until_silence(source=ScriptedSource(_loud(4) + _quiet(40)),
                              on_partial=seen.append)
@@ -204,7 +227,7 @@ def test_a_broken_callback_does_not_kill_the_recording():
         raise RuntimeError("콜백 터짐")
 
     stt = STTModule(silence_duration=1.2, max_duration=10.0)
-    stt._spec = _Speculation(lambda a: ("안녕", 0.0))
+    stt._spec = InstantSpeculation(lambda a: ("안녕", 0.0))
 
     audio = stt.record_until_silence(source=ScriptedSource(_loud(4) + _quiet(40)),
                                      on_partial=boom)
@@ -239,7 +262,7 @@ def test_peek_does_not_block_when_nothing_is_ready():
 def test_a_handover_says_so(caplog):
     import logging
     stt = STTModule(silence_duration=1.2, max_duration=10.0)
-    stt._spec = _Speculation(lambda a: ("칼 어딨어", 0.0))
+    stt._spec = InstantSpeculation(lambda a: ("칼 어딨어", 0.0))
 
     with caplog.at_level(logging.INFO, logger="jaeha_bot.stt"):
         stt.record_until_silence(source=ScriptedSource(_loud(4) + _quiet(40)),
@@ -252,7 +275,7 @@ def test_a_late_guess_says_how_late(caplog):
     """예산을 얼마나 넘겼는지가 다음 결정의 전부다."""
     import logging
     stt = STTModule(silence_duration=1.2, max_duration=10.0)
-    stt._spec = _Speculation(lambda a: (_ for _ in ()).throw(RuntimeError("안 끝남")))
+    stt._spec = InstantSpeculation(lambda a: (_ for _ in ()).throw(RuntimeError("안 끝남")))
 
     with caplog.at_level(logging.INFO, logger="jaeha_bot.stt"):
         stt.record_until_silence(source=ScriptedSource(_loud(4) + _quiet(40)),
@@ -269,7 +292,7 @@ def test_a_late_guess_says_how_late(caplog):
 def test_an_empty_guess_is_told_apart_from_a_late_one(caplog):
     import logging
     stt = STTModule(silence_duration=1.2, max_duration=10.0)
-    stt._spec = _Speculation(lambda a: ("", 0.0))
+    stt._spec = InstantSpeculation(lambda a: ("", 0.0))
 
     with caplog.at_level(logging.INFO, logger="jaeha_bot.stt"):
         stt.record_until_silence(source=ScriptedSource(_loud(4) + _quiet(40)),
@@ -283,7 +306,7 @@ def test_nothing_is_logged_when_nobody_is_listening(caplog):
     """on_partial 이 없으면 선행 인식을 흘릴 데가 없다 — 그 turn 을 실패로 세면 안 된다."""
     import logging
     stt = STTModule(silence_duration=1.2, max_duration=10.0)
-    stt._spec = _Speculation(lambda a: ("안녕", 0.0))
+    stt._spec = InstantSpeculation(lambda a: ("안녕", 0.0))
 
     with caplog.at_level(logging.INFO, logger="jaeha_bot.stt"):
         stt.record_until_silence(source=ScriptedSource(_loud(4) + _quiet(40)))
@@ -301,7 +324,7 @@ def test_nothing_is_logged_when_nobody_is_listening(caplog):
 
 def test_the_loop_records_whether_it_handed_over():
     stt = STTModule(silence_duration=1.2, max_duration=10.0)
-    stt._spec = _Speculation(lambda a: ("칼 어딨어", 0.0))
+    stt._spec = InstantSpeculation(lambda a: ("칼 어딨어", 0.0))
 
     stt.record_until_silence(source=ScriptedSource(_loud(4) + _quiet(40)),
                              on_partial=lambda t: None)
@@ -311,7 +334,7 @@ def test_the_loop_records_whether_it_handed_over():
 
 def test_no_handover_is_recorded_too():
     stt = STTModule(silence_duration=1.2, max_duration=10.0)
-    stt._spec = _Speculation(lambda a: ("", 0.0))
+    stt._spec = InstantSpeculation(lambda a: ("", 0.0))
 
     stt.record_until_silence(source=ScriptedSource(_loud(4) + _quiet(40)),
                              on_partial=lambda t: None)

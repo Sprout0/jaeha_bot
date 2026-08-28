@@ -1,0 +1,144 @@
+[0;93m2026-08-28 17:36:33.167392388 [W:onnxruntime:Default, device_discovery.cc:211 DiscoverDevicesForPlatform] GPU device discovery failed: device_discovery.cc:91 ReadFileContents Failed to open file: "/sys/class/drm/card1/device/vendor"[m
+[0;93m2026-08-28 17:36:33.430764551 [W:onnxruntime:, transformer_memcpy.cc:111 ApplyImpl] 46 Memcpy nodes are added to the graph main_graph for CUDAExecutionProvider. It might have negative impact on performance (including unable to run CUDA graph). Set session_options.log_severity_level=1 to see the detail logs before this message.[m
+[0;93m2026-08-28 17:36:33.770516777 [W:onnxruntime:, transformer_memcpy.cc:111 ApplyImpl] 80 Memcpy nodes are added to the graph main_graph for CUDAExecutionProvider. It might have negative impact on performance (including unable to run CUDA graph). Set session_options.log_severity_level=1 to see the detail logs before this message.[m
+[0;93m2026-08-28 17:36:34.301230263 [W:onnxruntime:, transformer_memcpy.cc:111 ApplyImpl] 60 Memcpy nodes are added to the graph main_graph for CUDAExecutionProvider. It might have negative impact on performance (including unable to run CUDA graph). Set session_options.log_severity_level=1 to see the detail logs before this message.[m
+[0;93m2026-08-28 17:36:34.805568171 [W:onnxruntime:, transformer_memcpy.cc:111 ApplyImpl] 24 Memcpy nodes are added to the graph main_graph for CUDAExecutionProvider. It might have negative impact on performance (including unable to run CUDA graph). Set session_options.log_severity_level=1 to see the detail logs before this message.[m
+[0;93m2026-08-28 17:36:37.796313255 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 194) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.820260213 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 1080) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.823219851 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 1148) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.825417394 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 1216) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.827750204 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 1286) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.837728336 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 1614) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.838966406 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 1645) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.843009423 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 1762) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.844068482 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 1793) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.846410540 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 1861) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.848969434 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 1929) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.851318340 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 1997) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.853848594 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 2067) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.862403340 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 2320) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.865040955 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 2351) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.870425308 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 2468) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.871417870 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 2499) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.873614646 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 2567) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.875743580 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 2635) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.877926979 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 2703) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.880180236 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 2773) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.888000312 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 3026) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.889026891 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 3057) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.892954002 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 3174) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.893971076 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 3205) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.896222828 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 3273) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.898486677 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 3341) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.900748894 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 3409) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.903080360 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 3479) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.910937845 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 3732) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.911996296 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 3763) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.916055537 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 3880) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.917482379 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 3911) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.919790101 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 3979) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.922093662 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 4047) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:37.924735502 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:37 WARNING] (Unnamed Layer* 4115) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.216812502 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 194) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.237080482 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 1080) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.239460397 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 1148) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.241335759 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 1216) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.243316723 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 1286) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.251786987 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 1614) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.252806525 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 1645) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.256269596 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 1762) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.257178028 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 1793) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.259183632 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 1861) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.261309814 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 1929) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.263292058 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 1997) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.265441025 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 2067) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.272485407 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 2320) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.274279488 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 2351) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.278599501 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 2468) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.279491230 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 2499) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.281473089 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 2567) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.283419204 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 2635) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.285417608 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 2703) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.287479181 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 2773) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.294519788 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 3026) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.295442589 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 3057) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.299063486 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 3174) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.300002575 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 3205) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.302087060 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 3273) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.304172890 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 3341) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.306248479 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 3409) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.308399814 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 3479) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.315496357 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 3732) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.316485463 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 3763) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.320154873 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 3880) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.321437424 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 3911) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.323560023 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 3979) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.325673629 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 4047) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.328076168 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] (Unnamed Layer* 4115) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:38.428109744 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:38 WARNING] Using an engine plan file across different models of devices is not recommended and is likely to affect performance or even cause errors.[m
+[0;93m2026-08-28 17:36:40.701717667 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:40 WARNING] (Unnamed Layer* 101) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:40.703444098 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:40 WARNING] (Unnamed Layer* 169) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:40.705082528 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:40 WARNING] (Unnamed Layer* 234) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:40.706782526 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:40 WARNING] (Unnamed Layer* 299) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:40.708427900 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:40 WARNING] (Unnamed Layer* 364) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:40.710081433 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:40 WARNING] (Unnamed Layer* 429) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:40.711745047 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:40 WARNING] (Unnamed Layer* 494) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:40.713619449 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:40 WARNING] (Unnamed Layer* 559) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:40.715296215 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:40 WARNING] (Unnamed Layer* 624) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:40.717001142 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:40 WARNING] (Unnamed Layer* 689) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:40.818935136 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:40 WARNING] (Unnamed Layer* 101) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:40.820749857 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:40 WARNING] (Unnamed Layer* 169) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:40.822447264 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:40 WARNING] (Unnamed Layer* 234) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:40.824222720 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:40 WARNING] (Unnamed Layer* 299) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:40.825918654 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:40 WARNING] (Unnamed Layer* 364) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:40.827644061 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:40 WARNING] (Unnamed Layer* 429) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:40.829418109 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:40 WARNING] (Unnamed Layer* 494) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:40.831325983 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:40 WARNING] (Unnamed Layer* 559) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:40.833082047 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:40 WARNING] (Unnamed Layer* 624) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:40.834811518 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:40 WARNING] (Unnamed Layer* 689) [Normalization]: setComputePrecision ignored for strongly typed network.[m
+[0;93m2026-08-28 17:36:40.864818586 [W:onnxruntime:Default, tensorrt_execution_provider.h:92 log] [2026-08-28 08:36:40 WARNING] Using an engine plan file across different models of devices is not recommended and is likely to affect performance or even cause errors.[m
+   20자 2문장 | 통짜 0.491s -> 첫문장 0.444s | 이득 +0.047s | 여유 +1.369s
+   29자 2문장 | 통짜 0.504s -> 첫문장 0.468s | 이득 +0.037s | 여유 +1.870s
+   25자 2문장 | 통짜 0.471s -> 첫문장 0.436s | 이득 +0.035s | 여유 +1.808s
+   20자 2문장 | 통짜 0.469s -> 첫문장 0.420s | 이득 +0.049s | 여유 +1.389s
+   23자 2문장 | 통짜 0.478s -> 첫문장 0.424s | 이득 +0.054s | 여유 +1.313s
+   11자 2문장 | 통짜 0.437s -> 첫문장 0.477s | 이득 -0.041s | 여유 +0.829s
+   19자 2문장 | 통짜 0.472s -> 첫문장 0.437s | 이득 +0.035s | 여유 +1.025s
+   17자 2문장 | 통짜 0.459s -> 첫문장 0.427s | 이득 +0.032s | 여유 +0.813s
+   23자 2문장 | 통짜 0.480s -> 첫문장 0.432s | 이득 +0.047s | 여유 +1.306s
+   23자 2문장 | 통짜 0.483s -> 첫문장 0.434s | 이득 +0.049s | 여유 +1.292s
+   11자 2문장 | 통짜 0.450s -> 첫문장 0.447s | 이득 +0.003s | 여유 +0.816s
+   20자 2문장 | 통짜 0.470s -> 첫문장 0.442s | 이득 +0.028s | 여유 +1.377s
+   30자 2문장 | 통짜 0.615s -> 첫문장 0.444s | 이득 +0.171s | 여유 +1.289s
+   19자 2문장 | 통짜 0.280s -> 첫문장 0.430s | 이득 -0.150s | 여유 +1.320s
+   28자 2문장 | 통짜 0.596s -> 첫문장 0.441s | 이득 +0.155s | 여유 +1.300s
+   29자 2문장 | 통짜 0.597s -> 첫문장 0.449s | 이득 +0.148s | 여유 +1.720s
+   24자 2문장 | 통짜 0.485s -> 첫문장 0.430s | 이득 +0.054s | 여유 +1.303s
+   27자 2문장 | 통짜 0.595s -> 첫문장 0.436s | 이득 +0.160s | 여유 +1.072s
+   10자 2문장 | 통짜 0.430s -> 첫문장 0.420s | 이득 +0.010s | 여유 +0.903s
+   22자 2문장 | 통짜 0.486s -> 첫문장 0.438s | 이득 +0.047s | 여유 +1.515s
+   14자 2문장 | 통짜 0.450s -> 첫문장 0.423s | 이득 +0.027s | 여유 +0.818s
+   22자 2문장 | 통짜 0.484s -> 첫문장 0.436s | 이득 +0.049s | 여유 +0.864s
+   16자 2문장 | 통짜 0.280s -> 첫문장 0.415s | 이득 -0.135s | 여유 +0.816s
+    9자 2문장 | 통짜 0.427s -> 첫문장 0.425s | 이득 +0.003s | 여유 +0.825s
+   18자 2문장 | 통짜 0.464s -> 첫문장 0.431s | 이득 +0.032s | 여유 +0.821s
+    9자 2문장 | 통짜 0.437s -> 첫문장 0.430s | 이득 +0.007s | 여유 +0.823s
+   21자 2문장 | 통짜 0.494s -> 첫문장 0.442s | 이득 +0.052s | 여유 +1.006s
+   21자 2문장 | 통짜 0.480s -> 첫문장 0.432s | 이득 +0.048s | 여유 +1.012s
+   25자 2문장 | 통짜 0.618s -> 첫문장 0.432s | 이득 +0.185s | 여유 +1.515s
+   25자 2문장 | 통짜 0.483s -> 첫문장 0.429s | 이득 +0.053s | 여유 +1.461s
+   24자 2문장 | 통짜 0.481s -> 첫문장 0.441s | 이득 +0.040s | 여유 +1.373s
+   31자 2문장 | 통짜 0.609s -> 첫문장 0.459s | 이득 +0.150s | 여유 +1.938s
+
+대상 32개 / 한 문장이라 건너뜀 0개 (총 32)
+  통짜 합성   중앙 0.480s
+  첫문장 합성 중앙 0.435s
+  ➡️ 첫 소리 이득 중앙 +0.047s (최소 -0.150 / 최대 +0.185)
+  ⚠️ 여유 중앙 +1.296s · **음수(문장 사이가 빈다) 0/32개**
+     여유 +0.813s (17자): 좋아! 어떤 동물 소리 해볼까?
+     여유 +0.816s (11자): 좋아! 나부터 할게.
+     여유 +0.816s (16자): 어? 무슨 말인지 못 들었어.
+
+상세 -> /tmp/tts_first_sentence.json
+
+[exited with code 0]

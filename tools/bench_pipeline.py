@@ -88,6 +88,24 @@ def parse_combo(combo: str) -> tuple[str, str | None, int | None, str]:
     return llm, (model or None), cap, parts[1]
 
 
+DEFAULT_LENGTH_HINT = """⚠️ 길이 규칙을 다시 확인한다. 한 문장으로, 스무 글자를 넘지 않게 답한다.
+스무 글자를 넘으면 실패다. 되묻는 말을 붙이고 싶으면 그것까지 스무 글자 안에 넣는다."""
+
+
+def apply_length_hint(system: str, hint: str | None) -> str:
+    """길이 지시를 시스템 프롬프트 **끝에** 덧붙인다.
+
+    🔴 왜 필요한가 (2026-08-28): 길이 지시는 이미 프롬프트에 있다
+       ("스무 글자 안팎으로, 길어도 두 문장까지만"). gpt 는 20자로 지키고
+       **HCX 는 27~32자에 최대 74~97자로 안 지킨다.** 그래서 재려는 건
+       '길이 유도를 넣으면'이 아니라 **'지시를 강화하면 따르는가'** 다.
+    ⚠️ 반드시 끝에 붙인다. 앞에 끼우면 원문 규칙 사이를 갈라 놓는다.
+    """
+    if not (hint or "").strip():
+        return system
+    return f"{system}\n\n{hint.strip()}"
+
+
 def felt_total(llm_s: float, first_audio_s: float, play_s: float) -> float:
     """아이가 실제로 기다리는 시간.
 
@@ -174,6 +192,11 @@ def main() -> None:
     ap.add_argument("--repeat", type=int, default=2)
     ap.add_argument("--play", action="store_true",
                     help="실제로 재생해 '첫 소리까지'를 잰다(소리가 난다). 스트리밍은 이걸로만 측정된다")
+    ap.add_argument("--length-hint", nargs="?", const=DEFAULT_LENGTH_HINT, default=None,
+                    metavar="문구",
+                    help="시스템 프롬프트 끝에 길이 지시를 덧붙인다(모든 팔에 똑같이). "
+                         "값을 안 주면 기본 문구를 쓴다. 길이 지시는 이미 프롬프트에 있는데 "
+                         "HCX 만 안 지켜서, 강화하면 따르는지 보려는 것이다")
     args = ap.parse_args()
 
     logging.basicConfig(level=logging.WARNING, format="  [경고] %(message)s")
@@ -184,11 +207,15 @@ def main() -> None:
     rows = load_eval_set(BASE / args.eval_set)
     system = _augment_system(settings.prompts["system"],
                              load_fewshot(settings.models["llm"].get("fewshot_path")))
+    system = apply_length_hint(system, args.length_hint)
     out_dir = BASE / "logs" / "bench"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"{len(rows)}문항 × {args.repeat}회 | 프롬프트 {len(system)}자 | "
-          f"{'재생(첫 소리)' if args.play else '합성까지'}\n")
+          f"{'재생(첫 소리)' if args.play else '합성까지'}"
+          f"{' | 길이 지시 강화' if args.length_hint else ''}\n")
+    if args.length_hint:
+        print(f"  덧붙인 지시: {args.length_hint.strip()}\n")
     results = {}
     for combo in args.combos.split(","):
         combo = combo.strip()

@@ -123,3 +123,42 @@ def test_previous_combo_is_released_before_the_next_is_built(monkeypatch):
 
     assert live_at_build == [0, 0], (
         f"조합을 만들 때 앞 조합이 아직 살아 있다({live_at_build}) — TRT 엔진이 겹친다")
+
+
+# ── 길이 지시 강화 ───────────────────────────────────────────────────────────
+# 🔴 2026-08-28: 길이 지시는 **이미 시스템 프롬프트에 있다**
+#    (configs/prompt_templates.yaml: "스무 글자 안팎으로, 길어도 두 문장까지만").
+#    gpt 는 20자로 지키고 HCX 는 27~32자에 최대 74~97자로 안 지킨다.
+#    그래서 재려는 건 '길이 유도를 넣으면'이 아니라 **'지시를 강화하면 따르는가'** 다.
+# ⚠️ 반드시 **끝에** 붙인다. 앞에 끼우면 원문 규칙 사이를 갈라 놓고, 최신 지시가
+#    더 세게 먹는 성질도 못 쓴다.
+
+def test_no_hint_leaves_the_prompt_untouched():
+    from tools.bench_pipeline import apply_length_hint
+
+    assert apply_length_hint("원래 프롬프트", None) == "원래 프롬프트"
+
+
+def test_hint_is_appended_at_the_end_and_keeps_the_original():
+    from tools.bench_pipeline import apply_length_hint
+
+    out = apply_length_hint("원래 프롬프트", "열 글자 이내로 답한다.")
+
+    assert out.startswith("원래 프롬프트")
+    assert out.rstrip().endswith("열 글자 이내로 답한다.")
+
+
+def test_hint_is_separated_so_it_does_not_glue_onto_the_last_rule():
+    """붙여 쓰면 마지막 규칙과 한 줄이 돼 둘 다 흐려진다."""
+    from tools.bench_pipeline import apply_length_hint
+
+    out = apply_length_hint("...마지막 규칙이다.", "열 글자 이내로 답한다.")
+
+    assert "\n" in out[len("...마지막 규칙이다."):]
+
+
+def test_empty_hint_is_treated_as_no_hint():
+    from tools.bench_pipeline import apply_length_hint
+
+    assert apply_length_hint("원래 프롬프트", "") == "원래 프롬프트"
+    assert apply_length_hint("원래 프롬프트", "   ") == "원래 프롬프트"

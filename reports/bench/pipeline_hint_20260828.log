@@ -1,0 +1,13 @@
+[0;93m2026-08-28 14:33:53.717604770 [W:onnxruntime:Default, device_discovery.cc:211 DiscoverDevicesForPlatform] GPU device discovery failed: device_discovery.cc:91 ReadFileContents Failed to open file: "/sys/class/drm/card1/device/vendor"[m
+32문항 × 1회 | 프롬프트 4278자 | 재생(첫 소리) | 길이 지시 강화
+
+  덧붙인 지시: ⚠️ 길이 규칙을 다시 확인한다. 한 문장으로, 스무 글자를 넘지 않게 답한다.
+스무 글자를 넘으면 실패다. 되묻는 말을 붙이고 싶으면 그것까지 스무 글자 안에 넣는다.
+
+  openai:HCX-005+supertonic  LLM  1.031s | TTS(첫소리)  0.791s | 말하기  4.136s | 체감  6.048s | p95 10.370s | 답변 24자 (최대 58자)
+  openai:gpt-4o-mini+supertonic LLM  1.736s | TTS(첫소리)  0.770s | 말하기  3.645s | 체감  6.242s | p95  7.786s | 답변 22자 (최대 31자)
+
+  가장 빠른 조합: openai:HCX-005+supertonic (6.048s)
+  wav -> /home/jaeha_bot/jaeha_bot/logs/bench
+
+[exited with code 0]

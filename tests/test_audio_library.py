@@ -114,6 +114,21 @@ def test_find_can_be_limited_to_one_kind(lib):
     assert lib.find("강아지", kind="sound").id == "dog"
 
 
+def test_name_mentioned_in_passing_is_not_a_request(lib):
+    """🔴 자유대화에 물리려면 여기까지 막아야 한다.
+
+    이름이 문장에 나왔다는 이유로 틀면 "고양이 봤어" 한 마디에 고양이 소리가 나간다.
+    낱말 경계·최소 길이로는 못 막는다 — '고양이'는 세 글자짜리 진짜 낱말이다.
+    그래서 이름만으로는 부족하고 **요청 단서**(노래/소리/틀어줘…)가 있어야 한다.
+
+    대가: 단서 없이 제목만 스치듯 말하면 못 찾는다("나 곰 세 마리 좋아해").
+    그 편이 낫다 — 아이가 정말 원하면 한 번 더 말하지만, 엉뚱하게 나간 노래는
+    되돌릴 수 없다(이 파일 첫머리의 '엉뚱한 재생이 곧 사고다').
+    """
+    assert lib.find("고양이 봤어", "sound") is None
+    assert lib.find("나 곰 세 마리 좋아해") is None
+
+
 # ── 기동 점검 ─────────────────────────────────────────────────────────────────
 def test_missing_lists_registered_assets_without_files(lib):
     """레지스트리에만 있고 파일이 없는 항목 — 기동 때 걸러야 한다.

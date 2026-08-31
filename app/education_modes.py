@@ -82,6 +82,14 @@ _STOP_WORDS = ["그만", "안할래", "싫어", "그만할래", "안해", "하�
                "다른놀이", "딴놀이", "다른거", "딴거"]
 _NO_WORDS = ["아니", "안할래", "그만", "싫어", "됐어", "안해"]
 
+# 🔴 그만두겠다는 게 아니라 **이 항목이 싫으니 다음 걸 달라**는 말 (2026-08-31 실기).
+#    실제로 이렇게 났다: "약 말고 다른 놀이 다른 동물" -> '다른놀이'가 걸려 놀이 종료.
+#    아이 뜻은 정반대였다. 두 신호가 한 문장에 같이 오면 **계속하는 쪽이 이겨야 한다** —
+#    잘못 끝내면 아이가 놀이를 잃고, 잘못 계속하면 봇이 한 번 더 물어볼 뿐이다.
+# ⚠️ '다음' 을 통째로 넣으면 안 된다. "다음에 하자"는 **그만하자는 말**이다.
+_KEEP_WORDS = ["다른동물", "딴동물", "다른소리", "딴소리",
+               "다른말", "딴말", "다른낱말", "다른단어", "다음거", "다음것"]
+
 
 def _norm(s: str) -> str:
     """공백·문장부호 제거(한글/영숫자만 남김). 트리거 매칭 전처리."""
@@ -109,6 +117,11 @@ def _is_stop(text: str) -> bool:
 
 def _is_no(text: str) -> bool:
     return _any_in(_norm(text), _NO_WORDS)
+
+
+def _wants_next(text: str) -> bool:
+    """'다른 동물' 처럼 **놀이는 계속하되 항목만 바꿔 달라**는 말인가."""
+    return _any_in(_norm(text), _KEEP_WORDS)
 
 
 def match_trigger(text: str) -> str | None:
@@ -185,6 +198,11 @@ class Game:
         return self._intro_beat(subj, tgt)
 
     def step(self, text: str) -> dict:
+        # 🔴 '그만' 보다 **먼저** 본다. 아이는 "다른 놀이 다른 동물" 처럼 두 신호를
+        #    한 문장에 섞어 말하는데, 그때 이기는 쪽이 이 순서로 정해진다.
+        if _wants_next(text):
+            return self._skip_current()
+
         # 언제든 '그만' 이면 즉시 종료
         if _is_stop(text):
             self.done = True
@@ -216,6 +234,20 @@ class Game:
             return self._react_checkpoint_beat(subj, tgt, said)
         nsubj, ntgt = self.batch[self.bi]
         return self._react_next_beat(subj, tgt, said, nsubj, ntgt)
+
+    def _skip_current(self) -> dict:
+        """지금 항목을 건너뛰고 다음 것을 묻는다.
+
+        ⚠️ 되묻기(`_retry_beat`)로 같은 항목에 머물면 **방금 싫다고 한 걸 한 번 더
+           시키는 셈**이다. 그래서 retried 를 지우고 곧장 다음으로 넘긴다.
+        ⚠️ 정답으로 치지 않는다 — 칭찬 없이 다음 질문만 낸다.
+        """
+        self.retried = False
+        self.bi += 1
+        if self.bi >= len(self.batch):
+            self._next_batch()      # 배치 끝이면 새 배치로(체크포인트에서 온 경우 포함)
+        subj, tgt = self.batch[self.bi]
+        return self._ask_beat(subj, tgt)
 
     # 소리/단어가 얼추 맞는지(STT 관대). 하위 클래스 공통 구현.
     def _is_close(self, target: str, text: str) -> bool:

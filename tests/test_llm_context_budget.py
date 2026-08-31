@@ -16,7 +16,7 @@ n_ctx 를 같이 안 올리는 게 문제다.
    4185자 = 2356토큰 = 0.563 토큰/자였다. 여기선 0.7 을 쓴다(24% 여유).
    추정이 실제보다 크게 나오므로, 이 테스트가 통과하면 실제로도 들어간다.
 """
-from app.agent import MAX_HISTORY_TURNS, LLMAgent, _augment_system, load_fewshot
+from app.agent import MAX_HISTORY_TURNS, LLMAgent
 from app.config import settings
 
 # 젯슨 실측 0.563 토큰/자에 여유를 얹은 상한. 실제보다 크게 잡아야 안전하다.
@@ -30,9 +30,21 @@ def _est_tokens(text: str) -> int:
 
 
 def _assembled_system() -> str:
-    """운영과 **같은 방식**으로 조립한다(main.build_pipeline 과 같은 경로)."""
-    return _augment_system(settings.prompts["system"],
-                           load_fewshot(settings.models["llm"].get("fewshot_path")))
+    """운영이 **매 턴 실제로 보내는** 앞머리(system + few-shot)를 그대로 조립한다.
+
+    🔴 예전엔 여기서 `_augment_system` 을 직접 불렀다. 그러면 few-shot 을 담는 그릇을
+       바꾼 날(fewshot_form) 이 시험만 옛 형식을 재고 통과한다 — 지키려던 것을 놓친다.
+       그래서 운영 코드(_build_messages)를 거쳐 조립한다.
+    ⚠️ backend 만 local 로 고정한다. 원격 키 없는 기계에서도 예산은 재야 하고,
+       앞머리 조립은 backend 와 무관하다.
+    """
+    cfg = dict(settings.models["llm"])
+    cfg.pop("model_path", None)
+    cfg.update(backend="local", api_model="gpt-4o-mini")
+    agent = LLMAgent(model_path="없어도 된다.gguf",
+                     system_prompt=settings.prompts["system"], **cfg)
+    prefix = agent._build_messages("", "")[:-1]   # 마지막은 이번 아이 말이라 뺀다
+    return "".join(m["content"] for m in prefix)
 
 
 def test_system_prompt_fits_in_n_ctx():

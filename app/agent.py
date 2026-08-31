@@ -227,6 +227,31 @@ def _augment_system(system_prompt: str, fewshot: list[dict]) -> str:
     return system_prompt + "\n" + "\n".join(lines)
 
 
+FEWSHOT_FORMS = ("text", "turns")
+
+
+def build_prefix(system_prompt: str, fewshot: list[dict],
+                 form: str = "text") -> list[dict]:
+    """매 요청의 **앞머리**(system + few-shot)를 조립한다. 이번 아이 말은 안 붙인다.
+
+    두 형식이 모델에 보여주는 **예시 내용은 같다.** 다른 건 담는 그릇 하나뿐이다.
+      text  — system 프롬프트 안에 '예시 텍스트'로 설명한다(2026-08 까지의 운영).
+      turns — 진짜 주고받은 대화로 앞에 깐다.
+    근거와 서로 반대되는 두 관측은 tests/test_fewshot_form.py 머리에 적어 뒀다.
+
+    🔴 **측정 도구도 반드시 이걸 쓴다.** 도구가 프롬프트를 따로 조립하면 운영과 어긋난
+       것을 재고도 모른다 — 이 프로젝트에서 그 종류로 여러 번 당했다.
+    """
+    if form not in FEWSHOT_FORMS:
+        raise ValueError(f"fewshot_form 은 {FEWSHOT_FORMS} 중 하나다(받은 값: {form!r})")
+    if not fewshot:
+        # 예시가 없으면 빈 '예시' 머리말을 붙이지 않는다 — 형식과 무관하게 원본 그대로.
+        return [{"role": "system", "content": system_prompt}]
+    if form == "text":
+        return [{"role": "system", "content": _augment_system(system_prompt, fewshot)}]
+    return [{"role": "system", "content": system_prompt}] + list(fewshot)
+
+
 class LLMAgent:
     def __init__(
         self,
@@ -248,6 +273,10 @@ class LLMAgent:
         min_p: float = 0.05,
         max_sentences: int = 2,
         fewshot_path: str | None = None,
+        # few-shot 을 담는 그릇. "text" = system 안의 예시 텍스트 / "turns" = 진짜 대화.
+        # 어느 쪽이 나은지는 모델마다 갈린다 — 근거는 _build_messages 와
+        # tests/test_fewshot_form.py. 되돌릴 수 있어야 해서 설정으로 뺐다.
+        fewshot_form: str = "text",
         # ── 원격 백엔드(선택) ────────────────────────────────────────────────
         # "local"(기본, llama.cpp) | "openai".
         # 2026-08-10 젯슨 실측: LLM 중앙 1.769s -> 0.892s, 길이 지시도 API 가 더 잘 따른다.
@@ -285,11 +314,14 @@ class LLMAgent:
         self.top_k = top_k
         self.min_p = min_p
         self.max_sentences = max_sentences
-        # few-shot 예시(=파인튜닝 씨앗과 동일 파일)를 system 프롬프트 안에 '예시'로 넣어 말투를 고정한다.
-        # 가짜 대화 이력이 아니라 예시 텍스트로 넣어야 이전 예시의 '주제'가 실제 답에 새지 않는다.
+        # few-shot 예시(=파인튜닝 씨앗과 동일 파일)로 말투를 고정한다.
+        # 🔴 오타를 조용히 한쪽으로 폴백시키지 않는다 — 무엇을 운영 중인지 모르게 된다.
+        self.fewshot_form = fewshot_form
         self.fewshot = load_fewshot(fewshot_path)
-        if self.fewshot:
-            self.system_prompt = _augment_system(system_prompt, self.fewshot)
+        # 앞머리는 매 턴 같으므로 한 번만 조립한다. 형식 오타는 여기서 터진다.
+        self._prefix = build_prefix(system_prompt, self.fewshot, fewshot_form)
+        # 실제로 나가는 system 문자열(text 면 예시가 붙은 것, turns 면 원본 그대로).
+        self.system_prompt = self._prefix[0]["content"]
         self.backend = backend
         self.api_model = api_model
         self.api_timeout = api_timeout
@@ -372,10 +404,10 @@ class LLMAgent:
 
     def _warm_local(self) -> None:
         try:
-            self._complete_local([
-                {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": "안녕"},
-            ])
+            # 🔴 실제 턴과 **같은 방식**으로 조립한다. 예열만 짧은 프롬프트로 돌면
+            #    n_ctx 초과를 예열이 못 잡는다(2026-08-11~18 에 그렇게 일주일 죽어 있었다).
+            #    _build_messages 는 이력을 읽기만 하므로 예열 대화가 남지 않는다.
+            self._complete_local(self._build_messages("안녕", ""))
         except Exception as e:
             log.warning("로컬 폴백 예열 실패(%s: %s) — 원격이 끊기면 응답이 늦어진다",
                         type(e).__name__, str(e)[:120])
@@ -464,7 +496,12 @@ class LLMAgent:
         return _clamp_sentences(reply, self.max_sentences)  # 최대 N문장(사족 제거, 뚝끊김 방지)
 
     def _build_messages(self, user_text: str, vision_context: str) -> list[dict]:
-        messages: list[dict] = [{"role": "system", "content": self.system_prompt}]
+        """system → (turns 면) few-shot 예시 → 이력 → 이번 말.
+
+        🔴 예시는 반드시 이력보다 **앞**이다. 뒤로 가면 '방금 한 말'로 읽혀
+           아이가 실제로 한 말을 덮는다.
+        """
+        messages: list[dict] = list(self._prefix)
         messages.extend(self.history)
         content = user_text
         if vision_context:

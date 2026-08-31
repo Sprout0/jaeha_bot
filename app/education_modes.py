@@ -22,7 +22,7 @@ import random
 import re
 from pathlib import Path
 
-from .text_norm import jamo_ratio
+from .text_norm import has_word, jamo_ratio, norm_tokens
 
 log = logging.getLogger("jaeha_bot.education")
 
@@ -74,6 +74,8 @@ _REPEAT_TRIGGERS = ["따라말하기", "따라하기", "따라말해", "따라�
 #    실기(2026-08-10)에서 아이가 "와 목소리가 왜그래?" 한 마디에 동물 놀이가 시작돼
 #    4턴을 끌려갔다. claims.py 의 _MIN_NAME 과 같은 취지의 가드다.
 #    대가: "소 놀이 하자"로는 못 켠다. '동물 소리'라고 하거나 두 글자 이름을 쓰면 된다.
+# ⚠️ 길이만으로는 부족하다 — 두 글자 이름도 흔한 낱말에 박힌다('오리' ⊂ '종이 오리기').
+#    그래서 아래에서 낱말 경계(text_norm.has_word)까지 같이 본다.
 _MIN_ANIMAL_NAME = 2
 
 # 놀이에서 빠져나오는 말. '그만' 계열만 있으면 아이가 흔히 쓰는 "다른 놀이 하자"에
@@ -140,8 +142,12 @@ def match_trigger(text: str) -> str | None:
         if t in n or jamo_ratio(n, t) <= 0.2:
             return "repeat"
     # 2) 구성 단서: (동물 or 동물이름) + 놀이/소리/흉내 → 동물놀이
+    #    이름은 **낱말 경계**로 본다. 그냥 부분일치로 보면 "가위로 오리기 놀이 하자"가
+    #    '오리'에 걸려 동물 놀이가 시작된다(2026-08-31, audio_player.find() 와 같은 병).
+    #    조사는 붙어도 된다("고양이랑 놀이") — has_word 가 거기까지 허용한다.
     animal_names = [a for a, _ in ANIMAL_ITEMS if len(a) >= _MIN_ANIMAL_NAME]
-    if ("동물" in n or any(a in n for a in animal_names)) and (
+    toks = norm_tokens(text)
+    if ("동물" in n or any(has_word(toks, a) for a in animal_names)) and (
         "놀이" in n or "게임" in n or "소리" in n or "흉내" in n or "울음" in n
     ):
         return "animal"

@@ -217,3 +217,74 @@ def test_new_playback_stops_previous_one(lib):
     player.play("gom_three")
 
     assert sink.stopped == 1
+
+
+# ── find 오탐: 짧은 이름이 평범한 문장에 걸린다 (2026-08-31) ────────────────────
+# 실제 레지스트리(configs/audio_assets.yaml)에서 측정한 네 건이다. 여기 임시 yaml 은
+# 그때 걸린 이름('소'·'양'·'하루')만 그대로 옮겨 담아 같은 로직을 태운다.
+#
+# 🔴 지금 당장 안 터지는 이유는 놀이/에이전트가 '노래 요청'이라 판단한 뒤에만 find()
+#    를 부르기 때문이다. 자유대화에 물리는 순간 아이 말 아무거나 노래로 바뀐다.
+#    claims.find_fabrications 는 같은 병을 _MIN_NAME(짧은 이름 무시)과 겹침 제거로
+#    막아 뒀는데 find() 에는 가드가 하나도 없었다.
+_TRAP_YAML = """\
+songs:
+  - id: one_day
+    title: 하루
+    file: songs/one_day.mp3
+    aliases: [하루노래]
+sounds:
+  - id: cow
+    title: 소
+    file: sounds/cow.wav
+    aliases: [음메, 젖소]
+  - id: sheep
+    title: 양
+    file: sounds/sheep.wav
+    aliases: [매애, 양이]
+"""
+
+
+@pytest.fixture
+def trap(tmp_path):
+    """짧은 이름만 담은 레지스트리. 파일은 없어도 된다 — find() 는 실재 여부를 안 본다."""
+    p = tmp_path / "trap.yaml"
+    p.write_text(textwrap.dedent(_TRAP_YAML), encoding="utf-8")
+    return AudioLibrary.load(p, tmp_path)
+
+
+def test_one_letter_name_inside_a_longer_word_is_not_a_request(trap):
+    """'소'가 '소리' 안에 들어 있다고 소 울음을 틀면 안 된다."""
+    assert trap.find("무슨 소리야", "sound") is None
+
+
+def test_one_letter_name_as_a_whole_word_beats_one_buried_in_another(trap):
+    """'양 소리' 는 양이다. 등록 순서가 앞선다는 이유로 '소'(cow)가 이기면 안 된다."""
+    assert trap.find("양 소리", "sound").id == "sheep"
+
+
+def test_one_letter_name_is_not_matched_inside_an_everyday_word(trap):
+    """'양말'의 '양'은 양이 아니다."""
+    assert trap.find("양말 신자", "sound") is None
+
+
+def test_everyday_word_that_happens_to_be_a_song_title(trap):
+    """제목 자체가 일상어인 경우('하루'). 문장 속에 그냥 나온 것은 요청이 아니다."""
+    assert trap.find("오늘 하루 어땠어") is None
+
+
+def test_short_title_still_works_when_it_is_actually_requested(trap):
+    """오탐만 막고 기능은 남긴다 — 요청 단서가 붙으면 짧은 이름도 찾아야 한다."""
+    assert trap.find("하루 틀어줘").id == "one_day"
+    assert trap.find("하루 노래 들려줘").id == "one_day"
+
+
+def test_bare_short_name_is_still_a_request(trap):
+    """발화 전체가 이름 하나뿐이면 헷갈릴 여지가 없다."""
+    assert trap.find("양", "sound").id == "sheep"
+
+
+def test_particles_attached_to_the_name_still_match(trap):
+    """한국어는 이름에 조사가 붙어 한 낱말이 된다('하루는'). 낱말 경계가 너무 빡빡하면
+    이걸 놓친다 — '오리기'는 막되 '하루는'은 받아야 한다."""
+    assert trap.find("하루는 틀어줘").id == "one_day"

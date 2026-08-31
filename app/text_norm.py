@@ -59,6 +59,50 @@ def jamo_ratio(w1: str, w2: str) -> float:
     return _edit_distance(j1, j2) / denom
 
 
+# ── 낱말 경계 매칭 ────────────────────────────────────────────────────────────
+# 이름을 문장에서 찾을 때 공백을 지우고 부분일치로 보면 짧은 이름이 평범한 낱말 속에
+# 걸린다 — '소'가 '무슨 소리야'에, '양'이 '양말'에, '오리'가 '종이 오리기'에.
+# 실측(2026-08-31)에서 audio_player.find() 와 education_modes.match_trigger 둘 다
+# 같은 병을 앓고 있었다. 여기 한 군데서 풀어 두 곳이 같은 기준을 쓰게 한다.
+#
+# ⚠️ 그렇다고 낱말이 통째로 같아야 한다고 하면 한국어에서 너무 빡빡하다 —
+#    이름에 조사가 붙어 한 낱말이 되기 때문이다('강아지는', '고양이랑', '하루는').
+#    그래서 '낱말 전체 + 조사'까지만 허용한다. '오리기'의 '기'는 조사가 아니라 안 걸린다.
+_PARTICLES = ("", "은", "는", "이", "가", "을", "를", "와", "과", "랑", "이랑",
+              "도", "만", "의", "야", "아", "에", "요", "에게", "한테")
+_MAX_PARTICLE = max(len(p) for p in _PARTICLES)
+
+
+def norm_tokens(s: str) -> list[str]:
+    """문장부호만 지우고 **띄어쓰기는 낱말 경계로 남긴다**.
+
+    _norm 계열(공백까지 지움)과 짝이다: "".join(norm_tokens(s)) == _norm(s).
+    """
+    return [t for t in (re.sub(r"\W+", "", w) for w in (s or "").split()) if t]
+
+
+def has_word(tokens: list[str], key: str) -> bool:
+    """key 가 tokens 의 '연속한 낱말 전체'(+조사)와 맞는가.
+
+    이름이 여러 낱말일 수 있어 토큰을 이어 붙여 본다("곰 세 마리" -> 곰+세+마리).
+    조사는 붙인 마지막 낱말에만 허용한다.
+    """
+    if not key:
+        return False
+    n = len(tokens)
+    for i in range(n):
+        run = ""
+        for j in range(i, n):
+            run += tokens[j]
+            if len(run) < len(key):
+                continue
+            if run.startswith(key) and run[len(key):] in _PARTICLES:
+                return True
+            if len(run) > len(key) + _MAX_PARTICLE:
+                break
+    return False
+
+
 def dedupe_repeats(text: str, min_word_run: int = 3) -> str:
     """Whisper 반복 환각 제거: 같은 단어/구절이 연달아 반복되면 한 번만 남긴다.
 

@@ -28,13 +28,22 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-from .text_norm import jamo_ratio
+from .text_norm import has_word, jamo_ratio, norm_tokens
 
 log = logging.getLogger(__name__)
 
 # 자모 편집거리 임계. education_modes.match_trigger 와 **같은 값**을 쓴다 —
 # 같은 문제(2세 발음 + STT 오인식)를 다른 기준으로 풀면 놀이마다 인식률이 달라진다.
 MATCH_THRESHOLD = 0.2
+
+# 짧은 이름은 평범한 낱말이다 — '소'·'양'·'개'·'하루'. 낱말 경계를 봐도 "오늘 하루
+# 어땠어"의 '하루'는 진짜 낱말이라 걸린다. 그래서 이 길이 미만인 이름은 **요청 단서가
+# 있거나 발화 전체가 그 이름일 때만** 받는다. claims._MIN_NAME 과 같은 값·같은 취지다.
+_MIN_NAME = 3
+
+# 재생 요청임을 알리는 단서. education_modes.match_trigger 가 동물 이름에 '놀이/소리'를
+# 요구하는 것과 같은 장치다 — 짧은 이름 하나만으로는 요청인지 알 수 없다.
+_REQUEST_CUES = ("노래", "동요", "소리", "울음", "틀어", "들려", "불러", "재생")
 
 KINDS = ("song", "sound")
 
@@ -112,17 +121,36 @@ class AudioLibrary:
 
         None 을 돌려주는 게 중요하다 — 비슷한 걸 아무거나 틀면 '상어가족'을 달라 한
         아이에게 '곰 세 마리'가 나간다. 유아 대상에선 엉뚱한 재생이 곧 사고다.
+
+        ⚠️ 짧은 이름('소'·'양'·'하루')은 요청 단서(_REQUEST_CUES)가 있거나 발화 전체가
+        그 이름일 때만 잡는다. 대가: "하루"를 문장 중간에 스치듯 말하면 못 찾는다.
+        ⚠️ 세 글자 이상 이름은 단서 없이도 잡힌다("고양이 봤어" -> cat). 자유대화에
+        그대로 물리려면 여기가 아니라 **부르기 전에 '요청인지'를 가르는 층**이 필요하다.
         """
-        norm = _norm(text)
-        if not norm:
+        tokens = norm_tokens(text)
+        if not tokens:
             return None
+        norm = "".join(tokens)
         candidates = self._of_kind(kind)
-        # 1단: 포함(정확). 모든 후보를 먼저 훑는다 — 다른 항목의 흐릿한 일치가
-        # 정확한 일치를 이기면 안 되기 때문.
+        cued = any(c in norm for c in _REQUEST_CUES)
+        # 1단: 낱말 경계 기준 일치(정확). 공백을 지우고 부분일치로 보면 짧은 이름이
+        # 평범한 낱말에 걸린다 — "무슨 소리야"의 '소', "양말"의 '양'(2026-08-31 실측).
+        # 모든 후보를 훑어 **가장 긴 일치**를 고른다. 등록 순서가 앞선다는 이유로
+        # 짧은 이름이 이기면 "양 소리"에 소 울음이 나간다.
+        best: tuple[int, AudioAsset] | None = None
         for asset in candidates:
-            if any(_norm(n) in norm for n in asset.names):
-                return asset
-        # 2단: 자모 근접(2세 발음 + STT 오인식 보정)
+            for name in asset.names:
+                key = _norm(name)
+                if not has_word(tokens, key):
+                    continue
+                if len(key) < _MIN_NAME and not (cued or key == norm):
+                    continue
+                if best is None or len(key) > best[0]:
+                    best = (len(key), asset)
+        if best is not None:
+            return best[1]
+        # 2단: 자모 근접(2세 발음 + STT 오인식 보정). 발화 전체를 이름과 견주므로
+        # ("곰새마리" -> 곰 세 마리) 문장 속에 이름이 스치는 것과는 상관없다.
         for asset in candidates:
             if any(jamo_ratio(norm, _norm(n)) <= MATCH_THRESHOLD for n in asset.names):
                 return asset

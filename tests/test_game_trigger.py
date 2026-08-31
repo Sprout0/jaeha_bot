@@ -31,6 +31,24 @@ def test_common_words_containing_one_letter_animal_names():
         assert match_trigger(utt) is None, f"놀이가 시작되면 안 됨: {utt}"
 
 
+def test_two_letter_animal_name_inside_another_word():
+    """🔴 한 글자 이름만 문제가 아니다 — '오리'가 '오리기' 안에 들어 있다(2026-08-31).
+
+    _MIN_ANIMAL_NAME 은 이름 '길이'만 보므로 두 글자 이름이 흔한 낱말에 박힌 건 못 막는다.
+    종이 오리기는 2세가 실제로 하는 놀이라 "가위로 오리기 놀이 하자"가 그대로 온다.
+    audio_player.AudioLibrary.find() 의 오탐과 같은 병이다 — 낱말 경계를 안 본다.
+    """
+    for utt in ["가위로 오리기 놀이 하자", "종이 오리기 하고 놀이하자"]:
+        assert match_trigger(utt) is None, f"놀이가 시작되면 안 됨: {utt}"
+
+
+def test_animal_name_with_a_particle_still_starts():
+    """한국어는 이름에 조사가 붙어 한 낱말이 된다. 경계를 너무 빡빡하게 잡으면
+    '오리기'를 막다가 '고양이랑'까지 잃는다."""
+    assert match_trigger("고양이랑 소리 놀이 하자") == "animal"
+    assert match_trigger("강아지는 어떻게 우는지 놀이하자") == "animal"
+
+
 # --------------------------------------------------------------- 정상 트리거 유지
 def test_explicit_animal_request_still_starts():
     assert match_trigger("동물 소리 놀이 하자") == "animal"

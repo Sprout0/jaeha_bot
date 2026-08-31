@@ -60,10 +60,17 @@ NONSENSE = [
     "잠깐만",
 ]
 
-# few-shot 답변에만 나오는 구체 명사. 무의미 입력의 답에 이게 뜨면 예시에서 샌 것이다.
-# ⚠️ 손으로 고른 목록이다 — 숫자만 믿지 말고 아래 전문 출력도 같이 볼 것.
-LEAK_WORDS = ["공룡", "딸기", "자동차", "빵빵", "하연", "강아지", "멍멍",
-              "아기", "코 자", "빨개", "엄마", "아빠"]
+# few-shot 답변에 나오는 구체 명사 후보.
+_CANDIDATES = ["공룡", "딸기", "자동차", "빵빵", "하연", "강아지", "멍멍",
+               "아기", "코 자", "빨개", "엄마", "아빠"]
+
+# 🔴 **시스템 프롬프트에도 있는 낱말은 빼야 한다.** 안전 규칙이 "엄마 아빠한테
+#    물어보자"를 시키고 놀이 안내가 '강아지'·'멍멍'을 이미 쓴다 — 그걸 누수로 세면
+#    올바른 답을 고장으로 찍는다. 2026-08-31 에 실제로 그렇게 오채점했다
+#    (local/text 2건이 전부 '강아지' 오탐이었다).
+#    손으로 목록을 관리하면 프롬프트가 바뀔 때마다 또 틀린다. 그래서 매번 걸러 낸다.
+LEAK_WORDS = [w for w in _CANDIDATES if w not in settings.prompts["system"]]
+EXCLUDED = [w for w in _CANDIDATES if w in settings.prompts["system"]]
 
 
 def make_agent(model: str, form: str) -> LLMAgent:
@@ -97,6 +104,9 @@ def main():
     ap.add_argument("--forms", default="text,turns", help="쉼표 구분")
     ap.add_argument("--out", default="", help="상세 json 저장 경로(비우면 저장 안 함)")
     args = ap.parse_args()
+
+    print(f"누수로 세는 낱말: {' '.join(LEAK_WORDS)}")
+    print(f"시스템 프롬프트에도 있어 제외: {' '.join(EXCLUDED) or '없음'}")
 
     results = {}
     for model in [m.strip() for m in args.models.split(",") if m.strip()]:

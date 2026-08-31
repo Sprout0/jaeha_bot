@@ -58,10 +58,11 @@ def pct(values: list[float], p: int) -> float:
     return v[min(len(v) - 1, int(round(p / 100 * (len(v) - 1))))]
 
 
-def parse_combo(combo: str) -> tuple[str, str | None, int | None, str]:
-    """'openai:HCX-005/1+supertonic' -> ('openai', 'HCX-005', 1, 'supertonic').
+def parse_combo(combo: str) -> tuple[str, str | None, int | None, str, str | None]:
+    """'openai:HCX-005/1@turns+supertonic'
+       -> ('openai', 'HCX-005', 1, 'supertonic', 'turns').
 
-    표기는 `<llm>[:<모델>][/<문장상한>]+<tts>` 다.
+    표기는 `<llm>[:<모델>][/<문장상한>][@<few-shot 그릇>]+<tts>` 다.
 
     모델 이름을 조합에 적을 수 있어야 gpt 와 HCX 를 **같은 표에서** 비교할 수 있다.
     안 적으면 설정값(api_model)을 따라가므로 '무엇과 비교했는지'가 흐려진다.
@@ -71,21 +72,28 @@ def parse_combo(combo: str) -> tuple[str, str | None, int | None, str]:
        0.167~0.169s 로 같았다 — TTS 가 느린 게 아니라 HCX 가 글자를 더 쓴 것이다.
        남는 질문은 "길이를 맞추면 뒤집히는가" 하나이고, 그걸 재려면 **같은 실행 안에서**
        팔마다 상한을 다르게 걸 수 있어야 한다(실행을 나누면 회선 변화가 섞인다).
+    🔴 few-shot 그릇도 같은 이유로 팔마다 걸 수 있어야 한다 (2026-08-31). 실행 단위로만
+       바꿀 수 있으면 text 와 turns_boundary 가 서로 다른 실행에서 재져, 그 사이 회선이
+       변한 만큼이 그대로 '그 그릇이 빠르다'로 둔갑한다.
     """
     parts = combo.split("+")
     if len(parts) != 2 or not all(parts):
         raise SystemExit(f"조합은 '<llm>+<tts>' 다: {combo!r}")
-    left, _, cap_text = parts[0].partition("/")
+    head, sep, form = parts[0].partition("@")
+    if sep and form not in FEWSHOT_FORMS:
+        # 조용히 무시하면 '그릇을 바꿔 쟀다'고 믿는데 안 바뀐 값이 표에 들어간다.
+        raise SystemExit(f"few-shot 그릇은 {FEWSHOT_FORMS} 중 하나다: {combo!r}")
+    left, _, cap_text = head.partition("/")
     llm, _, model = left.partition(":")
     if not llm:
         raise SystemExit(f"조합은 '<llm>+<tts>' 다: {combo!r}")
     cap = None
-    if "/" in parts[0]:
+    if "/" in head:
         # 조용히 무시하면 '길이를 걸었다'고 믿는데 안 걸린 값이 표에 들어간다.
         if not cap_text.isdigit() or int(cap_text) < 1:
             raise SystemExit(f"문장 상한은 1 이상 정수다: {combo!r}")
         cap = int(cap_text)
-    return llm, (model or None), cap, parts[1]
+    return llm, (model or None), cap, parts[1], (form or None)
 
 
 DEFAULT_LENGTH_HINT = """⚠️ 길이 규칙을 다시 확인한다. 한 문장으로, 스무 글자를 넘지 않게 답한다.
@@ -183,9 +191,9 @@ def measure_combo(combo: str, system: str, rows, repeat: int, play: bool, out_di
        CUDA 세션으로 폴백했고 그 팔들의 '첫 소리'가 0.73s -> 1.43s 로 두 배가 됐다.
     ⚠️ 조용히 느려진다 — 표에는 그냥 '그 조합이 느리다'로 찍힌다.
     """
-    llm_b, api_model, cap, tts_b = parse_combo(combo)
+    llm_b, api_model, cap, tts_b, arm_form = parse_combo(combo)
     agent, tts = build(llm_b, tts_b, system, api_model=api_model, max_sentences=cap,
-                       fewshot_form=fewshot_form)
+                       fewshot_form=arm_form or fewshot_form)   # 팔 지정이 우선
     try:
         return run_combo(combo, agent, tts, rows, repeat, play, out_dir)
     finally:

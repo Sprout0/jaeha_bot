@@ -16,18 +16,18 @@ from tools.bench_pipeline import felt_total, parse_combo
 
 
 def test_plain_combo_has_no_model_override():
-    assert parse_combo("local+supertonic") == ("local", None, None, "supertonic")
+    assert parse_combo("local+supertonic") == ("local", None, None, "supertonic", None)
 
 
 def test_model_can_be_pinned_on_the_llm_side():
     assert parse_combo("openai:HCX-005+supertonic") == (
-        "openai", "HCX-005", None, "supertonic")
+        "openai", "HCX-005", None, "supertonic", None)
 
 
 def test_gpt_can_be_pinned_too_so_both_arms_are_explicit():
     """한쪽만 모델을 적으면 다른 쪽이 설정값을 따라가 '무엇과 비교했는지'가 흐려진다."""
     assert parse_combo("openai:gpt-4o-mini+supertonic") == (
-        "openai", "gpt-4o-mini", None, "supertonic")
+        "openai", "gpt-4o-mini", None, "supertonic", None)
 
 
 # ── 팔마다 답변 길이 상한 ────────────────────────────────────────────────────
@@ -39,11 +39,11 @@ def test_gpt_can_be_pinned_too_so_both_arms_are_explicit():
 
 def test_sentence_cap_can_be_pinned_per_arm():
     assert parse_combo("openai:HCX-005/1+supertonic") == (
-        "openai", "HCX-005", 1, "supertonic")
+        "openai", "HCX-005", 1, "supertonic", None)
 
 
 def test_sentence_cap_works_without_a_model_name():
-    assert parse_combo("local/1+supertonic") == ("local", None, 1, "supertonic")
+    assert parse_combo("local/1+supertonic") == ("local", None, 1, "supertonic", None)
 
 
 @pytest.mark.parametrize("bad", ["openai:HCX-005/많이+supertonic",
@@ -162,3 +162,34 @@ def test_empty_hint_is_treated_as_no_hint():
 
     assert apply_length_hint("원래 프롬프트", "") == "원래 프롬프트"
     assert apply_length_hint("원래 프롬프트", "   ") == "원래 프롬프트"
+
+
+# ── 팔마다 few-shot 그릇 ─────────────────────────────────────────────────────
+# 🔴 2026-08-31: 그릇을 실행 단위로만 바꿀 수 있으면 text 와 turns_boundary 를
+#    **다른 실행**에서 재게 된다. 이 도구가 존재하는 이유가 정확히 그걸 막는 것이다 —
+#    실행을 나누면 그 사이 회선이 변한 만큼이 그대로 '그 형식이 빠르다'로 둔갑한다
+#    (2026-08-18 에 같은 모델이 0.855s 와 2.580s 로 갈렸다).
+#    문장 상한과 같은 이유로, 그릇도 팔마다 걸 수 있어야 한다.
+
+def test_fewshot_form_can_be_pinned_per_arm():
+    assert parse_combo("openai:HCX-005@turns_boundary+supertonic") == (
+        "openai", "HCX-005", None, "supertonic", "turns_boundary")
+
+
+def test_form_and_sentence_cap_can_be_pinned_together():
+    assert parse_combo("openai:HCX-005/1@turns+supertonic") == (
+        "openai", "HCX-005", 1, "supertonic", "turns")
+
+
+def test_form_works_without_a_model_name():
+    assert parse_combo("local@text+supertonic") == (
+        "local", None, None, "supertonic", "text")
+
+
+@pytest.mark.parametrize("bad", ["openai:HCX-005@turn+supertonic",
+                                 "openai:HCX-005@+supertonic",
+                                 "openai:HCX-005@TURNS+supertonic"])
+def test_an_unknown_form_is_rejected_not_ignored(bad):
+    """조용히 무시하면 '그릇을 바꿔 쟀다'고 믿는데 안 바뀐 값이 표에 들어간다."""
+    with pytest.raises(SystemExit):
+        parse_combo(bad)

@@ -45,7 +45,7 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE))
 
-from app.agent import LLMAgent, build_prefix, load_fewshot  # noqa: E402
+from app.agent import FEWSHOT_FORMS, LLMAgent, build_prefix, load_fewshot  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.tts_module import TTSModule  # noqa: E402
 from tools.eval_llm import load_eval_set  # noqa: E402
@@ -119,7 +119,7 @@ def felt_total(llm_s: float, first_audio_s: float, play_s: float) -> float:
 
 
 def build(llm_backend: str, tts_backend: str, system: str, api_model: str | None = None,
-          max_sentences: int | None = None):
+          max_sentences: int | None = None, fewshot_form: str | None = None):
     """조합대로 만들고 예열까지 끝낸 (agent, tts) 를 돌려준다.
 
     🔴 `system` 은 **예시가 붙기 전의 원본**이어야 한다. LLMAgent 가 fewshot_path 를
@@ -131,6 +131,8 @@ def build(llm_backend: str, tts_backend: str, system: str, api_model: str | None
         lcfg["api_model"] = api_model
     if max_sentences is not None:
         lcfg["max_sentences"] = max_sentences
+    if fewshot_form is not None:      # --fewshot-form 은 이 실행에서만 덮어쓴다
+        lcfg["fewshot_form"] = fewshot_form
     agent = LLMAgent(model_path=lcfg.pop("model_path"), system_prompt=system, **lcfg)
     tts = TTSModule(**{**settings.models["tts"], "backend": tts_backend})
     agent.warm()          # 로컬 폴백 + API 커넥션
@@ -171,7 +173,8 @@ def run_combo(label: str, agent, tts, rows, repeat: int, play: bool, out_dir: Pa
     return statistics.median(total)
 
 
-def measure_combo(combo: str, system: str, rows, repeat: int, play: bool, out_dir):
+def measure_combo(combo: str, system: str, rows, repeat: int, play: bool, out_dir,
+                  fewshot_form: str | None = None):
     """조합 하나를 재고 **쓴 것을 놓고** 돌아온다.
 
     🔴 놓는 게 이 함수의 존재 이유다 (2026-08-28 실측). build() 가 조합마다
@@ -181,7 +184,8 @@ def measure_combo(combo: str, system: str, rows, repeat: int, play: bool, out_di
     ⚠️ 조용히 느려진다 — 표에는 그냥 '그 조합이 느리다'로 찍힌다.
     """
     llm_b, api_model, cap, tts_b = parse_combo(combo)
-    agent, tts = build(llm_b, tts_b, system, api_model=api_model, max_sentences=cap)
+    agent, tts = build(llm_b, tts_b, system, api_model=api_model, max_sentences=cap,
+                       fewshot_form=fewshot_form)
     try:
         return run_combo(combo, agent, tts, rows, repeat, play, out_dir)
     finally:
@@ -202,6 +206,9 @@ def main() -> None:
                     help="시스템 프롬프트 끝에 길이 지시를 덧붙인다(모든 팔에 똑같이). "
                          "값을 안 주면 기본 문구를 쓴다. 길이 지시는 이미 프롬프트에 있는데 "
                          "HCX 만 안 지켜서, 강화하면 따르는지 보려는 것이다")
+    ap.add_argument("--fewshot-form", default=None, choices=FEWSHOT_FORMS,
+                    help="few-shot 을 담는 그릇을 이 실행에서만 바꾼다(운영 설정은 안 건드린다). "
+                         "안 주면 configs 값을 쓴다. 근거는 tests/test_fewshot_form.py")
     args = ap.parse_args()
 
     logging.basicConfig(level=logging.WARNING, format="  [경고] %(message)s")
@@ -217,12 +224,12 @@ def main() -> None:
 
     # 실제로 나가는 앞머리 크기를 찍는다(운영과 같은 조립 = build_prefix).
     llm_cfg = settings.models["llm"]
-    prefix = build_prefix(system, load_fewshot(llm_cfg.get("fewshot_path")),
-                          llm_cfg.get("fewshot_form", "text"))
+    form = args.fewshot_form or llm_cfg.get("fewshot_form", "text")
+    prefix = build_prefix(system, load_fewshot(llm_cfg.get("fewshot_path")), form)
     sent_chars = sum(len(m["content"]) for m in prefix)
 
     print(f"{len(rows)}문항 × {args.repeat}회 | 프롬프트 {sent_chars}자"
-          f"({llm_cfg.get('fewshot_form', 'text')}) | "
+          f"({form}{' ←실행에서만' if args.fewshot_form else ''}) | "
           f"{'재생(첫 소리)' if args.play else '합성까지'}"
           f"{' | 길이 지시 강화' if args.length_hint else ''}\n")
     if args.length_hint:
@@ -230,8 +237,8 @@ def main() -> None:
     results = {}
     for combo in args.combos.split(","):
         combo = combo.strip()
-        results[combo] = measure_combo(combo, system, rows,
-                                       args.repeat, args.play, out_dir)
+        results[combo] = measure_combo(combo, system, rows, args.repeat, args.play,
+                                       out_dir, fewshot_form=args.fewshot_form)
 
     if len(results) > 1:
         best = min(results, key=results.get)

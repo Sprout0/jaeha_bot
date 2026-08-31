@@ -227,7 +227,21 @@ def _augment_system(system_prompt: str, fewshot: list[dict]) -> str:
     return system_prompt + "\n" + "\n".join(lines)
 
 
-FEWSHOT_FORMS = ("text", "turns")
+FEWSHOT_FORMS = ("text", "turns", "turns_boundary")
+
+# 예시와 진짜 대화 사이에 세우는 경계.
+# 🔴 왜 필요한가 (2026-08-31 실측): turns 만으로는 예시의 주제가 샌다. 새는 낱말이
+#    거의 전부 '딸기'인데 그게 few-shot **마지막** 쌍이다 — 최신성 효과다. 마지막 예시가
+#    아이 말 바로 앞에 와서 '방금 나눈 대화'로 읽힌다.
+#      [오] -> 오! 딸기가 빨갛구나!   [네네] -> 네! 그럼 딸기 먹을래?
+#    중립적인 한 쌍을 끝에 세우면 사라진다(HCX 1/24 -> 0/24, gpt 2/24 -> 0/24).
+# 🔴 반드시 **주고받은 한 쌍**이어야 한다. 경계를 system 메시지로 뒤에 붙이면
+#    클로바가 400 을 낸다(system 은 맨 앞이어야 한다). 2026-08-31 에 그렇게 터뜨렸다.
+# ⚠️ 이것도 모델이 보는 예시다 — 반말·짧은 말로 둘 것. 여기서 어긋나면 그것까지 따라 한다.
+BOUNDARY_PAIR = [
+    {"role": "user", "content": "이제 진짜로 이야기하자"},
+    {"role": "assistant", "content": "좋아! 뭐 하고 놀까?"},
+]
 
 
 def build_prefix(system_prompt: str, fewshot: list[dict],
@@ -235,8 +249,9 @@ def build_prefix(system_prompt: str, fewshot: list[dict],
     """매 요청의 **앞머리**(system + few-shot)를 조립한다. 이번 아이 말은 안 붙인다.
 
     두 형식이 모델에 보여주는 **예시 내용은 같다.** 다른 건 담는 그릇 하나뿐이다.
-      text  — system 프롬프트 안에 '예시 텍스트'로 설명한다(2026-08 까지의 운영).
-      turns — 진짜 주고받은 대화로 앞에 깐다.
+      text           — system 프롬프트 안에 '예시 텍스트'로 설명한다(2026-08 까지의 운영).
+      turns          — 진짜 주고받은 대화로 앞에 깐다. **주제가 샌다**(BOUNDARY_PAIR 참조).
+      turns_boundary — turns + 경계쌍. 누수를 0 으로 되돌린다.
     근거와 서로 반대되는 두 관측은 tests/test_fewshot_form.py 머리에 적어 뒀다.
 
     🔴 **측정 도구도 반드시 이걸 쓴다.** 도구가 프롬프트를 따로 조립하면 운영과 어긋난
@@ -249,7 +264,10 @@ def build_prefix(system_prompt: str, fewshot: list[dict],
         return [{"role": "system", "content": system_prompt}]
     if form == "text":
         return [{"role": "system", "content": _augment_system(system_prompt, fewshot)}]
-    return [{"role": "system", "content": system_prompt}] + list(fewshot)
+    msgs = [{"role": "system", "content": system_prompt}] + list(fewshot)
+    if form == "turns_boundary":
+        msgs += BOUNDARY_PAIR
+    return msgs
 
 
 class LLMAgent:

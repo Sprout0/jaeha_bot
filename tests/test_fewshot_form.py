@@ -155,8 +155,10 @@ def test_the_agent_and_the_tools_assemble_the_very_same_prefix(seed):
     """도구가 이걸 쓰는 한 운영과 어긋날 수 없다. 어긋나면 여기서 걸린다."""
     from app.agent import build_prefix, load_fewshot
 
+    from app.agent import FEWSHOT_FORMS
+
     fs = load_fewshot(seed)
-    for form in ("text", "turns"):
+    for form in FEWSHOT_FORMS:      # 형식이 늘어나면 자동으로 여기 걸린다
         agent = _agent(seed, form)
         assert agent._build_messages("안녕", "") == \
             build_prefix(BASE_SYSTEM, fs, form) + [{"role": "user", "content": "안녕"}]
@@ -167,3 +169,62 @@ def test_build_prefix_rejects_a_form_it_does_not_know(seed):
 
     with pytest.raises(ValueError, match="fewshot_form"):
         build_prefix(BASE_SYSTEM, load_fewshot(seed), "turn")
+
+
+# ── turns+경계쌍 ────────────────────────────────────────────────────────────
+# 🔴 왜 이 형식이 필요한가 (2026-08-31 실측):
+#    turns 만으로는 예시의 주제가 샌다 — 새는 낱말이 거의 전부 '딸기'인데 그게
+#    few-shot **마지막** 쌍이다. 최신성 효과다: 마지막 예시가 아이 말 바로 앞에 와서
+#    '방금 나눈 대화'로 읽힌다. 그래서 예시 끝에 중립적인 한 쌍을 세워 경계를 만든다.
+#      HCX  누수 1/24 -> 0/24   ·  gpt 누수 2/24 -> 0/24
+#    ⚠️ 경계를 system 메시지로 뒤에 붙이면 **클로바가 400 을 낸다**(system 은 맨 앞이어야
+#       한다). 그래서 반드시 '주고받은 한 쌍'이어야 한다.
+
+def test_boundary_form_closes_the_examples_with_a_neutral_exchange(seed):
+    from app.agent import BOUNDARY_PAIR, build_prefix, load_fewshot
+
+    fs = load_fewshot(seed)
+    assert build_prefix(BASE_SYSTEM, fs, "turns_boundary") == \
+        [{"role": "system", "content": BASE_SYSTEM}] + fs + BOUNDARY_PAIR
+
+
+def test_the_last_thing_before_the_child_speaks_is_never_an_example(seed):
+    """이게 이 형식의 존재 이유다. 마지막 예시가 아이 말에 붙으면 그 주제가 샌다."""
+    agent = _agent(seed, "turns_boundary")
+
+    msgs = agent._build_messages("안녕", "")
+    assert msgs[-1] == {"role": "user", "content": "안녕"}
+    assert msgs[-2]["content"] != "배고프구나!", "마지막 예시가 아이 말 바로 앞에 있다"
+
+
+def test_boundary_form_uses_no_extra_system_message(seed):
+    """클로바는 system 이 맨 앞이 아니면 400 을 낸다 — 경계는 대화쌍이어야 한다."""
+    agent = _agent(seed, "turns_boundary")
+
+    roles = [m["role"] for m in agent._build_messages("안녕", "")]
+    assert roles.count("system") == 1
+    assert roles[0] == "system"
+
+
+def test_boundary_form_keeps_the_system_prompt_clean(seed):
+    agent = _agent(seed, "turns_boundary")
+
+    assert agent.system_prompt == BASE_SYSTEM
+
+
+def test_no_examples_means_no_boundary_to_draw(seed, tmp_path):
+    """구분할 예시가 없는데 경계만 세우면, 아무도 안 한 대화가 이력에 생긴다."""
+    from app.agent import build_prefix
+
+    assert build_prefix(BASE_SYSTEM, [], "turns_boundary") == \
+        [{"role": "system", "content": BASE_SYSTEM}]
+
+
+def test_the_boundary_pair_speaks_the_way_the_bot_speaks(seed):
+    """경계쌍도 모델이 보는 예시다. 여기서 말투가 어긋나면 그것까지 따라 한다."""
+    from app.agent import BOUNDARY_PAIR
+
+    assert [m["role"] for m in BOUNDARY_PAIR] == ["user", "assistant"]
+    reply = BOUNDARY_PAIR[1]["content"]
+    assert len(reply) <= 30, f"경계쌍의 답이 {len(reply)}자다 — 길이 규칙을 스스로 어긴다"
+    assert "요" != reply.strip()[-2:-1], "존댓말이면 반말 규칙을 스스로 어긴다"

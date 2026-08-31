@@ -12,6 +12,11 @@ import pytest
 
 from tools.bench_llm_latency import CLOVA_BASE_URL, make_client
 
+# 팔이 들고 다니는 것은 이제 **앞머리 메시지들**이다(문자열 하나가 아니다).
+# few-shot 을 진짜 대화로 실을 수 있어야 해서 바꿨다 — tests/test_fewshot_form.py 참조.
+SYSTEM_ONLY = [{"role": "system", "content": "시스템"}]
+REAL_PREFIX = [{"role": "system", "content": "실제 프롬프트"}]
+
 
 @pytest.fixture
 def spy_openai(monkeypatch):
@@ -160,28 +165,28 @@ from tools.bench_llm_latency import FLOOR_SYSTEM, build_arms  # noqa: E402
 
 
 def test_local_gets_no_floor_arm():
-    arms = build_arms(["local"], "실제 프롬프트", with_floor=True)
+    arms = build_arms(["local"], REAL_PREFIX, with_floor=True)
 
-    prompts = {sysp for _, _, sysp in arms}
-    assert prompts == {"실제 프롬프트"}, "local 팔의 프롬프트가 두 종류다 — KV 캐시가 깨진다"
+    prompts = {tuple(m["content"] for m in pre) for _, _, pre in arms}
+    assert prompts == {("실제 프롬프트",)}, "local 팔의 프롬프트가 두 종류다 — KV 캐시가 깨진다"
     assert len(arms) == 1
 
 
 def test_remote_models_still_get_their_floor_arm():
-    arms = build_arms(["gpt-4o-mini"], "실제 프롬프트", with_floor=True)
+    arms = build_arms(["gpt-4o-mini"], REAL_PREFIX, with_floor=True)
 
     assert [a[0] for a in arms] == ["gpt-4o-mini [바닥]", "gpt-4o-mini"]
-    assert arms[0][2] == FLOOR_SYSTEM
+    assert arms[0][2] == [{"role": "system", "content": FLOOR_SYSTEM}]
 
 
 def test_mixed_run_keeps_one_prompt_for_local_and_two_for_remote():
-    arms = build_arms(["gpt-4o-mini", "local"], "실제 프롬프트", with_floor=True)
+    arms = build_arms(["gpt-4o-mini", "local"], REAL_PREFIX, with_floor=True)
 
     assert [a[0] for a in arms] == ["gpt-4o-mini [바닥]", "gpt-4o-mini", "local"]
 
 
 def test_no_floor_drops_every_floor_arm():
-    arms = build_arms(["gpt-4o-mini", "local"], "실제 프롬프트", with_floor=False)
+    arms = build_arms(["gpt-4o-mini", "local"], REAL_PREFIX, with_floor=False)
 
     assert [a[0] for a in arms] == ["gpt-4o-mini", "local"]
 
@@ -313,7 +318,7 @@ def test_stream_off_asks_the_server_exactly_as_before():
     from tools.bench_llm_latency import call_once
 
     client, comp = _fake_client()
-    call_once(client, "gpt-4o-mini", "시스템", "안녕", max_tokens=80, stream=False)
+    call_once(client, "gpt-4o-mini", SYSTEM_ONLY, "안녕", max_tokens=80, stream=False)
 
     assert "stream" not in comp.kwargs, "기본 실행이 예전과 달라졌다 — 옛 값과 비교 불가"
 
@@ -322,7 +327,7 @@ def test_stream_on_asks_the_server_to_stream():
     from tools.bench_llm_latency import call_once
 
     client, comp = _fake_client(chunks=[_chunk("응"), _chunk(" 좋아!")])
-    call_once(client, "gpt-4o-mini", "시스템", "안녕", max_tokens=80, stream=True)
+    call_once(client, "gpt-4o-mini", SYSTEM_ONLY, "안녕", max_tokens=80, stream=True)
 
     assert comp.kwargs["stream"] is True
 
@@ -331,7 +336,7 @@ def test_stream_off_still_reports_the_answer_length():
     from tools.bench_llm_latency import call_once
 
     client, _ = _fake_client(text="응 좋아! 나도.")
-    _total, tr = call_once(client, "gpt-4o-mini", "시스템", "안녕", max_tokens=80, stream=False)
+    _total, tr = call_once(client, "gpt-4o-mini", SYSTEM_ONLY, "안녕", max_tokens=80, stream=False)
 
     assert tr.chars == len("응 좋아! 나도.")
     assert tr.ttft_s is None, "스트리밍을 안 켰는데 TTFT 가 찍혔다"
@@ -342,7 +347,7 @@ def test_usage_only_chunk_without_choices_does_not_crash():
     from tools.bench_llm_latency import call_once
 
     client, _ = _fake_client(chunks=[_chunk("응"), SimpleNamespace(choices=[])])
-    _total, tr = call_once(client, "gpt-4o-mini", "시스템", "안녕", max_tokens=80, stream=True)
+    _total, tr = call_once(client, "gpt-4o-mini", SYSTEM_ONLY, "안녕", max_tokens=80, stream=True)
 
     assert tr.chars == 1
 

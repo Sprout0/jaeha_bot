@@ -25,7 +25,7 @@ sys.path.insert(0, str(BASE))
 from dotenv import load_dotenv  # noqa: E402
 load_dotenv(BASE / ".env")
 
-from app.agent import _augment_system, load_fewshot  # noqa: E402
+from app.agent import build_prefix, load_fewshot  # noqa: E402
 from app.config import settings  # noqa: E402
 from tools.bench_llm_latency import make_client  # noqa: E402
 from tools.eval_llm import load_eval_set, spoken  # noqa: E402
@@ -38,11 +38,9 @@ def build_messages(mode: str, base_system: str, fewshot: list[dict], text: str):
        mode='turns' = 예시를 **진짜 주고받은 대화**로 앞에 깐다.
     ⚠️ 두 팔이 보는 예시 내용은 **완전히 같다.** 다른 건 담는 그릇 하나뿐이다.
     """
-    if mode == "text":
-        return [{"role": "system", "content": _augment_system(base_system, fewshot)},
-                {"role": "user", "content": text}]
-    return ([{"role": "system", "content": base_system}] + list(fewshot)
-            + [{"role": "user", "content": text}])
+    # 🔴 조립은 운영과 **같은 함수**로 한다. 여기서 따로 짜면 운영이 바뀐 날
+    #    이 도구만 옛 형식을 재고도 모른다.
+    return build_prefix(base_system, fewshot, mode) + [{"role": "user", "content": text}]
 
 
 def run(model: str, mode: str, base_system, fewshot, rows, max_tokens: int):

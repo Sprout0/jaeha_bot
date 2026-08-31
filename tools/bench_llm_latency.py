@@ -39,7 +39,7 @@ try:
 except ImportError:
     pass
 
-from app.agent import _augment_system, load_fewshot  # noqa: E402
+from app.agent import build_prefix, load_fewshot  # noqa: E402
 from app.config import settings  # noqa: E402
 from tools.eval_llm import (  # noqa: E402
     _RATE_LIMIT, CLOVA_BASE_URL, load_eval_set, required_key)
@@ -111,14 +111,14 @@ def reject_unstreamable(models: list[str], stream: bool) -> None:
         sys.exit(1)
 
 
-def call_once(client, model: str, sysp: str, text: str, max_tokens: int,
+def call_once(client, model: str, prefix: list[dict], text: str, max_tokens: int,
               stream: bool = False) -> tuple[float, StreamTrace]:
     """한 번 치고 (총 시간, 조각) 을 돌려준다.
 
     🔴 stream 을 안 켜면 `stream` 인자를 **아예 넘기지 않는다.** 넘기면(False 라도)
        요청 모양이 달라져 예전 측정과 비교할 수 없다.
     """
-    messages = [{"role": "system", "content": sysp}, {"role": "user", "content": text}]
+    messages = prefix + [{"role": "user", "content": text}]
     kw = {"stream": True} if stream else {}
 
     t0 = time.perf_counter()
@@ -238,9 +238,9 @@ def list_models(prefix: str) -> None:
             print(" ", m)
 
 
-def build_arms(models: list[str], system: str,
-               with_floor: bool) -> list[tuple[str, str, str]]:
-    """팔 = (라벨, 모델, 시스템 프롬프트).
+def build_arms(models: list[str], prefix: list[dict],
+               with_floor: bool) -> list[tuple[str, str, list[dict]]]:
+    """팔 = (라벨, 모델, 앞머리 메시지들).
 
     🔴 **local 에는 [바닥] 팔을 붙이지 않는다.** 2026-08-19 에 붙였다가 크게 틀렸다:
          팔 교차(바닥 42자 ↔ 실제 4185자)   중앙 6.277s
@@ -252,11 +252,12 @@ def build_arms(models: list[str], system: str,
           깨뜨리는 건 오직 '로컬의 두 번째 프롬프트'다.
        그리고 [바닥] 은 정의상 '그 서버까지의 왕복 하한'인데 local 은 갈 서버가 없다.
     """
-    arms: list[tuple[str, str, str]] = []
+    arms: list[tuple[str, str, list[dict]]] = []
     for m in models:
         if with_floor and m != "local":
-            arms.append((f"{m} [바닥]", m, FLOOR_SYSTEM))
-        arms.append((m, m, system))
+            arms.append((f"{m} [바닥]", m,
+                         [{"role": "system", "content": FLOOR_SYSTEM}]))
+        arms.append((m, m, prefix))
     return arms
 
 
@@ -301,11 +302,14 @@ def main() -> None:
 
     models = [m.strip() for m in args.models.split(",") if m.strip()]
     reject_unstreamable(models, args.stream)
-    system = _augment_system(settings.prompts["system"],
-                             load_fewshot(settings.models["llm"].get("fewshot_path")))
+    llm_cfg = settings.models["llm"]
+    form = llm_cfg.get("fewshot_form", "text")
+    prefix = build_prefix(settings.prompts["system"],
+                          load_fewshot(llm_cfg.get("fewshot_path")), form)
+    sent_chars = sum(len(m["content"]) for m in prefix)
     rows = load_eval_set(BASE / args.eval_set)
 
-    arms = build_arms(models, system, with_floor=not args.no_floor)
+    arms = build_arms(models, prefix, with_floor=not args.no_floor)
 
     clients = {m: make_client(m) for m in models}
     for m, c in clients.items():   # 커넥션·TLS 예열(첫 호출은 언제나 이상치다)
@@ -322,14 +326,14 @@ def main() -> None:
     rate: dict[str, int] = {a[0]: 0 for a in arms}             # 그중 429
     gap_note = f" · 호출 간격 {args.gap}s" if args.gap else " · 연달아"
     print(f"{len(rows)}문항 × {args.repeat}회 · 팔 {len(arms)}개 교차 · 재시도 끔 · "
-          f"프롬프트 {len(system)}자{gap_note}\n")
+          f"앞머리 {sent_chars}자 · {len(prefix)}메시지({form}){gap_note}\n")
     for rep in range(args.repeat):
         for i, r in enumerate(rows):
             k = i % len(arms)
-            for label, model, sysp in arms[k:] + arms[:k]:   # 문항마다 순서 회전
+            for label, model, arm_prefix in arms[k:] + arms[:k]:   # 문항마다 순서 회전
                 pace(args.gap)
                 try:
-                    total, tr = call_once(clients[model], model, sysp, r["text"],
+                    total, tr = call_once(clients[model], model, arm_prefix, r["text"],
                                           args.max_tokens, stream=args.stream)
                     lat[label].append(total)
                     lens[label].append(tr.chars)

@@ -41,8 +41,8 @@ except ImportError:
     pass
 
 from app.agent import (                                      # noqa: E402
-    _augment_system, _clamp_sentences, _flatten_markdown,
-    _strip_emoji, _strip_speaker_prefix, load_fewshot,
+    _clamp_sentences, _flatten_markdown, _strip_emoji,
+    _strip_speaker_prefix, build_prefix, load_fewshot,
 )
 from app.claims import find_fabrications                     # noqa: E402
 from app.safety import JUDGE_VER, check_reply                # noqa: E402
@@ -58,11 +58,16 @@ def load_eval_set(path: Path) -> list[dict]:
     return rows
 
 
-def build_system_prompt() -> str:
-    """agent.py 와 **똑같이** 조립한다 — 프롬프트가 다르면 비교가 무의미하다."""
+def build_prefix_messages() -> list[dict]:
+    """운영이 매 턴 보내는 앞머리를 **운영과 같은 함수로** 조립한다.
+
+    🔴 예전엔 여기서 system 문자열 하나만 만들어 돌려줬다. 그러면 few-shot 을 담는
+       그릇(fewshot_form)을 바꾼 날 이 도구만 옛 형식을 재고도 모른다.
+    """
     cfg = settings.models["llm"]
-    fewshot = load_fewshot(cfg.get("fewshot_path"))
-    return _augment_system(settings.prompts["system"], fewshot)
+    return build_prefix(settings.prompts["system"],
+                        load_fewshot(cfg.get("fewshot_path")),
+                        cfg.get("fewshot_form", "text"))
 
 
 def spoken(text: str) -> str:
@@ -114,7 +119,7 @@ def required_key(model: str) -> str | None:
 CLOVA_BASE_URL = "https://clovastudio.stream.ntruss.com/v1/openai"
 
 
-def make_openai(model: str, system: str, max_tokens: int):
+def make_openai(model: str, prefix: list[dict], max_tokens: int):
     """🔴 max_retries=0. SDK 자동 재시도(기본 2)는 create() **안에서** 일어나므로
        실패한 시도와 백오프가 측정 지연에 통째로 들어간다. 2026-08-19 에 같은 날
        같은 gpt-4o-mini 가 두 도구에서 1.668s / 3.885s 로 갈렸던 원인이다.
@@ -136,8 +141,7 @@ def make_openai(model: str, system: str, max_tokens: int):
         r = client.chat.completions.create(
             model=model,
             max_completion_tokens=max_tokens,
-            messages=[{"role": "system", "content": system},
-                      {"role": "user", "content": text}],
+            messages=prefix + [{"role": "user", "content": text}],
         )
         usage = r.usage
         cached = 0
@@ -363,9 +367,11 @@ def main() -> None:
         return
 
     rows = load_eval_set(BASE / args.eval_set)
-    system = build_system_prompt()
+    prefix = build_prefix_messages()
+    form = settings.models["llm"].get("fewshot_form", "text")
     max_tokens = args.max_tokens or settings.models["llm"].get("max_tokens", 80)
-    print(f"평가셋 {len(rows)}문항 × {args.repeat}회 | 시스템 프롬프트 {len(system)}자")
+    print(f"평가셋 {len(rows)}문항 × {args.repeat}회 | 앞머리 "
+          f"{sum(len(m['content']) for m in prefix)}자 · {len(prefix)}메시지({form})")
 
     names = [m.strip() for m in args.models.split(",") if m.strip()]
     for var in sorted({k for n in names if (k := required_key(n))}):
@@ -378,11 +384,20 @@ def main() -> None:
     for name in names:
         print(f"\n=== {name} ===")
         if name == "local":
-            ask = make_local(system)
+            # 🔴 **예시가 붙기 전의 원본**을 넘긴다. LLMAgent 가 스스로 붙이므로
+            #    조립된 것을 넘기면 두 번 실린다(2026-08-31 발견: 4,182 -> 4,981자).
+            ask = make_local(settings.prompts["system"])
         elif name.startswith("gemini"):
-            ask = make_gemini(name, system, max_tokens)
+            # gemini 래퍼는 system_instruction 문자열 하나만 받는다 — 대화 형식을
+            # 못 싣는다. 그래서 이 팔은 언제나 text 형식을 잰다.
+            if form != "text":
+                print(f"  ⚠️ {name} 은 text 형식으로 잰다(운영은 {form}) — 직접 비교 금지")
+            ask = make_gemini(name, build_prefix(
+                settings.prompts["system"],
+                load_fewshot(settings.models["llm"].get("fewshot_path")),
+                "text")[0]["content"], max_tokens)
         else:
-            ask = make_openai(name, system, max_tokens)
+            ask = make_openai(name, prefix, max_tokens)
         results.append(evaluate(name, ask, rows, args.repeat))
 
     report(results)

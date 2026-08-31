@@ -45,7 +45,7 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE))
 
-from app.agent import LLMAgent, _augment_system, load_fewshot  # noqa: E402
+from app.agent import LLMAgent, build_prefix, load_fewshot  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.tts_module import TTSModule  # noqa: E402
 from tools.eval_llm import load_eval_set  # noqa: E402
@@ -120,7 +120,12 @@ def felt_total(llm_s: float, first_audio_s: float, play_s: float) -> float:
 
 def build(llm_backend: str, tts_backend: str, system: str, api_model: str | None = None,
           max_sentences: int | None = None):
-    """조합대로 만들고 예열까지 끝낸 (agent, tts) 를 돌려준다."""
+    """조합대로 만들고 예열까지 끝낸 (agent, tts) 를 돌려준다.
+
+    🔴 `system` 은 **예시가 붙기 전의 원본**이어야 한다. LLMAgent 가 fewshot_path 를
+       들고 있어서 예시를 스스로 붙인다 — 여기에 이미 붙은 것을 넘기면 **두 번 실린다.**
+       2026-08-31 에 발견: 그동안 4,182자인 줄 알았던 프롬프트가 실제로는 4,981자였다.
+    """
     lcfg = {**settings.models["llm"], "backend": llm_backend}
     if api_model:
         lcfg["api_model"] = api_model
@@ -205,13 +210,19 @@ def main() -> None:
         _setup_audio_device()
 
     rows = load_eval_set(BASE / args.eval_set)
-    system = _augment_system(settings.prompts["system"],
-                             load_fewshot(settings.models["llm"].get("fewshot_path")))
-    system = apply_length_hint(system, args.length_hint)
+    # 예시는 붙이지 않는다 — LLMAgent 가 붙인다(build() 주석 참조). 길이 지시만 얹는다.
+    system = apply_length_hint(settings.prompts["system"], args.length_hint)
     out_dir = BASE / "logs" / "bench"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"{len(rows)}문항 × {args.repeat}회 | 프롬프트 {len(system)}자 | "
+    # 실제로 나가는 앞머리 크기를 찍는다(운영과 같은 조립 = build_prefix).
+    llm_cfg = settings.models["llm"]
+    prefix = build_prefix(system, load_fewshot(llm_cfg.get("fewshot_path")),
+                          llm_cfg.get("fewshot_form", "text"))
+    sent_chars = sum(len(m["content"]) for m in prefix)
+
+    print(f"{len(rows)}문항 × {args.repeat}회 | 프롬프트 {sent_chars}자"
+          f"({llm_cfg.get('fewshot_form', 'text')}) | "
           f"{'재생(첫 소리)' if args.play else '합성까지'}"
           f"{' | 길이 지시 강화' if args.length_hint else ''}\n")
     if args.length_hint:

@@ -359,3 +359,70 @@ def test_a_near_miss_says_how_near(caplog, monkeypatch):
 
     msgs = [r.message for r in caplog.records if "선행인식" in r.message]
     assert any("1.12" in m for m in msgs), f"실제 인식 시간을 안 남겼다: {msgs}"
+
+
+# ── '얼마나 아깝게 놓쳤나'를 정직하게 적는다 ─────────────────────────────────
+# 🔴 2026-08-31 실기 로그가 정확히 반대 결정으로 이끌었다:
+#      [선행인식] 아깝게 놓쳤다 — 인식 1.00s(예산 1.04s), 0.92s 만 빨랐으면
+#    1.00 < 1.04 라 "0.04초만 당기면 되겠다"로 읽힌다. 실제로는 0.92초 모자랐다.
+#    두 수가 **비교 대상이 아니기 때문**이다: 아이가 말을 멈췄다 다시 하면
+#    새 키로 다시 제출되고, 그 계산은 앞 작업 뒤에 줄을 서서 훨씬 늦게 시작한다.
+#    예산은 '마지막 제출 시점 기준'인데 인식은 그보다 늦게 시작했다.
+#
+#    바로 그 코드의 주석이 말하는 대로 **"얼마나 늦었는지가 다음 결정의 전부"** 다 —
+#    0.02초면 spec_after 를 당기면 되고, 0.9초면 다른 수를 찾아야 한다.
+#    그래서 지연을 두 갈래로 가른다: (인식 − 예산) + 늦게 시작한 시간.
+#
+# ⚠️ 시간을 안 타는 순수 함수라 여기서 전수로 시험할 수 있다
+#    (bench_llm_latency 의 describe_split 과 같은 방식).
+
+def test_a_late_start_is_not_reported_as_a_fast_recognition():
+    """실기 로그 그대로. 이 한 줄이 이 시험의 존재 이유다."""
+    from app.stt_module import describe_late_guess
+
+    msg = describe_late_guess(compute_s=1.00, budget_s=1.04, waited_s=0.92)
+
+    assert "0.92" in msg, "아이가 실제로 더 기다린 시간이 안 보인다"
+    assert "0.96" in msg, "늦게 시작한 0.96초가 안 보인다 — 이게 진짜 원인이다"
+    assert "늦" in msg
+
+
+def test_a_genuinely_slow_recognition_says_so():
+    """제때 시작했는데 계산이 느린 경우 — 이건 STT 를 줄이면 되는 상황이다."""
+    from app.stt_module import describe_late_guess
+
+    msg = describe_late_guess(compute_s=1.50, budget_s=1.04, waited_s=0.46)
+
+    assert "0.46" in msg
+    assert "늦게 시작" not in msg, "제때 시작했는데 늦게 시작했다고 한다"
+
+
+def test_the_two_causes_are_told_apart_by_which_dominates():
+    """어느 쪽을 고쳐야 하는지가 갈려야 한다 — 그게 이 로그의 쓸모 전부다."""
+    from app.stt_module import describe_late_guess
+
+    queued = describe_late_guess(compute_s=1.00, budget_s=1.04, waited_s=0.92)
+    slow = describe_late_guess(compute_s=1.50, budget_s=1.04, waited_s=0.46)
+
+    assert queued != slow
+    assert "spec_after" in slow or "인식" in slow
+    assert "다시 제출" in queued or "늦게 시작" in queued
+
+
+def test_it_never_claims_it_fit_when_the_child_actually_waited():
+    """기다렸는데 '예산 안에 들었다'고 하면 그 로그는 거짓말이다."""
+    from app.stt_module import describe_late_guess
+
+    for compute, budget, waited in [(1.00, 1.04, 0.92), (0.50, 1.04, 1.30),
+                                    (1.50, 1.04, 0.46), (0.90, 0.90, 0.30)]:
+        msg = describe_late_guess(compute, budget, waited)
+        assert f"{waited:.2f}" in msg, f"더 기다린 시간이 빠졌다: {msg}"
+
+
+def test_measurement_noise_does_not_invent_a_late_start():
+    """늦은 시작이 음수로 나오는 건 잰 잡음이다 — 없는 원인을 만들면 안 된다."""
+    from app.stt_module import describe_late_guess
+
+    msg = describe_late_guess(compute_s=1.50, budget_s=1.04, waited_s=0.44)
+
+    assert "-0.0" not in msg and "-0.1" not in msg

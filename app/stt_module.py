@@ -116,6 +116,31 @@ class _Speculation:
                     return None
 
 
+def describe_late_guess(compute_s: float, budget_s: float, waited_s: float) -> str:
+    """선행 인식을 왜 못 썼는지 한 줄로. **시간을 안 타므로 전수로 시험할 수 있다.**
+
+    🔴 2026-08-31: 예전 문구가 정확히 반대 결정으로 이끌었다.
+         "인식 1.00s(예산 1.04s), 0.92s 만 빨랐으면"
+       1.00 < 1.04 라 '0.04초만 당기면 되겠다'로 읽힌다. 실제로는 0.92초 모자랐다.
+       **두 수가 비교 대상이 아니기 때문**이다: 아이가 말을 멈췄다 다시 하면 새 키로
+       다시 제출되고, 그 계산은 앞 작업 뒤에 줄을 서서 예산보다 늦게 시작한다.
+
+    그래서 지연을 두 갈래로 가른다 — 고칠 곳이 다르기 때문이다:
+        더 기다린 시간 = (인식 − 예산) + 늦게 시작한 시간
+      · 인식이 예산을 넘김  -> STT 를 줄이거나 spec_after 를 당긴다
+      · 늦게 시작          -> 다시 제출·큐잉 문제라 그 손잡이로는 못 고친다
+    ⚠️ 늦은 시작이 음수로 나오면 잰 잡음이다 — 없는 원인을 만들지 않는다.
+    """
+    late = waited_s - (compute_s - budget_s)
+    head = f"[선행인식] 놓쳤다 — 아이를 {waited_s:.2f}s 더 기다렸다"
+    if late < 0.05:
+        return (f"{head}. 인식 {compute_s:.2f}s 가 예산 {budget_s:.2f}s 를 "
+                f"{compute_s - budget_s:.2f}s 넘겼다 — STT 나 spec_after 로 좁힐 수 있다")
+    return (f"{head}. 인식 자체는 {compute_s:.2f}s(예산 {budget_s:.2f}s)인데 "
+            f"**{late:.2f}s 늦게 시작**했다 — 아이가 다시 말해 다시 제출된 것이다. "
+            f"spec_after 로는 못 고친다")
+
+
 class STTModule:
     def __init__(
         self,
@@ -537,11 +562,10 @@ class STTModule:
             tr_dt = time.perf_counter() - t_wait
             # 🔴 여기가 '얼마나 아깝게 놓쳤나'를 알 수 있는 유일한 자리다. 인식이 끝나야
             #    실제 걸린 시간(got[1])을 알기 때문이다. tr_dt 는 **아이가 녹음 종료 뒤
-            #    더 기다린 시간** — 이만큼만 빨랐으면 선행 생각이 터졌다.
+            #    더 기다린 시간** — 그게 진짜 모자란 양이다.
+            #    ⚠️ got[1] 과 예산을 나란히 놓기만 하면 거짓말이 된다(describe_late_guess 참조).
             if on_partial is not None and not self.last_spec_handed and text:
-                log.info("[선행인식] 아깝게 놓쳤다 — 인식 %.2fs(예산 %.2fs), "
-                         "%.2fs 만 빨랐으면 선행 생각이 터졌다",
-                         got[1], self.spec_budget_s, tr_dt)
+                log.info("%s", describe_late_guess(got[1], self.spec_budget_s, tr_dt))
         else:
             text, _compute = self.transcribe(audio)
             tr_dt = time.perf_counter() - t_wait

@@ -324,7 +324,13 @@ def _repl() -> None:
     if len(sys.argv) > 1:
         target = sys.argv[1]
         print(f"\n재생 시도: {target}")
-        print("결과:", "OK" if AudioPlayer(lib).play(target) else "실패(위 경고 참조)")
+        # 🔴 block=True 를 **명시**한다. 노래의 기본값은 비블로킹인데(운영에서는
+        #    노래 도중에도 아이 말을 들어야 하므로 그게 맞다), 이 점검 도구는
+        #    재생을 걸어 놓자마자 프로세스가 끝나 **소리가 첫 순간에 잘린다.**
+        #    assets/README.md 가 "이걸로 확인하라"고 가리키는 명령인데 정작
+        #    노래는 확인이 안 됐다(2026-09-01 젯슨 점검 중 발견).
+        ok = AudioPlayer(lib).play(target, block=True)
+        print("결과:", "OK" if ok else "실패(위 경고 참조)")
 
 
 if __name__ == "__main__":

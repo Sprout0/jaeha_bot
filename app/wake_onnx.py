@@ -235,7 +235,10 @@ class OnnxWakeDetector:
                 continue
 
             # ── 1단계 통과 = '후보' ──
-            if self.verifier is not None and not self._verify(score):
+            # 검증 장치가 **둘 중 하나라도** 있으면 태운다. verifier 만 보면 임베딩
+            # 단독 구성(S2S)에서 검증이 통째로 건너뛰어져 1단계 단독이 된다.
+            if (self.verifier is not None or self.embed_rescue is not None) \
+                    and not self._verify(score):
                 continue
 
             # ── 깨움 확정 ──
@@ -321,6 +324,29 @@ class OnnxWakeDetector:
             log.info("[검증] 무음이라 건너뜀 — 최대 RMS %.4f < %.4f (점수 %.3f)",
                      loudest, self.verify_min_rms, score)
             return False
+
+        # 🔴 2026-09-02 whisper 없이도 돌 수 있어야 한다. 전면 API(S2S) 로 가면 로컬
+        #    STT 를 안 올리는데, 그때 verifier 가 None 이 되어 1단계 단독으로 떨어지면
+        #    실제 거실에서 시간당 160회 깨어난다(이미 기각된 길이다).
+        #    ➡️ verifier 가 없으면 임베딩 대조가 **단독 관문**이 된다.
+        #    비용은 whisper 1.22초가 아니라 수 밀리초다(모델은 1단계가 이미 올려 뒀다).
+        if self.verifier is None:
+            if self.embed_rescue is None:
+                return True          # 검증 장치가 아예 없다 = 옛 동작(1단계 단독)
+            try:
+                ok, sim = self.embed_rescue.passes(self.embed_sequence(audio))
+            except Exception as e:      # noqa: BLE001 — 검증 장치가 봇을 죽이면 안 된다
+                log.warning("[검증] 임베딩 단독 실패(기각 처리): %s: %s",
+                            type(e).__name__, e)
+                return False
+            finally:
+                self._last_verify = time.monotonic()
+            log.info("[검증] 임베딩 단독 %s — 유사도 %.3f %s %.2f (점수 %.3f)",
+                     "통과" if ok else "기각", sim, ">=" if ok else "<",
+                     self.embed_rescue.min_similarity, score)
+            if ok:
+                self._hits = 0
+            return ok
 
         try:
             ok = bool(self.verifier(audio))

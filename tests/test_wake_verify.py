@@ -795,3 +795,50 @@ def test_rejection_log_carries_the_rms_so_a_quiet_call_is_tellable(caplog):
         d.wait_for_wake(max_frames=5)
     line = next(r.message for r in caplog.records if "후보 기각" in r.message)
     assert "RMS" in line, f"기각 로그에 RMS 가 없다: {line}"
+
+
+# ── 임베딩 단독 검증 (2026-09-02) ────────────────────────────────────────
+# 🔴 왜: 전면 API(S2S) 로 가면 로컬 STT 가 없어 verifier 가 None 이 된다. 지금은 그때
+#    _verify 를 아예 안 불러 **1단계 단독**으로 떨어지는데, 그건 실제 거실에서 시간당
+#    160회 깨어나는 이미 기각된 길이다.
+
+class _Rescue:
+    """EmbedRescue 대역 — passes() 와 min_similarity 만 있으면 된다."""
+
+    def __init__(self, ok, sim=0.9):
+        self.ok, self.sim = ok, sim
+        self.min_similarity = 0.85
+        self.calls = 0
+
+    def passes(self, embs):
+        self.calls += 1
+        return self.ok, self.sim
+
+
+def test_verifier_없이_임베딩이_통과시키면_깨운다():
+    r = _Rescue(ok=True)
+    d, _ = _det([0.9], verifier=None, embed_rescue=r)
+    d.embed_sequence = lambda audio: object()      # 임베딩 계산은 여기 관심사가 아니다
+    assert d.wait_for_wake(max_frames=3) is not None
+    assert r.calls == 1, "임베딩 대조가 안 불렸다"
+
+
+def test_verifier_없이_임베딩이_기각하면_안_깨운다():
+    # 🔴 급소. 여기서 깨우면 1단계 단독과 똑같아진다.
+    r = _Rescue(ok=False, sim=0.1)
+    d, _ = _det([0.9], verifier=None, embed_rescue=r)
+    d.embed_sequence = lambda audio: object()
+    assert d.wait_for_wake(max_frames=3) is None
+    assert r.calls == 1
+
+
+def test_임베딩_계산이_터져도_봇이_안_죽는다():
+    # 검증 장치가 봇을 죽이면 안 된다. 안전하게 기각으로 본다.
+    r = _Rescue(ok=True)
+    d, _ = _det([0.9], verifier=None, embed_rescue=r)
+
+    def boom(audio):
+        raise RuntimeError("onnx 죽음")
+
+    d.embed_sequence = boom
+    assert d.wait_for_wake(max_frames=3) is None

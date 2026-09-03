@@ -276,9 +276,24 @@ def make_detector(wcfg: dict, stt, source):
         return fallback
 
     ocfg = wcfg.get("onnx", {}) or {}
+    vcfg = ocfg.get("verify", {}) or {}
+    # 🔴 2026-09-02 검증 방식 스위치. **기본은 whisper = 현행 동작 그대로다.**
+    #   whisper : 후보를 전사해 자모거리로 판정(현행)
+    #   embed   : 임베딩 본보기와의 코사인 유사도로만 판정
+    #             — **로컬 STT 를 안 올려도 된다**(전면 API/S2S 전환의 선결 조건)
+    #   both    : whisper 로 판정하고 기각분을 임베딩이 건진다(OR 보강)
+    # 🔴 **이 검사는 아래 try 밖에 있어야 한다.** 안에 두면 오타가 폴백 except 에
+    #    삼켜져 "ONNX 로드 실패 → STT 폴백" 으로 둔갑한다(실제로 그렇게 났다).
+    #    설정 오타는 조용히 넘어갈 일이 아니라 기동을 멈출 일이다.
+    mode = vcfg.get("mode", "whisper")
+    if mode not in ("whisper", "embed", "both"):
+        raise ValueError(
+            f"wake.onnx.verify.mode 가 이상하다: {mode!r} "
+            "— whisper | embed | both 중 하나여야 한다")
+
     try:
         from .wake_onnx import OnnxWakeDetector
-        vcfg = ocfg.get("verify", {}) or {}
+        verifier = None if mode == "embed" else make_wake_verifier(vcfg, stt, word)
         return OnnxWakeDetector(
             model_dir=ocfg.get("model_dir", "models/wake"),
             classifier=ocfg.get("classifier", "jaehabot.onnx"),
@@ -286,7 +301,7 @@ def make_detector(wcfg: dict, stt, source):
             trigger_frames=int(ocfg.get("trigger_frames", 2)),
             providers=ocfg.get("providers"),
             source=source,
-            verifier=make_wake_verifier(vcfg, stt, word),
+            verifier=verifier,
             verify_cooldown_s=float(vcfg.get("cooldown_s", 1.0)),
             verify_min_rms=float(vcfg.get("min_rms", 0.005)),
             verify_rearm_delta=float(vcfg.get("rearm_delta", 0.05)),

@@ -85,3 +85,55 @@ def test_factory_fallback_log_reports_actual_exception_type(monkeypatch, caplog)
 
     assert isinstance(d, SttWakeDetector), "코드 버그여도 봇이 죽으면 안 된다"
     assert any("TypeError" in r.message for r in caplog.records)
+
+
+# ── 검증 방식 스위치 (2026-09-02) ────────────────────────────────────────
+# 🔴 왜: 전면 API(S2S) 로 가면 로컬 STT 가 없다. 그때 whisper 검증기를 아예 안
+#    만들도록 설정으로 고를 수 있어야 한다. 기본은 반드시 현행(whisper)이다.
+
+def _capture_kwargs(monkeypatch):
+    """OnnxWakeDetector 에 실제로 넘어간 인자를 잡아 둔다."""
+    seen = {}
+
+    class Spy:
+        def __init__(self, **kw):
+            seen.update(kw)
+
+    import app.wake_onnx as wake_onnx
+    monkeypatch.setattr(wake_onnx, "OnnxWakeDetector", Spy)
+    return seen
+
+
+def test_mode가_없으면_현행대로_whisper를_쓴다(monkeypatch):
+    # 🔴 기본값이 바뀌면 아무도 모르게 동작이 달라진다. 여기서 못 박는다.
+    seen = _capture_kwargs(monkeypatch)
+    cfg = {"detector": "onnx", "word": "하이티드",
+           "onnx": {"verify": {"enabled": True}}}
+    make_detector(cfg, stt=FakeStt([]), source=object())
+    assert seen["verifier"] is not None
+
+
+def test_mode가_embed면_whisper를_안_만든다(monkeypatch):
+    seen = _capture_kwargs(monkeypatch)
+    cfg = {"detector": "onnx", "word": "하이티드",
+           "onnx": {"verify": {"enabled": True, "mode": "embed"}}}
+    make_detector(cfg, stt=FakeStt([]), source=object())
+    assert seen["verifier"] is None
+
+
+def test_mode가_embed면_stt가_없어도_만들어진다(monkeypatch):
+    # S2S 구성에서는 stt 인스턴스 자체가 없다. 그때 죽으면 안 된다.
+    seen = _capture_kwargs(monkeypatch)
+    cfg = {"detector": "onnx", "word": "하이티드",
+           "onnx": {"verify": {"enabled": True, "mode": "embed"}}}
+    make_detector(cfg, stt=None, source=object())
+    assert seen["verifier"] is None
+
+
+def test_모르는_mode는_죽는다(monkeypatch):
+    # 오타가 조용히 '현행'으로 떨어지면 켠 줄 알고 안 켜진다.
+    _capture_kwargs(monkeypatch)
+    cfg = {"detector": "onnx", "word": "하이티드",
+           "onnx": {"verify": {"enabled": True, "mode": "embedding"}}}
+    with pytest.raises(ValueError):
+        make_detector(cfg, stt=FakeStt([]), source=object())

@@ -137,3 +137,38 @@ def test_모르는_mode는_죽는다(monkeypatch):
            "onnx": {"verify": {"enabled": True, "mode": "embedding"}}}
     with pytest.raises(ValueError):
         make_detector(cfg, stt=FakeStt([]), source=object())
+
+
+# ── stt 없이 부팅 (2026-09-02) ───────────────────────────────────────────
+
+def test_stt가_없는데_onnx가_죽으면_조용히_넘어가지_않는다(monkeypatch):
+    # 🔴 조용한 폴백이 제일 나쁘다. SttWakeDetector 는 stt 로 듣는데 stt 가 None 이면
+    #    부를 수 없는 객체다. 그걸 돌려주면 봇이 영영 안 깨어나면서 로그엔 '폴백함'
+    #    한 줄만 남아 원인을 못 찾는다.
+    import app.wake_onnx as wake_onnx
+
+    def _boom(**kw):
+        raise RuntimeError("모델 없음")
+
+    monkeypatch.setattr(wake_onnx, "OnnxWakeDetector", _boom)
+    cfg = {"detector": "onnx", "word": "하이티드",
+           "onnx": {"verify": {"enabled": True, "mode": "embed"}}}
+    with pytest.raises(RuntimeError):
+        make_detector(cfg, stt=None, source=object())
+
+
+def test_stt가_있으면_예전처럼_폴백한다(monkeypatch):
+    import app.wake_onnx as wake_onnx
+
+    def _boom(**kw):
+        raise RuntimeError("모델 없음")
+
+    monkeypatch.setattr(wake_onnx, "OnnxWakeDetector", _boom)
+    cfg = {"detector": "onnx", "word": "하이티드", "onnx": {"verify": {"enabled": True}}}
+    d = make_detector(cfg, stt=FakeStt([]), source=object())
+    assert isinstance(d, SttWakeDetector)
+
+
+def test_detector가_stt인데_stt가_없으면_죽는다():
+    with pytest.raises(RuntimeError):
+        make_detector({"detector": "stt", "word": "하이티드"}, stt=None, source=object())

@@ -270,9 +270,16 @@ def make_detector(wcfg: dict, stt, source):
     word = wcfg.get("word", "하이티드")
     threshold = float(wcfg.get("threshold", 0.68))
     aliases = wcfg.get("aliases", [])
-    fallback = SttWakeDetector(stt, word, threshold, aliases)
+    # 🔴 2026-09-02 stt 가 없으면 폴백이 성립하지 않는다 — SttWakeDetector 는 stt 로
+    #    듣는다. 전면 API(S2S) 구성에는 로컬 STT 가 아예 없는데, 그때 이걸 돌려주면
+    #    봇이 영영 안 깨어나면서 로그엔 '폴백함' 한 줄만 남아 원인을 못 찾는다.
+    fallback = SttWakeDetector(stt, word, threshold, aliases) if stt is not None else None
 
     if wcfg.get("detector", "stt") != "onnx":
+        if fallback is None:
+            raise RuntimeError(
+                "wake.detector 가 stt 인데 STT 인스턴스가 없다 — "
+                "detector 를 onnx 로 두거나 STT 를 넘길 것")
         return fallback
 
     ocfg = wcfg.get("onnx", {}) or {}
@@ -313,6 +320,11 @@ def make_detector(wcfg: dict, stt, source):
             embed_rescue=_make_embed_rescue(vcfg),
         )
     except Exception as e:
+        if fallback is None:
+            # 내려갈 데가 없다. 조용히 못 깨어나는 봇을 돌려주느니 여기서 멈춘다.
+            raise RuntimeError(
+                "ONNX 호출어 모델을 못 올렸는데 STT 폴백도 없다(stt=None) — "
+                f"모델을 확인할 것: {type(e).__name__}: {e}") from e
         log.warning("ONNX 호출어 감지기 로드 실패(%s: %s) → STT 감지기로 폴백",
                      type(e).__name__, e, exc_info=True)
         return fallback

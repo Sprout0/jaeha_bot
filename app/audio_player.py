@@ -28,6 +28,8 @@ from pathlib import Path
 import numpy as np
 import yaml
 
+from .audio_device import setup_audio_device
+
 from .text_norm import has_word, jamo_ratio, norm_tokens
 
 log = logging.getLogger(__name__)
@@ -300,6 +302,22 @@ class AudioPlayer:
         return self._sink.is_playing
 
 
+def _print_output_device() -> None:
+    """어느 장치로 나가는지 한 줄 남긴다 — 안 보이면 또 허공에 재생한다."""
+    try:
+        import sounddevice as sd
+        # sd.default.device 는 list 서브클래스가 아니라 자체 _DeviceList 다.
+        # isinstance 로 가르면 빗나가서 (입력, 출력) 쌍을 통째로 찍는다.
+        dev = sd.default.device
+        try:
+            out = dev[1]
+        except (TypeError, IndexError):
+            out = dev
+        print(f"출력 장치: [{out}] {sd.query_devices(out, 'output')['name']}")
+    except Exception as e:
+        print(f"⚠️ 출력 장치를 확인할 수 없다: {e}")
+
+
 def _repl() -> None:
     """에셋 점검(스피커 불필요): `python -m app.audio_player`
 
@@ -307,6 +325,12 @@ def _repl() -> None:
     새 로직 없음 — missing()/playable()/play() 를 부르기만 한다(전부 테스트됨).
     """
     import sys
+
+    # 🔴 봇과 **같은 길**로 소리를 낸다. 이걸 안 부르면 젯슨에서 ALSA `default` 가
+    #    Tegra APE(물리 출력 없음)로 가서, 재생은 성공했다고 나오는데 소리가 사라진다
+    #    (2026-09-07 실측). 이 도구가 바로 그 상태를 못 잡아내고 "결과: OK" 를 찍었다.
+    setup_audio_device()
+    _print_output_device()
 
     lib = default_library()
     for kind in KINDS:

@@ -10,7 +10,8 @@
 """
 import numpy as np
 
-from tools.realtime_live import (FileSink, MicGate, PcmAccumulator, blind_labels)
+from tools.realtime_live import (FileSink, MicGate, PcmAccumulator, blind_labels,
+                                 real_prompt)
 
 
 class TestMicGate:
@@ -126,3 +127,14 @@ class TestFileSink:
     def test_받은_게_없으면_빈_파일을_안_만든다(self, tmp_path):
         FileSink(tmp_path / "out.wav").close()
         assert not (tmp_path / "out.wav").exists()
+
+
+class TestRealPrompt:
+    """실기 프롬프트를 그대로 꽂는다 — Realtime 이 우리 규칙을 지키는지 보려고."""
+
+    def test_실기_프롬프트를_읽는다(self):
+        # 🔴 60자짜리 시험용 인격으로 재면 '놀이를 지어낸다'는 결론이 거짓이 된다.
+        #    할 수 있는 놀이 목록은 실기 프롬프트에만 있다.
+        s = real_prompt()
+        assert "동물 소리 놀이" in s and "아직 못 한다" in s
+        assert len(s) > 3000, "실기 프롬프트가 아니라 시험용 인격을 읽었다"

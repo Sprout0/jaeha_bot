@@ -170,6 +170,20 @@ class Speaker:
         self._stream.close()
 
 
+PROMPT_YAML = Path(__file__).resolve().parent.parent / "configs" / "prompt_templates.yaml"
+
+
+def real_prompt(path: Path = PROMPT_YAML) -> str:
+    """실기가 쓰는 system 프롬프트 그대로.
+
+    시험용 인격은 60자뿐이라 "할 수 있는 놀이는 둘뿐"이라는 목록이 없다. 그래서
+    Realtime 이 없는 놀이를 지어냈다(09-07: 숫자 맞추기·그림 맞추기). 실기에서는
+    이 부류를 4d571da·7a488f3 에서 **기능이 아니라 프롬프트로** 잡았다.
+    """
+    import yaml
+    return yaml.safe_load(path.read_text(encoding="utf-8"))["system"]
+
+
 class FileSink:
     """스피커가 없을 때 쓰는 대역. 봇 목소리를 재생 대신 wav 로 받는다.
 
@@ -378,6 +392,8 @@ def main() -> None:
                    help="스피커 없이. 봇 목소리를 재생 대신 이 wav 로 받는다")
     p.add_argument("--silence-ms", type=int, default=1200)
     p.add_argument("--transcribe-model", default="gpt-4o-transcribe")
+    p.add_argument("--real-prompt", action="store_true",
+                   help="시험용 60자 인격 대신 실기 프롬프트를 꽂는다(규칙을 지키는지)")
     p.add_argument("--json")
     a = p.parse_args()
 
@@ -391,7 +407,10 @@ def main() -> None:
         return
 
     cfg = session_config(a.silence_ms, a.transcribe_model, a.voice)
-    print(f"{a.model} | 목소리 {a.voice} | 꼬리 {a.silence_ms}ms | {a.seconds:.0f}초")
+    if a.real_prompt:
+        cfg["session"]["instructions"] = real_prompt()
+    print(f"{a.model} | 목소리 {a.voice} | 꼬리 {a.silence_ms}ms | {a.seconds:.0f}초 | "
+          f"프롬프트 {'실기' if a.real_prompt else '시험용 60자'}")
     print("  말을 걸어 보세요. Ctrl+C 로 끝냅니다.\n")
     try:
         stats = asyncio.run(live(a.model, cfg, a.seconds, a.duplex, a.pad,

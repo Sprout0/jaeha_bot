@@ -1,0 +1,56 @@
+{
+ "seed": 1,
+ "line": "안녕! 나는 티드야. 오늘 뭐 하고 놀까? 같이 노래도 부를 수 있어.",
+ "samples": {
+  "voice_G": {
+   "voice": "alloy",
+   "seconds": 5.25,
+   "said": "안녕! 나는 티드야. 오늘 뭐 하고 놀까? 같이 노래도 부를 수 있어."
+  },
+  "voice_I": {
+   "voice": "ash",
+   "seconds": 5.0,
+   "said": "안녕! 나는 티드야. 오늘 뭐 하고 놀까? 같이 노래도 부를 수 있어."
+  },
+  "voice_J": {
+   "voice": "ballad",
+   "seconds": 5.3,
+   "said": "안녕! 나는 티드야. 오늘 뭐 하고 놀까? 같이 노래도 부를 수 있어."
+  },
+  "voice_H": {
+   "voice": "cedar",
+   "seconds": 5.1,
+   "said": "안녕! 나는 티드야. 오늘 뭐 하고 놀까? 같이 노래도 부를 수 있어."
+  },
+  "voice_F": {
+   "voice": "coral",
+   "seconds": 4.9,
+   "said": "안녕! 나는 티드야. 오늘 뭐 하고 놀까? 같이 노래도 부를 수 있어."
+  },
+  "voice_D": {
+   "voice": "echo",
+   "seconds": 5.25,
+   "said": "안녕! 나는 티드야. 오늘 뭐 하고 놀까? 같이 노래도 부를 수 있어."
+  },
+  "voice_A": {
+   "voice": "marin",
+   "seconds": 5.4,
+   "said": "안녕! 나는 티드야. 오늘 뭐 하고 놀까? 같이 노래도 부를 수 있어."
+  },
+  "voice_E": {
+   "voice": "sage",
+   "seconds": 5.9,
+   "said": "안녕! 나는 티드야. 오늘 뭐 하고 놀까? 같이 노래도 부를 수 있어."
+  },
+  "voice_B": {
+   "voice": "shimmer",
+   "seconds": 5.2,
+   "said": "안녕! 나는 티드야. 오늘 뭐 하고 놀까? 같이 노래도 부를 수 있어."
+  },
+  "voice_C": {
+   "voice": "verse",
+   "seconds": 5.55,
+   "said": "안녕! 나는 티드야. 오늘 뭐 하고 놀까? 같이 노래도 부를 수 있어."
+  }
+ }
+}

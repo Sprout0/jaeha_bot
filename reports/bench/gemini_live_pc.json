@@ -1,0 +1,256 @@
+{
+ "model": "gemini-2.5-flash-native-audio-preview-12-2025",
+ "silence_ms": 1200,
+ "in_sr": 16000,
+ "trim": "speech",
+ "rows": [
+  {
+   "file": "또박또박_00.wav",
+   "sec": 0.795,
+   "heard": "はい てる 。",
+   "t_first_text": 9.123321600000054,
+   "said": "안녕! 티드랑 놀자!",
+   "t_first_audio": 10.324459899999965,
+   "out_bytes": 109440,
+   "cost_usd": 0.000997,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 549,
+    "response": 60,
+    "detail_in": [
+     [
+      "TEXT",
+      548
+     ],
+     [
+      "AUDIO",
+      1
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      60
+     ]
+    ]
+   }
+  },
+  {
+   "file": "또박또박_01.wav",
+   "sec": 0.885,
+   "heard": "하이티드",
+   "t_first_text": 6.489781100000073,
+   "said": "안녕! 나는 티드야. 만나서 반가워!",
+   "t_first_audio": 7.245116799999778,
+   "out_bytes": 157440,
+   "cost_usd": 0.001323,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 529,
+    "response": 88,
+    "detail_in": [
+     [
+      "TEXT",
+      528
+     ],
+     [
+      "AUDIO",
+      1
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      88
+     ]
+    ]
+   }
+  },
+  {
+   "file": "또박또박_02.wav",
+   "sec": 0.855,
+   "heard": "하이티드",
+   "t_first_text": 5.158802299999479,
+   "said": "안녕! 나랑 놀자!",
+   "t_first_audio": 5.62250369999947,
+   "out_bytes": 90240,
+   "cost_usd": 0.000861,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 493,
+    "response": 51,
+    "detail_in": [
+     [
+      "TEXT",
+      492
+     ],
+     [
+      "AUDIO",
+      1
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      51
+     ]
+    ]
+   }
+  },
+  {
+   "file": "또박또박_03.wav",
+   "sec": 0.825,
+   "heard": "はい てる 。",
+   "t_first_text": 11.2986535,
+   "said": "안녕! 나랑 놀자!",
+   "t_first_audio": 13.298553399999946,
+   "out_bytes": 88320,
+   "cost_usd": 0.0009055,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 558,
+    "response": 52,
+    "detail_in": [
+     [
+      "TEXT",
+      557
+     ],
+     [
+      "AUDIO",
+      1
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      52
+     ]
+    ]
+   }
+  },
+  {
+   "file": "또박또박_04.wav",
+   "sec": 1.275,
+   "heard": "아이티드",
+   "t_first_text": 10.125809000000118,
+   "said": "응! 티드 여기 있어!",
+   "t_first_audio": 10.749251100000038,
+   "out_bytes": 88320,
+   "cost_usd": 0.000856,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 555,
+    "response": 48,
+    "detail_in": [
+     [
+      "TEXT",
+      554
+     ],
+     [
+      "AUDIO",
+      1
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      48
+     ]
+    ]
+   }
+  },
+  {
+   "file": "보통_00.wav",
+   "sec": 0.765,
+   "heard": "ID",
+   "t_first_text": 5.59525720000056,
+   "said": "안녕! 만나서 반가워!",
+   "t_first_audio": 6.272327600000608,
+   "out_bytes": 88320,
+   "cost_usd": 0.0008465,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 488,
+    "response": 50,
+    "detail_in": [
+     [
+      "TEXT",
+      487
+     ],
+     [
+      "AUDIO",
+      1
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      50
+     ]
+    ]
+   }
+  },
+  {
+   "file": "보통_01.wav",
+   "sec": 0.765,
+   "heard": "はい で",
+   "t_first_text": 7.651337400000557,
+   "said": "안녕! 티드랑 놀자!",
+   "t_first_audio": 8.415271000000757,
+   "out_bytes": 96000,
+   "cost_usd": 0.000942,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 535,
+    "response": 56,
+    "detail_in": [
+     [
+      "TEXT",
+      534
+     ],
+     [
+      "AUDIO",
+      1
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      56
+     ]
+    ]
+   }
+  },
+  {
+   "file": "보통_02.wav",
+   "sec": 0.765,
+   "heard": "하이티드",
+   "t_first_text": 8.873835499999586,
+   "said": "안녕! 티드랑 놀자!",
+   "t_first_audio": 9.249977499999659,
+   "out_bytes": 84480,
+   "cost_usd": 0.000874,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 543,
+    "response": 50,
+    "detail_in": [
+     [
+      "TEXT",
+      542
+     ],
+     [
+      "AUDIO",
+      1
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      50
+     ]
+    ]
+   }
+  }
+ ]
+}

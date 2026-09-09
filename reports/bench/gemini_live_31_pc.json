@@ -1,0 +1,256 @@
+{
+ "model": "gemini-3.1-flash-live-preview",
+ "silence_ms": 1200,
+ "in_sr": 16000,
+ "trim": "speech",
+ "rows": [
+  {
+   "file": "또박또박_00.wav",
+   "sec": 0.795,
+   "heard": "altes",
+   "t_first_text": 1.6631733000003806,
+   "said": "안녕 친구야 티드랑 신나게 놀자",
+   "t_first_audio": 1.6631733000003806,
+   "out_bytes": 144962,
+   "cost_usd": 0.00115725,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 219,
+    "response": 80,
+    "detail_in": [
+     [
+      "TEXT",
+      171
+     ],
+     [
+      "AUDIO",
+      23
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      80
+     ]
+    ]
+   }
+  },
+  {
+   "file": "또박또박_01.wav",
+   "sec": 0.885,
+   "heard": "hated",
+   "t_first_text": 1.7279551000001447,
+   "said": "안녕 친구야 우리 신나게 놀자",
+   "t_first_audio": 1.7279551000001447,
+   "out_bytes": 119042,
+   "cost_usd": 0.00103425,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 222,
+    "response": 69,
+    "detail_in": [
+     [
+      "TEXT",
+      171
+     ],
+     [
+      "AUDIO",
+      26
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      69
+     ]
+    ]
+   }
+  },
+  {
+   "file": "또박또박_02.wav",
+   "sec": 0.855,
+   "heard": "heighted",
+   "t_first_text": 1.5926204999996116,
+   "said": "안녕 친구야 우리 뭐 하고 놀까 신난다",
+   "t_first_audio": 1.5926204999996116,
+   "out_bytes": 156030,
+   "cost_usd": 0.00124725,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 221,
+    "response": 87,
+    "detail_in": [
+     [
+      "TEXT",
+      171
+     ],
+     [
+      "AUDIO",
+      25
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      87
+     ]
+    ]
+   }
+  },
+  {
+   "file": "또박또박_03.wav",
+   "sec": 0.825,
+   "heard": "hated",
+   "t_first_text": 1.5833969999994224,
+   "said": "안녕 친구 우리 뭐 하고 놀까 신난다",
+   "t_first_audio": 1.5833969999994224,
+   "out_bytes": 201122,
+   "cost_usd": 0.00153225,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 220,
+    "response": 111,
+    "detail_in": [
+     [
+      "TEXT",
+      171
+     ],
+     [
+      "AUDIO",
+      24
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      111
+     ]
+    ]
+   }
+  },
+  {
+   "file": "또박또박_04.wav",
+   "sec": 1.275,
+   "heard": "I did.",
+   "t_first_text": 1.642373000000589,
+   "said": "안녕 친구야 우리 재미있게 놀자",
+   "t_first_audio": 1.642373000000589,
+   "out_bytes": 151682,
+   "cost_usd": 0.001239,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 223,
+    "response": 86,
+    "detail_in": [
+     [
+      "TEXT",
+      172
+     ],
+     [
+      "AUDIO",
+      26
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      86
+     ]
+    ]
+   }
+  },
+  {
+   "file": "보통_00.wav",
+   "sec": 0.765,
+   "heard": "入っ て て 。",
+   "t_first_text": 1.6071077999995396,
+   "said": "안녕 친구야 우리 같이 놀자",
+   "t_first_audio": 1.6071077999995396,
+   "out_bytes": 108962,
+   "cost_usd": 0.0009435,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 222,
+    "response": 62,
+    "detail_in": [
+     [
+      "TEXT",
+      174
+     ],
+     [
+      "AUDIO",
+      23
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      62
+     ]
+    ]
+   }
+  },
+  {
+   "file": "보통_01.wav",
+   "sec": 0.765,
+   "heard": "아이티드",
+   "t_first_text": 1.7447582999993756,
+   "said": "안녕 친구야 반가워 우리 놀자",
+   "t_first_audio": 1.7447582999993756,
+   "out_bytes": 161282,
+   "cost_usd": 0.001302,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 224,
+    "response": 91,
+    "detail_in": [
+     [
+      "TEXT",
+      172
+     ],
+     [
+      "AUDIO",
+      27
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      91
+     ]
+    ]
+   }
+  },
+  {
+   "file": "보통_02.wav",
+   "sec": 0.765,
+   "heard": "hightide",
+   "t_first_text": 1.756823699999586,
+   "said": "안녕 친구야 우리 신나게 놀자",
+   "t_first_audio": 1.756823699999586,
+   "out_bytes": 149762,
+   "cost_usd": 0.001221,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 221,
+    "response": 85,
+    "detail_in": [
+     [
+      "TEXT",
+      172
+     ],
+     [
+      "AUDIO",
+      24
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      85
+     ]
+    ]
+   }
+  }
+ ]
+}

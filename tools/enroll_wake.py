@@ -163,12 +163,86 @@ def score_noise(det, temps, path: str, thr: float):
           "(08-26 우회컷이 정확히 그래서 죽었다).")
 
 
+# ────────────────────────────────────────── 컷 정하기(진짜 호출 채점)
+def score_calls(det, temps, d: str, thr: float) -> dict:
+    """진짜 호출 녹음들을 본보기에 대조한다 — **컷의 상한**을 준다.
+
+    score_noise 가 하한(소음이 어디까지 올라오나)을, 이쪽이 상한(진짜 호출이
+    어디까지 내려가나)을 준다. **둘이 겹치면 안전한 컷이 없다** — 그때는
+    임베딩 단독을 켜면 안 된다(08-26 우회컷이 정확히 그래서 죽었다).
+
+    🔴 1단계를 못 넘은 녹음은 유사도 통계에서 **뺀다.** 후보가 떠야 검증기가
+       불리므로, 그런 녹음은 2단계의 실패가 아니라 1단계의 실패다. 섞어 세면
+       컷을 실제보다 낮게 잡게 되고 소음이 뚫린다.
+
+    ⚠️ 등록에 쓴 녹음을 다시 채점하면 유사도가 1.0 근처로 나온다. **등록에 안 쓴
+       녹음 10건 이상**으로 재야 의미가 있다.
+    """
+    wavs = sorted(glob.glob(os.path.join(d, "*.wav")))
+    if not wavs:
+        raise SystemExit(f"wav 가 없다: {d}")
+    T = np.stack([np.asarray(t, dtype=np.float32) for t in temps])
+
+    rows, sims, miss = [], [], 0
+    for p in wavs:
+        y = _padded(_read(p))
+        embs = det.embed_sequence(y)
+        sc = _scores(det, y)
+        n = min(len(embs), len(sc))
+        peak = float(sc[len(sc) - n:].max()) if n else 0.0
+        sim = best_similarity(embs[:n], T)
+        ok = peak >= thr
+        if ok:
+            sims.append(sim)
+        else:
+            miss += 1
+        rows.append((os.path.basename(p), peak, sim, ok))
+
+    print()
+    print(f"{d}  ({len(wavs)}건, 1단계 임계 {thr})")
+    for name, peak, sim, ok in rows:
+        tail = "" if ok else "   <- 1단계에서 못 잡음(2단계 통계에서 뺀다)"
+        print(f"  {'  ' if ok else '🔴'} {name:<24} "
+              f"1단계 {peak:.3f}  유사도 {sim:.3f}{tail}")
+
+    out = {"rows": rows, "sims": sims, "low": None, "stage1_miss": miss}
+    if miss:
+        print()
+        print(f"🔴 {miss}건이 1단계를 못 넘었다 — 임베딩 컷으로는 못 고치는 실패다.")
+    if not sims:
+        print("🔴 채점할 게 하나도 없다 — 컷의 상한을 정할 수 없다.")
+        return out
+
+    a = np.asarray(sims)
+    out["low"] = float(a.min())
+    print()
+    print(f"유사도  최저 {a.min():.3f}  중앙 {np.median(a):.3f}  최대 {a.max():.3f}")
+    print()
+    print("컷별 재현율(이 녹음 기준)")
+    for c in (0.80, 0.82, 0.85, 0.87, 0.90, 0.92):
+        k_ = int((a >= c).sum())
+        print(f"  {c:.2f}   {k_:>3}/{len(a)}   {100 * k_ / len(a):>5.0f}%")
+    print()
+    print(f"➡️ 컷은 **{a.min():.3f} 아래**여야 진짜 호출이 안 죽는다.")
+    print("   --score-noise 의 '최대'와 겹치면 안전한 컷이 없다는 뜻이다 — 켜지 말 것.")
+    return out
+
+
+def _load_templates(out: str):
+    if not os.path.exists(out):
+        raise SystemExit(f"본보기가 없다: {out} — 먼저 등록할 것")
+    t = np.load(out)
+    return list(t[None, :] if t.ndim == 1 else t)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--record", type=int, metavar="N", help="마이크로 N번 녹음해 등록")
     ap.add_argument("--from-dir", metavar="DIR", help="폴더의 wav 들로 등록")
-    ap.add_argument("--score-noise", metavar="WAV", help="긴 소음 녹음으로 컷 정하기")
+    ap.add_argument("--score-noise", metavar="WAV", help="긴 소음 녹음으로 컷의 하한 정하기")
+    ap.add_argument("--score-calls", metavar="DIR",
+                    help="진짜 호출 wav 들로 컷의 상한 정하기(등록에 안 쓴 것으로)")
     ap.add_argument("--out", default=DEFAULT_OUT)
     ap.add_argument("--model-dir", default=DEFAULT_MODEL_DIR)
     ap.add_argument("--classifier", default=DEFAULT_CLASSIFIER)
@@ -178,7 +252,7 @@ def main() -> int:
                     help="기존 본보기에 덧붙인다(화자를 추가할 때)")
     args = ap.parse_args()
 
-    if not (args.record or args.from_dir or args.score_noise):
+    if not (args.record or args.from_dir or args.score_noise or args.score_calls):
         ap.print_help()
         return 2
 
@@ -200,13 +274,16 @@ def main() -> int:
         print(f"\n✅ 본보기 {len(temps)}개 저장: {args.out}")
         print("   설정에 넣을 것: wake.onnx.verify.embed_rescue.templates")
 
-    if args.score_noise:
-        if not temps:
-            if not os.path.exists(args.out):
-                raise SystemExit(f"본보기가 없다: {args.out} — 먼저 등록할 것")
-            t = np.load(args.out)
-            temps = list(t[None, :] if t.ndim == 1 else t)
-        score_noise(det, temps, args.score_noise, args.threshold)
+    if args.score_noise or args.score_calls:
+        temps = temps or _load_templates(args.out)
+        if args.score_noise:
+            score_noise(det, temps, args.score_noise, args.threshold)
+        if args.score_calls:
+            if args.from_dir and (os.path.abspath(args.from_dir)
+                                  == os.path.abspath(args.score_calls)):
+                print("⚠️ 등록에 쓴 폴더를 그대로 채점한다 — 유사도가 1.0 근처로 나온다. "
+                      "등록에 안 쓴 녹음으로 재야 의미가 있다.")
+            score_calls(det, temps, args.score_calls, args.threshold)
     return 0
 
 

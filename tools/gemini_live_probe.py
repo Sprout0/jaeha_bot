@@ -164,39 +164,88 @@ async def one_turn(session, pcm: bytes, pad_s: float) -> dict:
     return m
 
 
-async def run(model: str, items: list[Path], cfg: dict, trim: str,
-              pad_s: float, sink: Path | None) -> list[dict]:
+def _finish(row: dict, model: str) -> dict:
+    usage = row.pop("usage", None)
+    row["cost_usd"] = cost_usd(model, usage)
+    row["cached_tokens"] = cached_tokens(usage)
+    if usage is not None:
+        row["tokens"] = {
+            "prompt": usage.prompt_token_count, "response": usage.response_token_count,
+            "detail_in": [(str(getattr(d.modality, "value", d.modality)), d.token_count)
+                          for d in (usage.prompt_tokens_details or [])],
+            "detail_out": [(str(getattr(d.modality, "value", d.modality)), d.token_count)
+                           for d in (usage.response_tokens_details or [])]}
+    return row
+
+
+def _log(row: dict, n: int, total: int, sink: Path | None) -> None:
+    print(f"  [{n}/{total}] {row['file']:22} "
+          f"첫소리 {row.get('t_first_audio', float('nan')):.3f}s  "
+          f"입력토큰 {(row.get('tokens') or {}).get('prompt', '?'):>5}  "
+          f"${row.get('cost_usd') or 0:.5f}")
+    if sink:
+        with sink.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+
+
+async def run(model: str, items: list[Path], cfg: dict, trim: str, pad_s: float,
+              sink: Path | None, one_session: bool = False) -> list[dict]:
+    """one_session=False 면 발화마다 새 세션(발화끼리 독립 — 지연·CER 용).
+    True 면 한 세션에서 이어서 — **이력이 쌓이는 비용**을 보려는 것이다."""
     import google.genai as genai
 
     client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
     rows: list[dict] = []
+
+    if one_session:
+        async with client.aio.live.connect(model=model, config=cfg) as s:
+            for n, path in enumerate(items, 1):
+                pcm = load_pcm(path, trim)
+                row: dict = {"file": path.name, "turn": n, "sec": len(pcm) / 2 / IN_SR}
+                try:
+                    row |= await one_turn(s, pcm, pad_s)
+                except Exception as e:
+                    row["error"] = f"{type(e).__name__}: {e}"
+                rows.append(_finish(row, model))
+                _log(rows[-1], n, len(items), sink)
+        return rows
+
     for n, path in enumerate(items, 1):
         pcm = load_pcm(path, trim)
-        row: dict = {"file": path.name, "sec": len(pcm) / 2 / IN_SR}
+        row = {"file": path.name, "sec": len(pcm) / 2 / IN_SR}
         try:
             # 발화마다 새 세션 — 이력 누적을 없애 발화끼리 독립으로 만든다.
             async with client.aio.live.connect(model=model, config=cfg) as s:
                 row |= await one_turn(s, pcm, pad_s)
         except Exception as e:
             row["error"] = f"{type(e).__name__}: {e}"
-        usage = row.pop("usage", None)
-        row["cost_usd"] = cost_usd(model, usage)
-        row["cached_tokens"] = cached_tokens(usage)
-        if usage is not None:
-            row["tokens"] = {
-                "prompt": usage.prompt_token_count, "response": usage.response_token_count,
-                "detail_in": [(str(getattr(d.modality, "value", d.modality)), d.token_count)
-                              for d in (usage.prompt_tokens_details or [])],
-                "detail_out": [(str(getattr(d.modality, "value", d.modality)), d.token_count)
-                               for d in (usage.response_tokens_details or [])]}
-        rows.append(row)
-        print(f"  [{n}/{len(items)}] {path.name:22} "
-              f"첫소리 {row.get('t_first_audio', float('nan')):.3f}s  "
-              f"들은말 {row.get('heard', '')[:24]!r}")
-        if sink:
-            with sink.open("a", encoding="utf-8") as f:
-                f.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+        rows.append(_finish(row, model))
+        _log(rows[-1], n, len(items), sink)
     return rows
+
+
+def accumulation_report(rows: list[dict]) -> list[str]:
+    """한 세션 여러 턴에서 이력이 얼마나 쌓이는지.
+
+    🔴 usage 가 **세션 누적**으로 오면 턴별로 더한 합계가 몇 배로 부푼다. 응답 토큰은
+       턴마다 새로 만드는 것이라, 그것까지 단조증가한다면 그 숫자는 누적이다.
+       이 프로젝트는 '재는 도구가 틀려 있었다'로 이미 여러 번 데었다.
+    """
+    tk = [r.get("tokens") for r in rows if r.get("tokens")]
+    if len(tk) < 2:
+        return []
+    pin = [t.get("prompt") or 0 for t in tk]
+    pout = [t.get("response") or 0 for t in tk]
+    grows = all(b > a for a, b in zip(pout, pout[1:]))
+    out = [f"  턴별 입력 토큰: {' -> '.join(str(v) for v in pin)}",
+           f"  턴별 응답 토큰: {' -> '.join(str(v) for v in pout)}"]
+    if grows:
+        out.append("  🔴 응답 토큰까지 단조증가한다 — usage 가 **세션 누적**으로 보인다. "
+                   "턴별 합계를 쓰면 안 되고 마지막 값이 세션 전체 비용이다.")
+    else:
+        out.append(f"  입력이 {pin[0]} -> {pin[-1]} 로 {pin[-1] / max(pin[0], 1):.1f}배 "
+                   "— 이력이 매 턴 다시 실린다면 세션이 길수록 비용이 제곱으로 는다.")
+    return out
 
 
 def summarize(model: str, rows: list[dict]) -> list[str]:
@@ -236,6 +285,8 @@ def main() -> None:
     p.add_argument("--instructions",
                    default="너는 다섯 살 아이의 친구 로봇 '티드'야. 밝은 반말로 한두 문장만, "
                            "30자 안쪽으로 짧게 말해. 이모지나 기호는 쓰지 마.")
+    p.add_argument("--one-session", action="store_true",
+                   help="한 세션에서 이어서 돈다 — 이력이 쌓이는 비용을 보려는 것")
     p.add_argument("--lang", default=None,
                    help="입력 전사 언어(예: ko-KR). 안 주면 자동 — 09-09 실측에서 "
                         "'하이 티드'를 hated/はい てる 로 적었다")
@@ -251,14 +302,18 @@ def main() -> None:
         sys.exit(f"{a.wav_dir} 에 wav 가 없다")
     cfg = session_config(a.silence_ms, a.instructions, a.lang)
     print(f"{a.model} | 발화 {len(items)}개 | VAD {a.silence_ms}ms | "
-          f"입력 {IN_SR}Hz | trim {a.trim} | 전사언어 {a.lang or '자동'}")
+          f"입력 {IN_SR}Hz | trim {a.trim} | 전사언어 {a.lang or '자동'} | "
+          f"{'한 세션' if a.one_session else '발화마다 새 세션'}")
 
     sink = Path(a.json).with_suffix(".jsonl") if a.json else None
     if sink and sink.exists():
         sink.unlink()
-    rows = asyncio.run(run(a.model, items, cfg, a.trim, a.pad, sink))
+    rows = asyncio.run(run(a.model, items, cfg, a.trim, a.pad, sink,
+                           a.one_session))
     print()
     print("\n".join(summarize(a.model, rows)))
+    if a.one_session:
+        print("\n".join(accumulation_report(rows)))
     if a.json:
         Path(a.json).write_text(json.dumps(
             {"model": a.model, "silence_ms": a.silence_ms, "in_sr": IN_SR,

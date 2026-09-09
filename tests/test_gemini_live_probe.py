@@ -10,8 +10,8 @@ OpenAI 쪽에서 배운 것을 그대로 적용한다: usage 모양이 바뀐 �
 import pytest
 from google.genai import types
 
-from tools.gemini_live_probe import (PRICE, cached_tokens, cost_usd,
-                                     session_config)
+from tools.gemini_live_probe import (PRICE, accumulation_report, cached_tokens,
+                                     cost_usd, session_config)
 
 
 def usage(text_in=0, audio_in=0, text_out=0, audio_out=0, cached=0):
@@ -77,3 +77,31 @@ class TestSessionConfig:
         c = session_config(1200, "지시문")
         assert c["realtime_input_config"]["automatic_activity_detection"][
             "silence_duration_ms"] == 1200
+
+
+class TestAccumulation:
+    """한 세션에서 여러 턴을 돌 때, usage 가 누적인지 증분인지 모르면 합계가 틀린다."""
+
+    @staticmethod
+    def rows(prompts, responses):
+        return [{"tokens": {"prompt": p, "response": r}, "cost_usd": 0.001}
+                for p, r in zip(prompts, responses)]
+
+    def test_응답이_단조증가하면_누적으로_보고_경고한다(self):
+        # 🔴 누적인데 턴별로 더하면 비용이 몇 배로 부풀고, "S2S 는 못 쓴다"는
+        #    정반대 결론이 난다. 응답 토큰은 턴마다 새로 만드는 것이라
+        #    단조증가한다면 그 값은 세션 누계다.
+        out = accumulation_report(self.rows([100, 220, 350], [40, 85, 130]))
+        assert any("누적" in line for line in out)
+
+    def test_응답이_들쭉날쭉하면_증분으로_본다(self):
+        out = accumulation_report(self.rows([100, 220, 350], [40, 25, 60]))
+        assert not any("누적" in line for line in out)
+
+    def test_입력이_늘어나는지_보여준다(self):
+        # 이력이 매 턴 다시 실리는지가 비용의 핵심이다. 숫자를 그대로 보여야 한다.
+        out = "\n".join(accumulation_report(self.rows([100, 220, 350], [40, 25, 60])))
+        assert "100" in out and "350" in out
+
+    def test_한_턴이면_판정하지_않는다(self):
+        assert accumulation_report(self.rows([100], [40])) == []

@@ -1,0 +1,328 @@
+{
+ "model": "gemini-3.1-flash-live-preview",
+ "silence_ms": 1200,
+ "in_sr": 16000,
+ "trim": "speech",
+ "rows": [
+  {
+   "file": "또박또박_00.wav",
+   "turn": 1,
+   "sec": 0.795,
+   "heard": "altes",
+   "t_first_text": 1.671839400000863,
+   "said": "안녕! 나랑 놀자! 신나는 거 가지고 왔어?",
+   "t_first_audio": 1.671839400000863,
+   "out_bytes": 136322,
+   "cost_usd": 0.00112125,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 219,
+    "response": 77,
+    "detail_in": [
+     [
+      "TEXT",
+      171
+     ],
+     [
+      "AUDIO",
+      23
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      77
+     ]
+    ]
+   }
+  },
+  {
+   "file": "또박또박_01.wav",
+   "turn": 2,
+   "sec": 0.885,
+   "heard": "hated",
+   "t_first_text": 1.5875335000000632,
+   "said": "왜 그래 무슨 일 있어? 나한테 말해줘!",
+   "t_first_audio": 1.5875335000000632,
+   "out_bytes": 136350,
+   "cost_usd": 0.001437,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 365,
+    "response": 76,
+    "detail_in": [
+     [
+      "TEXT",
+      188
+     ],
+     [
+      "AUDIO",
+      128
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      76
+     ]
+    ]
+   }
+  },
+  {
+   "file": "또박또박_02.wav",
+   "turn": 3,
+   "sec": 0.855,
+   "heard": "하이 키드",
+   "t_first_text": 1.635841000000255,
+   "said": "친구야 안녕! 오늘은 어떤 재미난 이야기 할까? 말해줘!",
+   "t_first_audio": 1.635841000000255,
+   "out_bytes": 182402,
+   "cost_usd": 0.00206025,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 506,
+    "response": 101,
+    "detail_in": [
+     [
+      "TEXT",
+      203
+     ],
+     [
+      "AUDIO",
+      232
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      101
+     ]
+    ]
+   }
+  },
+  {
+   "file": "또박또박_03.wav",
+   "turn": 4,
+   "sec": 0.825,
+   "heard": "hated",
+   "t_first_text": 1.637491399999817,
+   "said": "나 불렀어? 신나게 놀자! 뭐부터 할까?",
+   "t_first_audio": 1.637491399999817,
+   "out_bytes": 135362,
+   "cost_usd": 0.0021765,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 681,
+    "response": 77,
+    "detail_in": [
+     [
+      "TEXT",
+      222
+     ],
+     [
+      "AUDIO",
+      362
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      77
+     ]
+    ]
+   }
+  },
+  {
+   "file": "또박또박_04.wav",
+   "turn": 5,
+   "sec": 1.275,
+   "heard": "hated",
+   "t_first_text": 1.858919700000115,
+   "said": "또 안녕! 우리 진짜 친구다 그치? 뭐 하고 놀래?",
+   "t_first_audio": 1.858919700000115,
+   "out_bytes": 184802,
+   "cost_usd": 0.00282,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 827,
+    "response": 103,
+    "detail_in": [
+     [
+      "TEXT",
+      240
+     ],
+     [
+      "AUDIO",
+      468
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      103
+     ]
+    ]
+   }
+  },
+  {
+   "file": "보통_00.wav",
+   "turn": 6,
+   "sec": 0.765,
+   "heard": "I did it.",
+   "t_first_text": 1.6365759999998772,
+   "said": "우와 또 만났네! 우리 더 재미있게 놀아볼까? 신난다!",
+   "t_first_audio": 1.6365759999998772,
+   "out_bytes": 207362,
+   "cost_usd": 0.003357,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 1003,
+    "response": 114,
+    "detail_in": [
+     [
+      "TEXT",
+      260
+     ],
+     [
+      "AUDIO",
+      598
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      114
+     ]
+    ]
+   }
+  },
+  {
+   "file": "보통_01.wav",
+   "turn": 7,
+   "sec": 0.765,
+   "heard": "아이티드",
+   "t_first_text": 1.77904480000052,
+   "said": "반가워! 오늘은 어떤 모험을 해볼까? 빨리 알려줘!",
+   "t_first_audio": 1.77904480000052,
+   "out_bytes": 194430,
+   "cost_usd": 0.00371625,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 1192,
+    "response": 107,
+    "detail_in": [
+     [
+      "TEXT",
+      283
+     ],
+     [
+      "AUDIO",
+      740
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      107
+     ]
+    ]
+   }
+  },
+  {
+   "file": "보통_02.wav",
+   "turn": 8,
+   "sec": 0.765,
+   "heard": "hated",
+   "t_first_text": 1.7874236000006931,
+   "said": "안녕 친구야! 오늘도 신나게 놀아보자! 무슨 놀이 할까?",
+   "t_first_audio": 1.7874236000006931,
+   "out_bytes": 197310,
+   "cost_usd": 0.0041475,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 1370,
+    "response": 108,
+    "detail_in": [
+     [
+      "TEXT",
+      302
+     ],
+     [
+      "AUDIO",
+      875
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      108
+     ]
+    ]
+   }
+  },
+  {
+   "file": "보통_03.wav",
+   "turn": 9,
+   "sec": 0.795,
+   "heard": "아이들",
+   "t_first_text": 1.6932430999995631,
+   "said": "친구야 또 안녕! 우리 진짜 자주 만난다! 오늘은 어떤 재미있는 이야기 들려줄거야?",
+   "t_first_audio": 1.6932430999995631,
+   "out_bytes": 284190,
+   "cost_usd": 0.005064,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 1554,
+    "response": 149,
+    "detail_in": [
+     [
+      "TEXT",
+      324
+     ],
+     [
+      "AUDIO",
+      1011
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      149
+     ]
+    ]
+   }
+  },
+  {
+   "file": "보통_04.wav",
+   "turn": 10,
+   "sec": 0.825,
+   "heard": "할 줄 돼.",
+   "t_first_text": 1.7362737000003108,
+   "said": "안녕! 나 불렀어? 우리 신나는 놀이 하자! 뭐부터 할래?",
+   "t_first_audio": 1.7362737000003108,
+   "out_bytes": 205444,
+   "cost_usd": 0.00520425,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 1791,
+    "response": 115,
+    "detail_in": [
+     [
+      "TEXT",
+      351
+     ],
+     [
+      "AUDIO",
+      1187
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      115
+     ]
+    ]
+   }
+  }
+ ]
+}

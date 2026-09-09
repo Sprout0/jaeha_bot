@@ -1,0 +1,1209 @@
+{
+ "model": "gpt-realtime-mini",
+ "silence_ms": 1200,
+ "trim": "speech",
+ "transcribe_model": "gpt-4o-transcribe",
+ "fresh": false,
+ "rows": [
+  {
+   "t_vad": 1.4621903000006569,
+   "t_first_text": 1.5872222000007241,
+   "t_first_audio": 1.7403171000005386,
+   "usage": {
+    "total_tokens": 168,
+    "input_tokens": 93,
+    "output_tokens": 75,
+    "input_token_details": {
+     "text_tokens": 60,
+     "audio_tokens": 33,
+     "image_tokens": 0,
+     "cached_tokens": 0,
+     "cached_tokens_details": {
+      "text_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 21,
+     "audio_tokens": 54
+    }
+   },
+   "said": "정말 재밌겠다! 어디 보이지?",
+   "heard": "아기를 보고 있어요.",
+   "file": "소아남여_소아남여01_F_1522755893-0_3_수도권_실내_50002.wav",
+   "ref": "바다를 보고 있(SP:떠)어요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.4386938999996346,
+   "t_first_text": 1.5837235999997574,
+   "t_first_audio": 1.7461112999999386,
+   "usage": {
+    "total_tokens": 285,
+    "input_tokens": 215,
+    "output_tokens": 70,
+    "input_token_details": {
+     "text_tokens": 91,
+     "audio_tokens": 124,
+     "image_tokens": 0,
+     "cached_tokens": 128,
+     "cached_tokens_details": {
+      "text_tokens": 64,
+      "audio_tokens": 64,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 20,
+     "audio_tokens": 50
+    }
+   },
+   "said": "좋아, 천천히 같이 보자!",
+   "heard": "먹고 자야 해.",
+   "file": "소아남여_소아남여01_F_1522755893-0_3_수도권_실내_50005.wav",
+   "ref": "(SN:선크림을 발라요)(NO:)",
+   "age": 3
+  },
+  {
+   "t_vad": 1.386290899999949,
+   "t_first_text": 1.5250527999996848,
+   "t_first_audio": 1.6788802999999461,
+   "usage": {
+    "total_tokens": 356,
+    "input_tokens": 273,
+    "output_tokens": 83,
+    "input_token_details": {
+     "text_tokens": 113,
+     "audio_tokens": 160,
+     "image_tokens": 0,
+     "cached_tokens": 128,
+     "cached_tokens_details": {
+      "text_tokens": 64,
+      "audio_tokens": 64,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 24,
+     "audio_tokens": 59
+    }
+   },
+   "said": "좋아, 같이 색깔 섞어서 만들자!",
+   "heard": "엄마는 가래를 만들어요.",
+   "file": "소아남여_소아남여01_F_1522755893-0_3_수도권_실내_50006.wav",
+   "ref": "엄(SP:마랑) 과자를 만들어요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.4384258999998565,
+   "t_first_text": 1.5834014000001844,
+   "t_first_audio": 1.748367899999721,
+   "usage": {
+    "total_tokens": 396,
+    "input_tokens": 336,
+    "output_tokens": 60,
+    "input_token_details": {
+     "text_tokens": 139,
+     "audio_tokens": 197,
+     "image_tokens": 0,
+     "cached_tokens": 128,
+     "cached_tokens_details": {
+      "text_tokens": 64,
+      "audio_tokens": 64,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 17,
+     "audio_tokens": 43
+    }
+   },
+   "said": "맞아, 맛있게 먹자!",
+   "heard": "과자는 달콤해요.",
+   "file": "소아남여_소아남여01_F_1522755893-0_3_수도권_실내_50007.wav",
+   "ref": "과자는 달콤해요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.5059940000001006,
+   "t_first_text": 1.6406708000004073,
+   "t_first_audio": 1.805838400000539,
+   "usage": {
+    "total_tokens": 440,
+    "input_tokens": 368,
+    "output_tokens": 72,
+    "input_token_details": {
+     "text_tokens": 156,
+     "audio_tokens": 212,
+     "image_tokens": 0,
+     "cached_tokens": 192,
+     "cached_tokens_details": {
+      "text_tokens": 128,
+      "audio_tokens": 64,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 19,
+     "audio_tokens": 53
+    }
+   },
+   "said": "좋지! 어떤 모양 만들까?",
+   "heard": "호랑빵을 조리해.",
+   "file": "소아남여_소아남여01_F_1524006084-0_3_수도권_실내_50586.wav",
+   "ref": "비눗방울 놀이해요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.468701200000396,
+   "t_first_text": 1.611902600000576,
+   "t_first_audio": 1.7780996999999843,
+   "heard": "무릎이 아파요.",
+   "usage": {
+    "total_tokens": 562,
+    "input_tokens": 432,
+    "output_tokens": 130,
+    "input_token_details": {
+     "text_tokens": 179,
+     "audio_tokens": 253,
+     "image_tokens": 0,
+     "cached_tokens": 256,
+     "cached_tokens_details": {
+      "text_tokens": 128,
+      "audio_tokens": 128,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 34,
+     "audio_tokens": 96
+    }
+   },
+   "said": "아이고, 어디가 아픈지 말해줄래? 같이 도와줄 방법 찾아보자.",
+   "file": "소아남여_소아남여01_F_1524006084-0_3_수도권_실내_50289.wav",
+   "ref": "무릎이 아파요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.488926199999696,
+   "t_first_text": 1.6498774000001504,
+   "t_first_audio": 1.883267999999589,
+   "heard": "기분구라요.",
+   "usage": {
+    "total_tokens": 644,
+    "input_tokens": 541,
+    "output_tokens": 103,
+    "input_token_details": {
+     "text_tokens": 215,
+     "audio_tokens": 326,
+     "image_tokens": 0,
+     "cached_tokens": 320,
+     "cached_tokens_details": {
+      "text_tokens": 128,
+      "audio_tokens": 192,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 31,
+     "audio_tokens": 72
+    }
+   },
+   "said": "음, 조금 쉬어가면 어떨까? 괜찮아질 수 있어.",
+   "file": "소아남여_소아남여01_F_1524006084-0_3_수도권_실내_50993.wav",
+   "ref": "집을 그려요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.4696719000003213,
+   "t_first_text": 1.6336648999995305,
+   "t_first_audio": 1.8048222999996142,
+   "heard": "고간시간이에요.",
+   "usage": {
+    "total_tokens": 706,
+    "input_tokens": 611,
+    "output_tokens": 95,
+    "input_token_details": {
+     "text_tokens": 246,
+     "audio_tokens": 365,
+     "image_tokens": 0,
+     "cached_tokens": 384,
+     "cached_tokens_details": {
+      "text_tokens": 192,
+      "audio_tokens": 192,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 29,
+     "audio_tokens": 66
+    }
+   },
+   "said": "힘들면 잠깐 쉬자. 옆에서 도와줄게.",
+   "file": "소아남여_소아남여01_F_1524006084-0_3_수도권_실내_50341.wav",
+   "ref": "(SN:흐흐)학교 갈 시간이에요(SP:요요)",
+   "age": 3
+  },
+  {
+   "t_vad": 1.444410600000083,
+   "t_first_text": 1.5952532999999676,
+   "t_first_audio": 1.7605269999994562,
+   "heard": "초콜릿 가져요.",
+   "usage": {
+    "total_tokens": 741,
+    "input_tokens": 667,
+    "output_tokens": 74,
+    "input_token_details": {
+     "text_tokens": 275,
+     "audio_tokens": 392,
+     "image_tokens": 0,
+     "cached_tokens": 384,
+     "cached_tokens_details": {
+      "text_tokens": 192,
+      "audio_tokens": 192,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 22,
+     "audio_tokens": 52
+    }
+   },
+   "said": "조금만 기다려, 바로 준비해줄게!",
+   "file": "소아남여_소아남여01_M_1525843491-3_3_수도권_실내_50010.wav",
+   "ref": "초콜릿 과자예요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.4730328000005102,
+   "t_first_text": 1.6437430000005406,
+   "t_first_audio": 1.8348550999999134,
+   "usage": {
+    "total_tokens": 781,
+    "input_tokens": 707,
+    "output_tokens": 74,
+    "input_token_details": {
+     "text_tokens": 297,
+     "audio_tokens": 410,
+     "image_tokens": 0,
+     "cached_tokens": 0,
+     "cached_tokens_details": {
+      "text_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 21,
+     "audio_tokens": 53
+    }
+   },
+   "said": "좋아, 이제 맛있게 먹어봐!",
+   "heard": "바닷가에 왔어요.",
+   "file": "소아남여_소아남여01_M_1525843491-3_3_수도권_실내_50001.wav",
+   "ref": "바닷가에 왔어요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.4702338999995845,
+   "t_first_text": 1.6473011999996743,
+   "t_first_audio": 1.8135487999998077,
+   "heard": "과자는 제가 좋아요.",
+   "usage": {
+    "total_tokens": 856,
+    "input_tokens": 771,
+    "output_tokens": 85,
+    "input_token_details": {
+     "text_tokens": 320,
+     "audio_tokens": 451,
+     "image_tokens": 0,
+     "cached_tokens": 0,
+     "cached_tokens_details": {
+      "text_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 25,
+     "audio_tokens": 60
+    }
+   },
+   "said": "그렇구나! 어떤 과자 제일 좋아해?",
+   "file": "소아남여_소아남여01_M_1525843491-3_3_수도권_실내_50009.wav",
+   "ref": "(SN:)과자 냄새가 좋아요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.4396518999992622,
+   "t_first_text": 1.598827299999357,
+   "t_first_audio": 1.7727684999999838,
+   "usage": {
+    "total_tokens": 946,
+    "input_tokens": 846,
+    "output_tokens": 100,
+    "input_token_details": {
+     "text_tokens": 347,
+     "audio_tokens": 499,
+     "image_tokens": 0,
+     "cached_tokens": 512,
+     "cached_tokens_details": {
+      "text_tokens": 256,
+      "audio_tokens": 256,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 27,
+     "audio_tokens": 73
+    }
+   },
+   "said": "오, 그럼 같이 골라볼까? 어떤 거 좋아해?",
+   "heard": "가지를 오브네여.",
+   "file": "소아남여_소아남여01_M_1525843491-3_3_수도권_실내_50008.wav",
+   "ref": "과자를 오븐에 넣어요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.4388806999995722,
+   "t_first_text": 1.5804326999996192,
+   "t_first_audio": 1.7309446999997817,
+   "usage": {
+    "total_tokens": 982,
+    "input_tokens": 916,
+    "output_tokens": 66,
+    "input_token_details": {
+     "text_tokens": 374,
+     "audio_tokens": 542,
+     "image_tokens": 0,
+     "cached_tokens": 704,
+     "cached_tokens_details": {
+      "text_tokens": 320,
+      "audio_tokens": 384,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 19,
+     "audio_tokens": 47
+    }
+   },
+   "said": "지금 바로 함께 골라볼까?",
+   "heard": "망을 사요.",
+   "file": "소아남여_소아남여02_F_1527054175-1_3_경상_실내_52148.wav",
+   "ref": "빵을 사요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.4244725000007747,
+   "t_first_text": 1.5977956000006088,
+   "t_first_audio": 1.7658471000004283,
+   "usage": {
+    "total_tokens": 1014,
+    "input_tokens": 945,
+    "output_tokens": 69,
+    "input_token_details": {
+     "text_tokens": 393,
+     "audio_tokens": 552,
+     "image_tokens": 0,
+     "cached_tokens": 640,
+     "cached_tokens_details": {
+      "text_tokens": 256,
+      "audio_tokens": 384,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 21,
+     "audio_tokens": 48
+    }
+   },
+   "said": "오, 맛있겠다! 같이 만들어볼까?",
+   "heard": "오늘은 오믈렛이에요.",
+   "file": "소아남여_소아남여02_F_1527054175-1_3_경상_실내_52062.wav",
+   "ref": "오늘은 오믈렛이에요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.4601169999996273,
+   "t_first_text": 1.6553873999991993,
+   "t_first_audio": 1.83015929999965,
+   "heard": "밝게 인사해 주세요.",
+   "usage": {
+    "total_tokens": 1074,
+    "input_tokens": 1006,
+    "output_tokens": 68,
+    "input_token_details": {
+     "text_tokens": 416,
+     "audio_tokens": 590,
+     "image_tokens": 0,
+     "cached_tokens": 0,
+     "cached_tokens_details": {
+      "text_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 21,
+     "audio_tokens": 47
+    }
+   },
+   "said": "안녕! 반가워! 잘 지내?",
+   "file": "소아남여_소아남여02_F_1527054175-1_3_경상_실내_52059.wav",
+   "ref": "밝게 인사해주세요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.4601948999998058,
+   "t_first_text": 1.644060300000092,
+   "t_first_audio": 1.8140328999998019,
+   "usage": {
+    "total_tokens": 1129,
+    "input_tokens": 1061,
+    "output_tokens": 68,
+    "input_token_details": {
+     "text_tokens": 439,
+     "audio_tokens": 622,
+     "image_tokens": 0,
+     "cached_tokens": 576,
+     "cached_tokens_details": {
+      "text_tokens": 256,
+      "audio_tokens": 320,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 22,
+     "audio_tokens": 46
+    }
+   },
+   "said": "우와, 정말 예쁘게 변했구나!",
+   "heard": "부엌이 예뻐졌어요.",
+   "file": "소아남여_소아남여02_F_1527054175-1_3_경상_실내_52040.wav",
+   "ref": "부엌이 예뻐졌어요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.4290053000004264,
+   "t_first_text": 1.6194815999997445,
+   "t_first_audio": 1.7844539999996414,
+   "usage": {
+    "total_tokens": 1237,
+    "input_tokens": 1147,
+    "output_tokens": 90,
+    "input_token_details": {
+     "text_tokens": 463,
+     "audio_tokens": 684,
+     "image_tokens": 0,
+     "cached_tokens": 896,
+     "cached_tokens_details": {
+      "text_tokens": 384,
+      "audio_tokens": 512,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 27,
+     "audio_tokens": 63
+    }
+   },
+   "said": "그럼 천천히 해보자! 함께 골라볼까?",
+   "heard": "루루가 징글벨을 불러요.",
+   "file": "소아남여_소아남여02_M_1528228790-3_3_수도권_실내_52379.wav",
+   "ref": "여러 가지 색깔 펜도(SN:) 골라요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.4775994000001447,
+   "t_first_text": 1.786280799999986,
+   "t_first_audio": 1.9476991999999882,
+   "heard": "다리 위를 돌려요.",
+   "usage": {
+    "total_tokens": 1323,
+    "input_tokens": 1239,
+    "output_tokens": 84,
+    "input_token_details": {
+     "text_tokens": 492,
+     "audio_tokens": 747,
+     "image_tokens": 0,
+     "cached_tokens": 1024,
+     "cached_tokens_details": {
+      "text_tokens": 448,
+      "audio_tokens": 576,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 27,
+     "audio_tokens": 57
+    }
+   },
+   "said": "좋아, 그럼 하나씩 차근차근 해보자!",
+   "file": "소아남여_소아남여02_M_1528228790-3_3_수도권_실내_52114.wav",
+   "ref": "(NO:뿅) 다리미를  눌러요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.4860638000000108,
+   "t_first_text": 1.6748977999995986,
+   "t_first_audio": 1.8586023999996542,
+   "heard": "떼떼기 블록이에요.",
+   "usage": {
+    "total_tokens": 1379,
+    "input_tokens": 1292,
+    "output_tokens": 87,
+    "input_token_details": {
+     "text_tokens": 519,
+     "audio_tokens": 773,
+     "image_tokens": 0,
+     "cached_tokens": 832,
+     "cached_tokens_details": {
+      "text_tokens": 384,
+      "audio_tokens": 448,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 26,
+     "audio_tokens": 61
+    }
+   },
+   "said": "그럼 천천히 해볼까? 같이 해보자!",
+   "file": "소아남여_소아남여02_M_1528228790-3_3_수도권_실내_52002.wav",
+   "ref": "(NO:)(SP:색색)의 블록이에요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.4654036000001724,
+   "t_first_text": 1.6516805999999633,
+   "t_first_audio": 1.8441012000002956,
+   "usage": {
+    "total_tokens": 1446,
+    "input_tokens": 1366,
+    "output_tokens": 80,
+    "input_token_details": {
+     "text_tokens": 545,
+     "audio_tokens": 821,
+     "image_tokens": 0,
+     "cached_tokens": 1088,
+     "cached_tokens_details": {
+      "text_tokens": 448,
+      "audio_tokens": 640,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 22,
+     "audio_tokens": 58
+    }
+   },
+   "said": "좋아, 천천히 하나씩 만들어보자!",
+   "heard": "배고프다고요.",
+   "file": "소아남여_소아남여02_M_1528228790-3_3_수도권_실내_53677.wav",
+   "ref": "(NO:)케이크를 초를 꽃아요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.4255040999996709,
+   "t_first_text": 1.634028099999341,
+   "t_first_audio": 1.837365299999874,
+   "usage": {
+    "total_tokens": 1506,
+    "input_tokens": 1438,
+    "output_tokens": 68,
+    "input_token_details": {
+     "text_tokens": 567,
+     "audio_tokens": 871,
+     "image_tokens": 0,
+     "cached_tokens": 1216,
+     "cached_tokens_details": {
+      "text_tokens": 512,
+      "audio_tokens": 704,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 20,
+     "audio_tokens": 48
+    }
+   },
+   "said": "그럼 조금 쉬고 다시 해볼까?",
+   "heard": "오늘은 나는 와요.",
+   "file": "소아남여_소아남여03_M_1524011367-0_3_수도권_실내_54154.wav",
+   "ref": "반죽을 떼서 나누어요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.431692699999985,
+   "t_first_text": 1.624433400000271,
+   "t_first_audio": 1.8427643000004537,
+   "heard": "좋은 호텔 가요.",
+   "usage": {
+    "total_tokens": 1570,
+    "input_tokens": 1485,
+    "output_tokens": 85,
+    "input_token_details": {
+     "text_tokens": 589,
+     "audio_tokens": 896,
+     "image_tokens": 0,
+     "cached_tokens": 1088,
+     "cached_tokens_details": {
+      "text_tokens": 448,
+      "audio_tokens": 640,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 26,
+     "audio_tokens": 59
+    }
+   },
+   "said": "괜찮아, 천천히 하나씩 해보자.",
+   "file": "소아남여_소아남여03_M_1524011367-0_3_수도권_실내_54090.wav",
+   "ref": "좋은 소리가 나요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.4302093000005698,
+   "t_first_text": 1.6420387000007395,
+   "t_first_audio": 1.8214682000007087,
+   "heard": "다음에는 둘이 많이 와서요!",
+   "usage": {
+    "total_tokens": 1717,
+    "input_tokens": 1597,
+    "output_tokens": 120,
+    "input_token_details": {
+     "text_tokens": 617,
+     "audio_tokens": 980,
+     "image_tokens": 0,
+     "cached_tokens": 1280,
+     "cached_tokens_details": {
+      "text_tokens": 512,
+      "audio_tokens": 768,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 33,
+     "audio_tokens": 87
+    }
+   },
+   "said": "알겠어, 차근차근 하나씩 해보면 돼! 같이 해보자!",
+   "file": "소아남여_소아남여03_M_1524011367-0_3_수도권_실내_54075.wav",
+   "ref": "(NO:처음에는 ) 눈이 많이왔어요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.4682934000002206,
+   "t_first_text": 1.6815638999996736,
+   "t_first_audio": 1.887942600000315,
+   "heard": "나는 아직 두발자전거를 못 타요.",
+   "usage": {
+    "total_tokens": 1817,
+    "input_tokens": 1707,
+    "output_tokens": 110,
+    "input_token_details": {
+     "text_tokens": 650,
+     "audio_tokens": 1057,
+     "image_tokens": 0,
+     "cached_tokens": 1408,
+     "cached_tokens_details": {
+      "text_tokens": 576,
+      "audio_tokens": 832,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 32,
+     "audio_tokens": 78
+    }
+   },
+   "said": "괜찮아, 천천히 해봐. 내가 옆에서 도와줄게.",
+   "file": "소아남여_소아남여03_M_1524011367-0_3_수도권_실내_54162.wav",
+   "ref": "친구는 아직 두발 자전거를 못 타요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.4752418999996735,
+   "t_first_text": 1.6890550999996776,
+   "t_first_audio": 1.8647273999995377,
+   "heard": "아빠와 인사했고.",
+   "usage": {
+    "total_tokens": 1901,
+    "input_tokens": 1762,
+    "output_tokens": 139,
+    "input_token_details": {
+     "text_tokens": 682,
+     "audio_tokens": 1080,
+     "image_tokens": 0,
+     "cached_tokens": 1472,
+     "cached_tokens_details": {
+      "text_tokens": 576,
+      "audio_tokens": 896,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 40,
+     "audio_tokens": 99
+    }
+   },
+   "said": "음, 아빠랑 이야기 나누는 거 좋겠어. 편하게 말해보면 좋을 것 같아.",
+   "file": "소아남여_소아남여03_M_1525843491-2_3_수도권_실내_54018.wav",
+   "ref": "아빠와 인사해요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.505920900000092,
+   "t_first_text": 1.7022538000001077,
+   "t_first_audio": 1.8715167999998812,
+   "heard": "할머니가 물어보세요.",
+   "usage": {
+    "total_tokens": 2053,
+    "input_tokens": 1867,
+    "output_tokens": 186,
+    "input_token_details": {
+     "text_tokens": 722,
+     "audio_tokens": 1145,
+     "image_tokens": 0,
+     "cached_tokens": 1600,
+     "cached_tokens_details": {
+      "text_tokens": 640,
+      "audio_tokens": 960,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 48,
+     "audio_tokens": 138
+    }
+   },
+   "said": "지금 그 상황이 조금 힘들면 천천히 얘기해봐. 같이 해결 방법 찾아보자. 전문가도 도움될 수 있어.",
+   "file": "소아남여_소아남여03_M_1525843491-2_3_수도권_실내_54007.wav",
+   "ref": "할머니가 물어보세요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.566349600000649,
+   "t_first_text": 1.8336624000003212,
+   "t_first_audio": 1.997778300000391,
+   "heard": "난 보라색 가방을 갖고 싶어요.",
+   "usage": {
+    "total_tokens": 2143,
+    "input_tokens": 2005,
+    "output_tokens": 138,
+    "input_token_details": {
+     "text_tokens": 768,
+     "audio_tokens": 1237,
+     "image_tokens": 0,
+     "cached_tokens": 1408,
+     "cached_tokens_details": {
+      "text_tokens": 576,
+      "audio_tokens": 832,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 39,
+     "audio_tokens": 99
+    }
+   },
+   "said": "그럼 하나씩 차근차근 정리해보자. 무엇부터 넣을지 같이 생각해볼까?",
+   "file": "소아남여_소아남여03_M_1525843491-2_3_수도권_실내_54014.wav",
+   "ref": "나는 보라색 가방이 갖고 싶어요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.2029311999995116,
+   "t_first_text": 1.4137455000000045,
+   "t_first_audio": 1.5851369000001796,
+   "heard": "그렇지만 싫어.",
+   "usage": {
+    "total_tokens": 2154,
+    "input_tokens": 2048,
+    "output_tokens": 106,
+    "input_token_details": {
+     "text_tokens": 803,
+     "audio_tokens": 1245,
+     "image_tokens": 0,
+     "cached_tokens": 1728,
+     "cached_tokens_details": {
+      "text_tokens": 704,
+      "audio_tokens": 1024,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 32,
+     "audio_tokens": 74
+    }
+   },
+   "said": "괜찮아, 천천히 해보면 돼! 내가 도와줄게.",
+   "file": "소아남여_소아남여03_M_1525843491-2_3_수도권_실내_54020.wav",
+   "ref": "(SP:나도 교실에 들어가요)",
+   "age": 3
+  },
+  {
+   "t_vad": 1.4747488000002704,
+   "t_first_text": 1.7001453000002584,
+   "t_first_audio": 1.913886399999683,
+   "heard": "인찰광은 용감해.",
+   "usage": {
+    "total_tokens": 2198,
+    "input_tokens": 2097,
+    "output_tokens": 101,
+    "input_token_details": {
+     "text_tokens": 833,
+     "audio_tokens": 1264,
+     "image_tokens": 0,
+     "cached_tokens": 1856,
+     "cached_tokens_details": {
+      "text_tokens": 768,
+      "audio_tokens": 1088,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 27,
+     "audio_tokens": 74
+    }
+   },
+   "said": "맞아, 정말 용기 있구나! 계속 잘하고 있어!",
+   "file": "소아남여_소아남여04_F_1527936509-0_3_경상_실내_56066.wav",
+   "ref": "경찰관은 용감해",
+   "age": 3
+  },
+  {
+   "t_vad": 7.660000028408831e-05,
+   "t_first_text": 0.00017289999959757552,
+   "t_first_audio": 0.0002457999999023741,
+   "heard": "연애 그림을 그려요.",
+   "usage": {
+    "total_tokens": 2271,
+    "input_tokens": 2176,
+    "output_tokens": 95,
+    "input_token_details": {
+     "text_tokens": 860,
+     "audio_tokens": 1316,
+     "image_tokens": 0,
+     "cached_tokens": 1920,
+     "cached_tokens_details": {
+      "text_tokens": 768,
+      "audio_tokens": 1152,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 26,
+     "audio_tokens": 69
+    }
+   },
+   "said": "좋아! 어떤 그림 그릴지 같이 생각해보자.",
+   "file": "소아남여_소아남여04_F_1527936509-0_3_경상_실내_56018.wav",
+   "ref": "(FP:음)연에 그림을 그려요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.4359146000006149,
+   "t_first_text": 1.6626560000004247,
+   "t_first_audio": 1.8331062000006568,
+   "heard": "이 물약은 너무 싸.",
+   "usage": {
+    "total_tokens": 2334,
+    "input_tokens": 2228,
+    "output_tokens": 106,
+    "input_token_details": {
+     "text_tokens": 886,
+     "audio_tokens": 1342,
+     "image_tokens": 0,
+     "cached_tokens": 2048,
+     "cached_tokens_details": {
+      "text_tokens": 832,
+      "audio_tokens": 1216,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 32,
+     "audio_tokens": 74
+    }
+   },
+   "said": "아이고, 그럴 땐 조금 쉬어가면서 천천히 해보자.",
+   "file": "소아남여_소아남여04_F_1527936509-0_3_경상_실내_56055.wav",
+   "ref": "이 물약은 너무 써",
+   "age": 3
+  },
+  {
+   "t_vad": 1.4717908000002353,
+   "t_first_text": 1.6923712999996496,
+   "t_first_audio": 1.8574594000001525,
+   "heard": "창문에 부딪혀서 깨졌어.",
+   "usage": {
+    "total_tokens": 2456,
+    "input_tokens": 2302,
+    "output_tokens": 154,
+    "input_token_details": {
+     "text_tokens": 918,
+     "audio_tokens": 1384,
+     "image_tokens": 0,
+     "cached_tokens": 2048,
+     "cached_tokens_details": {
+      "text_tokens": 832,
+      "audio_tokens": 1216,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 42,
+     "audio_tokens": 112
+    }
+   },
+   "said": "그거 많이 놀랐겠다. 천천히 닦고, 부모님께도 알려주면 좋을 것 같아.",
+   "file": "소아남여_소아남여04_F_1527936509-0_3_경상_실내_56077.wav",
+   "ref": "창문이 부딪혀서 깨졌어",
+   "age": 3
+  },
+  {
+   "t_vad": 1.4880171000004339,
+   "t_first_text": 1.7160737000003792,
+   "t_first_audio": 1.9013661000008142,
+   "heard": "이제 나무들 심어요.",
+   "usage": {
+    "total_tokens": 2504,
+    "input_tokens": 2414,
+    "output_tokens": 90,
+    "input_token_details": {
+     "text_tokens": 960,
+     "audio_tokens": 1454,
+     "image_tokens": 0,
+     "cached_tokens": 2176,
+     "cached_tokens_details": {
+      "text_tokens": 896,
+      "audio_tokens": 1280,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 27,
+     "audio_tokens": 63
+    }
+   },
+   "said": "좋아! 어떤 나무를 심고 싶은지 말해봐.",
+   "file": "소아남여_소아남여05_M_1529870693-0_3_수도권_실내_58030.wav",
+   "ref": "이제 나무도 심어요",
+   "age": 3
+  },
+  {
+   "t_vad": 1.4710123000004387,
+   "t_first_text": 1.7268270000004122,
+   "t_first_audio": 1.9708166999998866,
+   "usage": {
+    "total_tokens": 2573,
+    "input_tokens": 2487,
+    "output_tokens": 86,
+    "input_token_details": {
+     "text_tokens": 985,
+     "audio_tokens": 1502,
+     "image_tokens": 0,
+     "cached_tokens": 2176,
+     "cached_tokens_details": {
+      "text_tokens": 896,
+      "audio_tokens": 1280,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 25,
+     "audio_tokens": 61
+    }
+   },
+   "said": "그래, 꼭 바르게 앉아서 먹어보자.",
+   "heard": "똑바로 앉아서 먹어야 돼요.",
+   "file": "소아남여_소아남여05_M_1529870693-0_3_수도권_실내_58002.wav",
+   "ref": "(SP:똑바로 먹어야 해요)(NO: 똑바로 앉아서 먹어야 해요 )똑바로 앉아서 먹어야 해요 ",
+   "age": 3
+  },
+  {
+   "t_vad": 1.5449484000000666,
+   "t_first_text": 1.7452919999996084,
+   "t_first_audio": 1.9137621999998373,
+   "heard": "동물도 많이 아파.",
+   "usage": {
+    "total_tokens": 2687,
+    "input_tokens": 2545,
+    "output_tokens": 142,
+    "input_token_details": {
+     "text_tokens": 1010,
+     "audio_tokens": 1535,
+     "image_tokens": 0,
+     "cached_tokens": 2304,
+     "cached_tokens_details": {
+      "text_tokens": 960,
+      "audio_tokens": 1344,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 38,
+     "audio_tokens": 104
+    }
+   },
+   "said": "응, 맞아. 동물들도 아플 수 있어. 우리가 잘 돌봐주면 좋아질 거야.",
+   "file": "소아남여_소아남여05_M_1529870693-0_3_수도권_실내_58016.wav",
+   "ref": "동물도 많이 아파 ",
+   "age": 3
+  },
+  {
+   "t_vad": 1.4807717999992747,
+   "t_first_text": 1.7119774999991932,
+   "t_first_audio": 1.878296799999589,
+   "heard": "보랗게 피었어요.",
+   "usage": {
+    "total_tokens": 2764,
+    "input_tokens": 2659,
+    "output_tokens": 105,
+    "input_token_details": {
+     "text_tokens": 1048,
+     "audio_tokens": 1611,
+     "image_tokens": 0,
+     "cached_tokens": 1664,
+     "cached_tokens_details": {
+      "text_tokens": 640,
+      "audio_tokens": 1024,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 28,
+     "audio_tokens": 77
+    }
+   },
+   "said": "와, 정말 예쁘게 피었구나! 잘 자라고 있어!",
+   "file": "소아남여_소아남여05_M_1529870693-0_3_수도권_실내_58024.wav",
+   "ref": "노랗게 피었어요 ",
+   "age": 3
+  },
+  {
+   "t_vad": 1.521787900000163,
+   "t_first_text": 1.8237257999999201,
+   "t_first_audio": 1.9874061000000438,
+   "heard": "조금 파가 매워.",
+   "usage": {
+    "total_tokens": 2835,
+    "input_tokens": 2686,
+    "output_tokens": 149,
+    "input_token_details": {
+     "text_tokens": 1074,
+     "audio_tokens": 1612,
+     "image_tokens": 0,
+     "cached_tokens": 2496,
+     "cached_tokens_details": {
+      "text_tokens": 1024,
+      "audio_tokens": 1472,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 45,
+     "audio_tokens": 104
+    }
+   },
+   "said": "응, 그럴 때는 물로 헹궈보는 게 좋을 것 같아. 조금씩 천천히 해보자.",
+   "file": "소아남여_자유대화_F_1527936509-0_3_경상_실내_20201111111709.wav",
+   "ref": "쪼끔 파가 매워",
+   "age": 3
+  },
+  {
+   "t_vad": 1.4228588999994827,
+   "t_first_text": 1.6861453000001347,
+   "t_first_audio": 1.8325869999998758,
+   "heard": "초콜릿 과자예요.",
+   "usage": {
+    "total_tokens": 2921,
+    "input_tokens": 2787,
+    "output_tokens": 134,
+    "input_token_details": {
+     "text_tokens": 1119,
+     "audio_tokens": 1668,
+     "image_tokens": 0,
+     "cached_tokens": 2368,
+     "cached_tokens_details": {
+      "text_tokens": 960,
+      "audio_tokens": 1408,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 36,
+     "audio_tokens": 98
+    }
+   },
+   "said": "아, 초콜릿 과자 맛있겠다! 천천히 먹어보면 좋을 것 같아.",
+   "file": "소아남여_소아남여01_F_1465993425-1_4_수도권_실내_50010.wav",
+   "ref": "초콜릿 과자예요",
+   "age": 4
+  },
+  {
+   "t_vad": 1.4209126000005199,
+   "t_first_text": 1.6404977000001963,
+   "t_first_audio": 1.8132568000000902,
+   "usage": {
+    "total_tokens": 2930,
+    "input_tokens": 2845,
+    "output_tokens": 85,
+    "input_token_details": {
+     "text_tokens": 1153,
+     "audio_tokens": 1692,
+     "image_tokens": 0,
+     "cached_tokens": 2496,
+     "cached_tokens_details": {
+      "text_tokens": 1024,
+      "audio_tokens": 1472,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 25,
+     "audio_tokens": 60
+    }
+   },
+   "said": "응, 젤리처럼 부드럽게 발라보자.",
+   "heard": "썬크림을 발라요.",
+   "file": "소아남여_소아남여01_F_1527909740-0_4_수도권_실내_50005.wav",
+   "ref": "선크림을 발라요",
+   "age": 4
+  },
+  {
+   "t_vad": 1.4738224000002447,
+   "t_first_text": 1.7068735000002562,
+   "t_first_audio": 1.8668819000004078,
+   "heard": "이건 저예요.",
+   "usage": {
+    "total_tokens": 2971,
+    "input_tokens": 2856,
+    "output_tokens": 115,
+    "input_token_details": {
+     "text_tokens": 1178,
+     "audio_tokens": 1678,
+     "image_tokens": 0,
+     "cached_tokens": 2624,
+     "cached_tokens_details": {
+      "text_tokens": 1088,
+      "audio_tokens": 1536,
+      "image_tokens": 0
+     }
+    },
+    "output_token_details": {
+     "text_tokens": 31,
+     "audio_tokens": 84
+    }
+   },
+   "said": "앗, 지금 그게 어떤 느낌이야? 조금 더 편하게 말해줘.",
+   "file": "소아남여_소아남여01_F_1528218255-0_4_경상_실내_51150.wav",
+   "ref": "이건 저예요",
+   "age": 4
+  }
+ ]
+}

@@ -1,0 +1,1288 @@
+{
+ "model": "gemini-3.1-flash-live-preview",
+ "silence_ms": 1200,
+ "in_sr": 16000,
+ "trim": "edges",
+ "rows": [
+  {
+   "file": "소아남여_소아남여01_F_1522755893-0_3_수도권_실내_50002.wav",
+   "sec": 2.265125,
+   "ref": "바다를 보고 있(SP:떠)어요",
+   "heard": "바다를 보고 있어요.",
+   "t_first_text": 1.4974502999994002,
+   "said": "우와 바다 진짜 멋지다 나도 보고 싶어",
+   "t_first_audio": 1.4974502999994002,
+   "out_bytes": 170882,
+   "cost_usd": 0.00145725,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 258,
+    "response": 96,
+    "detail_in": [
+     [
+      "TEXT",
+      175
+     ],
+     [
+      "AUDIO",
+      58
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      96
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여01_F_1522755893-0_3_수도권_실내_50005.wav",
+   "sec": 2.67625,
+   "ref": "(SN:선크림을 발라요)(NO:)",
+   "heard": "그 이름은 가야요.",
+   "t_first_text": 1.4192736000004516,
+   "said": "우와 멋진 이름이다 우리 신나게 놀자",
+   "t_first_audio": 1.4192736000004516,
+   "out_bytes": 177630,
+   "cost_usd": 0.001494,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 259,
+    "response": 99,
+    "detail_in": [
+     [
+      "TEXT",
+      176
+     ],
+     [
+      "AUDIO",
+      58
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      99
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여01_F_1522755893-0_3_수도권_실내_50006.wav",
+   "sec": 3.0040625,
+   "ref": "엄(SP:마랑) 과자를 만들어요",
+   "heard": "어맨 가재를 만들어요.",
+   "t_first_text": 0.8962098000001788,
+   "said": "우와 멋지다 나랑 같이 만들자",
+   "t_first_audio": 0.8962098000001788,
+   "out_bytes": 159390,
+   "cost_usd": 0.00137175,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 263,
+    "response": 88,
+    "detail_in": [
+     [
+      "TEXT",
+      177
+     ],
+     [
+      "AUDIO",
+      61
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      88
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여01_F_1522755893-0_3_수도권_실내_50007.wav",
+   "sec": 1.6141875,
+   "ref": "과자는 달콤해요",
+   "heard": "과자는 달콤해요.",
+   "t_first_text": 1.4632929999997941,
+   "said": "맞아 엄청! 나도 줄래 먹고 싶어",
+   "t_first_audio": 1.4632929999997941,
+   "out_bytes": 170430,
+   "cost_usd": 0.00137025,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 241,
+    "response": 93,
+    "detail_in": [
+     [
+      "TEXT",
+      175
+     ],
+     [
+      "AUDIO",
+      41
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      93
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여01_F_1524006084-0_3_수도권_실내_50586.wav",
+   "sec": 1.923375,
+   "ref": "비눗방울 놀이해요",
+   "heard": "우리는 빵을 요리해요.",
+   "t_first_text": 1.5248060000003534,
+   "said": "와 신난다 무슨 빵 만들어 나도 보여줘",
+   "t_first_audio": 1.5248060000003534,
+   "out_bytes": 189602,
+   "cost_usd": 0.0015375,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 251,
+    "response": 105,
+    "detail_in": [
+     [
+      "TEXT",
+      178
+     ],
+     [
+      "AUDIO",
+      48
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      105
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여01_F_1524006084-0_3_수도권_실내_50289.wav",
+   "sec": 1.92775,
+   "ref": "무릎이 아파요",
+   "heard": "무릎이 아파요.",
+   "t_first_text": 1.5199351999999635,
+   "said": "아이고 아프겠다. 내가 호 해줄게.",
+   "t_first_audio": 1.5199351999999635,
+   "out_bytes": 206402,
+   "cost_usd": 0.001644,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 249,
+    "response": 114,
+    "detail_in": [
+     [
+      "TEXT",
+      176
+     ],
+     [
+      "AUDIO",
+      48
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      114
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여01_F_1524006084-0_3_수도권_실내_50993.wav",
+   "sec": 1.8501875,
+   "ref": "집을 그려요",
+   "heard": "집을 그려요.",
+   "t_first_text": 1.402401700000155,
+   "said": "우와 멋진 집이다 나랑 재미있게 그리자",
+   "t_first_audio": 1.402401700000155,
+   "out_bytes": 175230,
+   "cost_usd": 0.0013935,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 244,
+    "response": 94,
+    "detail_in": [
+     [
+      "TEXT",
+      174
+     ],
+     [
+      "AUDIO",
+      45
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      94
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여01_F_1524006084-0_3_수도권_실내_50341.wav",
+   "sec": 5.236625,
+   "ref": "(SN:흐흐)학교 갈 시간이에요(SP:요요)",
+   "t_first_text": 1.4470654999995531,
+   "said": "우와 정말 깨끗해졌다 대단해",
+   "t_first_audio": 1.4470654999995531,
+   "out_bytes": 150270,
+   "heard": "我 该 洗 干 净 用 用 。",
+   "cost_usd": 0.0013965,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 292,
+    "response": 83,
+    "detail_in": [
+     [
+      "TEXT",
+      178
+     ],
+     [
+      "AUDIO",
+      89
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      83
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여01_M_1525843491-3_3_수도권_실내_50010.wav",
+   "sec": 2.1150625,
+   "ref": "초콜릿 과자예요",
+   "heard": "초콜릿 가게예요.",
+   "t_first_text": 1.5336539000008997,
+   "said": "우와 신난다 나도 같이 가자 친구야",
+   "t_first_audio": 1.5336539000008997,
+   "out_bytes": 158402,
+   "cost_usd": 0.00136125,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 254,
+    "response": 89,
+    "detail_in": [
+     [
+      "TEXT",
+      175
+     ],
+     [
+      "AUDIO",
+      54
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      89
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여01_M_1525843491-3_3_수도권_실내_50001.wav",
+   "sec": 2.0011875,
+   "ref": "바닷가에 왔어요",
+   "heard": "바닷가에 왔어요.",
+   "t_first_text": 1.400744499999746,
+   "said": "우와 바다다! 나랑 모래성 만들자!",
+   "t_first_audio": 1.400744499999746,
+   "out_bytes": 174722,
+   "cost_usd": 0.001455,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 250,
+    "response": 98,
+    "detail_in": [
+     [
+      "TEXT",
+      176
+     ],
+     [
+      "AUDIO",
+      49
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      98
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여01_M_1525843491-3_3_수도권_실내_50009.wav",
+   "sec": 2.776875,
+   "ref": "(SN:)과자 냄새가 좋아요",
+   "heard": "가든의 색가 좋아요.",
+   "t_first_text": 1.5998791000001802,
+   "said": "나도 친구가 정말 좋아! 우리 함께 놀자!",
+   "t_first_audio": 1.5998791000001802,
+   "out_bytes": 142082,
+   "cost_usd": 0.001263,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 258,
+    "response": 80,
+    "detail_in": [
+     [
+      "TEXT",
+      176
+     ],
+     [
+      "AUDIO",
+      57
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      80
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여01_M_1525843491-3_3_수도권_실내_50008.wav",
+   "sec": 2.902125,
+   "ref": "과자를 오븐에 넣어요",
+   "heard": "가져와 보네. 저요.",
+   "t_first_text": 2.116791800000101,
+   "said": "어떤 놀이 할까 나한테 말해줘",
+   "t_first_audio": 2.116791800000101,
+   "out_bytes": 123362,
+   "cost_usd": 0.0012825,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 306,
+    "response": 70,
+    "detail_in": [
+     [
+      "TEXT",
+      178
+     ],
+     [
+      "AUDIO",
+      103
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      70
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여02_F_1527054175-1_3_경상_실내_52148.wav",
+   "sec": 1.8658125,
+   "ref": "빵을 사요",
+   "heard": "빵을 사요.",
+   "t_first_text": 1.4327621000002182,
+   "said": "와 맛있겠다 나도 한 입 줄래",
+   "t_first_audio": 1.4327621000002182,
+   "out_bytes": 132482,
+   "cost_usd": 0.0011775,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 244,
+    "response": 76,
+    "detail_in": [
+     [
+      "TEXT",
+      174
+     ],
+     [
+      "AUDIO",
+      45
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      76
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여02_F_1527054175-1_3_경상_실내_52062.wav",
+   "sec": 2.4366875,
+   "ref": "오늘은 오믈렛이에요",
+   "heard": "오늘은 오믈렛이에요.",
+   "t_first_text": 1.434806799999933,
+   "said": "우와 맛있겠다 나도 먹을래 한 입만",
+   "t_first_audio": 1.434806799999933,
+   "out_bytes": 179522,
+   "cost_usd": 0.00151125,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 260,
+    "response": 100,
+    "detail_in": [
+     [
+      "TEXT",
+      175
+     ],
+     [
+      "AUDIO",
+      60
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      100
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여02_F_1527054175-1_3_경상_실내_52059.wav",
+   "sec": 2.5525,
+   "ref": "밝게 인사해주세요",
+   "heard": "밝게 인타해주세요.",
+   "t_first_text": 1.447866200000135,
+   "said": "안녕 친구야 반가워 신나게 놀자",
+   "t_first_audio": 1.447866200000135,
+   "out_bytes": 164162,
+   "cost_usd": 0.00141225,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 263,
+    "response": 91,
+    "detail_in": [
+     [
+      "TEXT",
+      175
+     ],
+     [
+      "AUDIO",
+      63
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      91
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여02_F_1527054175-1_3_경상_실내_52040.wav",
+   "sec": 2.067125,
+   "ref": "부엌이 예뻐졌어요",
+   "heard": "부엌이 예뻐졌어요.",
+   "t_first_text": 1.5456294000005073,
+   "said": "우와 신난다 나도 보여줘 구경할래",
+   "t_first_audio": 1.5456294000005073,
+   "out_bytes": 180030,
+   "cost_usd": 0.00147675,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 254,
+    "response": 99,
+    "detail_in": [
+     [
+      "TEXT",
+      177
+     ],
+     [
+      "AUDIO",
+      52
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      99
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여02_M_1528228790-3_3_수도권_실내_52379.wav",
+   "sec": 5.196375,
+   "ref": "여러 가지 색깔 펜도(SN:) 골라요",
+   "heard": "늦어가지고 해가 질려고 그래요.",
+   "t_first_text": 1.5555424000003768,
+   "said": "노을 예쁘다 어서 가자",
+   "t_first_audio": 1.5555424000003768,
+   "out_bytes": 98430,
+   "cost_usd": 0.001197,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 335,
+    "response": 56,
+    "detail_in": [
+     [
+      "TEXT",
+      180
+     ],
+     [
+      "AUDIO",
+      130
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      56
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여02_M_1528228790-3_3_수도권_실내_52114.wav",
+   "sec": 3.293,
+   "ref": "(NO:뿅) 다리미를  눌러요",
+   "heard": "다리 위를 달려요.",
+   "t_first_text": 1.5011340999999447,
+   "said": "우와 신난다 나랑 같이 뛰자",
+   "t_first_audio": 1.5011340999999447,
+   "out_bytes": 154082,
+   "cost_usd": 0.001362,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 263,
+    "response": 87,
+    "detail_in": [
+     [
+      "TEXT",
+      176
+     ],
+     [
+      "AUDIO",
+      62
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      87
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여02_M_1528228790-3_3_수도권_실내_52002.wav",
+   "sec": 2.5971875,
+   "ref": "(NO:)(SP:색색)의 블록이에요",
+   "heard": "떽떽의 보물기예요.",
+   "t_first_text": 1.5350783000003503,
+   "said": "와 대단해 나도 보여줘 같이 놀자",
+   "t_first_audio": 1.5350783000003503,
+   "out_bytes": 163682,
+   "cost_usd": 0.00139875,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 259,
+    "response": 92,
+    "detail_in": [
+     [
+      "TEXT",
+      181
+     ],
+     [
+      "AUDIO",
+      53
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      92
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여02_M_1528228790-3_3_수도권_실내_53677.wav",
+   "sec": 3.4978125,
+   "ref": "(NO:)케이크를 초를 꽃아요",
+   "heard": "케이크를 들고 가요.",
+   "t_first_text": 1.1230070999999953,
+   "said": "우와 케이크 진짜 맛있겠다 나도 먹고 싶어",
+   "t_first_audio": 1.1230070999999953,
+   "out_bytes": 165122,
+   "cost_usd": 0.00144075,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 266,
+    "response": 93,
+    "detail_in": [
+     [
+      "TEXT",
+      177
+     ],
+     [
+      "AUDIO",
+      64
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      93
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여03_M_1524011367-0_3_수도권_실내_54154.wav",
+   "sec": 4.2449375,
+   "ref": "반죽을 떼서 나누어요",
+   "heard": "안드로이드의 전원을 넣어 주세요.",
+   "t_first_text": 1.4372202000004108,
+   "said": "전원 켜기 완료 친구야 신나게 놀자",
+   "t_first_audio": 1.4372202000004108,
+   "out_bytes": 151682,
+   "cost_usd": 0.0014715,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 309,
+    "response": 85,
+    "detail_in": [
+     [
+      "TEXT",
+      178
+     ],
+     [
+      "AUDIO",
+      106
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      85
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여03_M_1524011367-0_3_수도권_실내_54090.wav",
+   "sec": 2.2044375,
+   "ref": "좋은 소리가 나요",
+   "heard": "존 어디가세요?",
+   "t_first_text": 1.5764335000003484,
+   "said": "친구야 놀자 나랑 같이 놀자",
+   "t_first_audio": 1.5764335000003484,
+   "out_bytes": 125790,
+   "cost_usd": 0.0011685,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 257,
+    "response": 72,
+    "detail_in": [
+     [
+      "TEXT",
+      174
+     ],
+     [
+      "AUDIO",
+      58
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      72
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여03_M_1524011367-0_3_수도권_실내_54075.wav",
+   "sec": 6.274,
+   "ref": "(NO:처음에는 ) 눈이 많이왔어요",
+   "heard": "다음에는 둘이 많이 와요.",
+   "t_first_text": 0.0008677000005263835,
+   "said": "눈싸움 엄청 많이 하자! 완전 신나겠다.",
+   "t_first_audio": 0.0008677000005263835,
+   "out_bytes": 148350,
+   "cost_usd": 0.00146475,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 314,
+    "response": 83,
+    "detail_in": [
+     [
+      "TEXT",
+      177
+     ],
+     [
+      "AUDIO",
+      112
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      83
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여03_M_1524011367-0_3_수도권_실내_54162.wav",
+   "sec": 3.7654375,
+   "ref": "친구는 아직 두발 자전거를 못 타요",
+   "heard": "아직 투베 다른 거를 못해요.",
+   "t_first_text": 1.4050543000003017,
+   "said": "괜찮아 티드가 도와줄게 같이 해보자",
+   "t_first_audio": 1.4050543000003017,
+   "out_bytes": 165630,
+   "cost_usd": 0.00146325,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 283,
+    "response": 91,
+    "detail_in": [
+     [
+      "TEXT",
+      179
+     ],
+     [
+      "AUDIO",
+      79
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      91
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여03_M_1525843491-2_3_수도권_실내_54018.wav",
+   "sec": 2.213375,
+   "ref": "아빠와 인사해요",
+   "heard": "바와 인체에 꼭",
+   "t_first_text": 1.465845900000204,
+   "said": "좋아 같이 놀자 나랑 숨바꼭질 할래",
+   "t_first_audio": 1.465845900000204,
+   "out_bytes": 160350,
+   "cost_usd": 0.00134925,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 246,
+    "response": 90,
+    "detail_in": [
+     [
+      "TEXT",
+      175
+     ],
+     [
+      "AUDIO",
+      46
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      90
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여03_M_1525843491-2_3_수도권_실내_54007.wav",
+   "sec": 3.1338125,
+   "ref": "할머니가 물어보세요",
+   "heard": "할머니가 물어보세요.",
+   "t_first_text": 1.5769006999998965,
+   "said": "할머니 안녕 나랑 놀자",
+   "t_first_audio": 1.5769006999998965,
+   "out_bytes": 115202,
+   "cost_usd": 0.00115575,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 279,
+    "response": 66,
+    "detail_in": [
+     [
+      "TEXT",
+      177
+     ],
+     [
+      "AUDIO",
+      77
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      66
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여03_M_1525843491-2_3_수도권_실내_54014.wav",
+   "sec": 4.0468125,
+   "ref": "나는 보라색 가방이 갖고 싶어요",
+   "heard": "남 콜라텍 가방에 가고 싶어요.",
+   "t_first_text": 1.6801298000000315,
+   "said": "진짜 멋지겠다! 내가 도와줄까?",
+   "t_first_audio": 1.6801298000000315,
+   "out_bytes": 148322,
+   "cost_usd": 0.00145275,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 313,
+    "response": 83,
+    "detail_in": [
+     [
+      "TEXT",
+      181
+     ],
+     [
+      "AUDIO",
+      107
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      83
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여03_M_1525843491-2_3_수도권_실내_54020.wav",
+   "sec": 3.8733125,
+   "ref": "(SP:나도 교실에 들어가요)",
+   "heard": "나가. 귀여워지네. 내가 있잖아.",
+   "t_first_text": 1.3652019999999538,
+   "said": "우와 정말 멋지다 나도 같이 놀자",
+   "t_first_audio": 1.3652019999999538,
+   "out_bytes": 177122,
+   "cost_usd": 0.00159075,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 299,
+    "response": 98,
+    "detail_in": [
+     [
+      "TEXT",
+      181
+     ],
+     [
+      "AUDIO",
+      93
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      98
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여04_F_1527936509-0_3_경상_실내_56066.wav",
+   "sec": 3.739375,
+   "ref": "경찰관은 용감해",
+   "heard": "이 찰강은 용감해.",
+   "t_first_text": 1.0160650999996506,
+   "said": "와 정말 대단해 나랑 친구하자",
+   "t_first_audio": 1.0160650999996506,
+   "out_bytes": 166562,
+   "cost_usd": 0.0014925,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 284,
+    "response": 93,
+    "detail_in": [
+     [
+      "TEXT",
+      178
+     ],
+     [
+      "AUDIO",
+      81
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      93
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여04_F_1527936509-0_3_경상_실내_56018.wav",
+   "sec": 6.894125,
+   "ref": "(FP:음)연에 그림을 그려요",
+   "heard": "연애 그림을 걸 그려요.",
+   "t_first_text": 0.001828899999964051,
+   "said": "우와 멋지다 나도 보여줘",
+   "t_first_audio": 0.001828899999964051,
+   "out_bytes": 138722,
+   "cost_usd": 0.00132075,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 282,
+    "response": 79,
+    "detail_in": [
+     [
+      "TEXT",
+      177
+     ],
+     [
+      "AUDIO",
+      80
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      79
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여04_F_1527936509-0_3_경상_실내_56055.wav",
+   "sec": 1.9290625,
+   "ref": "이 물약은 너무 써",
+   "heard": "이 물약은 너무 써.",
+   "t_first_text": 1.426508399999875,
+   "said": "에잇 써라. 달콤한 거 줄까?",
+   "t_first_audio": 1.426508399999875,
+   "out_bytes": 139202,
+   "cost_usd": 0.001224,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 249,
+    "response": 79,
+    "detail_in": [
+     [
+      "TEXT",
+      176
+     ],
+     [
+      "AUDIO",
+      48
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      79
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여04_F_1527936509-0_3_경상_실내_56077.wav",
+   "sec": 2.7064375,
+   "ref": "창문이 부딪혀서 깨졌어",
+   "heard": "창문에 부딪혀서 찢어졌어",
+   "t_first_text": 1.325517399999626,
+   "said": "아이고 아팠겠다. 티드가 호 해줄게.",
+   "t_first_audio": 1.325517399999626,
+   "out_bytes": 173282,
+   "cost_usd": 0.00147225,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 266,
+    "response": 96,
+    "detail_in": [
+     [
+      "TEXT",
+      179
+     ],
+     [
+      "AUDIO",
+      62
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      96
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여05_M_1529870693-0_3_수도권_실내_58030.wav",
+   "sec": 1.966875,
+   "ref": "이제 나무도 심어요",
+   "heard": "이제 나무도 심어요.",
+   "t_first_text": 1.519094600000244,
+   "said": "와 멋지다 나무 잘 심자",
+   "t_first_audio": 1.519094600000244,
+   "out_bytes": 144030,
+   "cost_usd": 0.00126525,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 250,
+    "response": 82,
+    "detail_in": [
+     [
+      "TEXT",
+      175
+     ],
+     [
+      "AUDIO",
+      50
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      82
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여05_M_1529870693-0_3_수도권_실내_58002.wav",
+   "sec": 8.6346875,
+   "ref": "(SP:똑바로 먹어야 해요)(NO: 똑바로 앉아서 먹어야 해요 )똑바로 앉아서 먹어야 해요 ",
+   "heard": "똑바로 먹어야 돼.",
+   "t_first_text": 0.0005804000002171961,
+   "said": "응 알았어 바르게 먹을게 너도 맛있게 먹어",
+   "t_first_audio": 0.0005804000002171961,
+   "out_bytes": 163202,
+   "cost_usd": 0.00141825,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 265,
+    "response": 91,
+    "detail_in": [
+     [
+      "TEXT",
+      175
+     ],
+     [
+      "AUDIO",
+      65
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      91
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여05_M_1529870693-0_3_수도권_실내_58016.wav",
+   "sec": 2.412125,
+   "ref": "동물도 많이 아파 ",
+   "heard": "동물도 많이 아파.",
+   "t_first_text": 1.5934285000003001,
+   "said": "어디가 아파? 내가 도와줄까?",
+   "t_first_audio": 1.5934285000003001,
+   "out_bytes": 129150,
+   "cost_usd": 0.001188,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 261,
+    "response": 73,
+    "detail_in": [
+     [
+      "TEXT",
+      176
+     ],
+     [
+      "AUDIO",
+      60
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      73
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여05_M_1529870693-0_3_수도권_실내_58024.wav",
+   "sec": 2.1121875,
+   "ref": "노랗게 피었어요 ",
+   "heard": "놀랍게 피었어요.",
+   "t_first_text": 1.8511351999995895,
+   "said": "우와 정말 멋지다 나도 보여줘",
+   "t_first_audio": 1.8511351999995895,
+   "out_bytes": 150750,
+   "cost_usd": 0.00130125,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 254,
+    "response": 84,
+    "detail_in": [
+     [
+      "TEXT",
+      175
+     ],
+     [
+      "AUDIO",
+      54
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      84
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_자유대화_F_1527936509-0_3_경상_실내_20201111111709.wav",
+   "sec": 3.598875,
+   "ref": "쪼끔 파가 매워",
+   "heard": "조금 파가 매워.",
+   "t_first_text": 1.6338978000003408,
+   "said": "호호 매워도 먹으면 힘이 난대 조금만 더 먹어볼까",
+   "t_first_audio": 1.6338978000003408,
+   "out_bytes": 213122,
+   "cost_usd": 0.001668,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 245,
+    "response": 117,
+    "detail_in": [
+     [
+      "TEXT",
+      176
+     ],
+     [
+      "AUDIO",
+      44
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      117
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여01_F_1465993425-1_4_수도권_실내_50010.wav",
+   "sec": 2.088875,
+   "ref": "초콜릿 과자예요",
+   "heard": "초콜릿 과자예요.",
+   "t_first_text": 1.502116599999681,
+   "said": "우와 초콜릿 과자 정말 달콤하겠다 나도 먹고 싶어",
+   "t_first_audio": 1.502116599999681,
+   "out_bytes": 206402,
+   "cost_usd": 0.001653,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 248,
+    "response": 115,
+    "detail_in": [
+     [
+      "TEXT",
+      176
+     ],
+     [
+      "AUDIO",
+      47
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      115
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여01_F_1527909740-0_4_수도권_실내_50005.wav",
+   "sec": 2.0534375,
+   "ref": "선크림을 발라요",
+   "heard": "덩크에 말라요.",
+   "t_first_text": 1.4928231999992931,
+   "said": "우와 신난다 같이 그림 그리자",
+   "t_first_audio": 1.4928231999992931,
+   "out_bytes": 138750,
+   "cost_usd": 0.001215,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 250,
+    "response": 78,
+    "detail_in": [
+     [
+      "TEXT",
+      176
+     ],
+     [
+      "AUDIO",
+      49
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      78
+     ]
+    ]
+   }
+  },
+  {
+   "file": "소아남여_소아남여01_F_1528218255-0_4_경상_실내_51150.wav",
+   "sec": 1.1833125,
+   "ref": "이건 저예요",
+   "heard": "건처예요.",
+   "t_first_text": 1.5311209000001327,
+   "said": "우와 정말 멋지다 나랑 놀자",
+   "t_first_audio": 1.5311209000001327,
+   "out_bytes": 156962,
+   "cost_usd": 0.00129075,
+   "cached_tokens": 0,
+   "tokens": {
+    "prompt": 229,
+    "response": 89,
+    "detail_in": [
+     [
+      "TEXT",
+      173
+     ],
+     [
+      "AUDIO",
+      31
+     ]
+    ],
+    "detail_out": [
+     [
+      "AUDIO",
+      89
+     ]
+    ]
+   }
+  }
+ ]
+}

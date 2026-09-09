@@ -11,7 +11,7 @@ import pytest
 from google.genai import types
 
 from tools.gemini_live_probe import (PRICE, accumulation_report, cached_tokens,
-                                     cost_usd, session_config)
+                                     cost_usd, score_rows, session_config)
 
 
 def usage(text_in=0, audio_in=0, text_out=0, audio_out=0, cached=0):
@@ -105,3 +105,36 @@ class TestAccumulation:
 
     def test_한_턴이면_판정하지_않는다(self):
         assert accumulation_report(self.rows([100], [40])) == []
+
+
+class TestScoring:
+    """빈 전사와 오류는 다르다. 섞으면 '실패할수록 잘한다'가 된다."""
+
+    def test_빈_전사는_100퍼센트로_센다(self):
+        # 🔴 OpenAI 쪽에서 whisper-1 이 39% 확률로 빈 문자열을 줬다. 빈 것을 0% 로
+        #    세면 아무것도 못 알아들은 모델이 만점을 받는다.
+        s = score_rows([{"heard": "", "ref": "과자는달콤해요"}])
+        assert s["cer"] == 100.0
+        assert s["empty"] == 1
+
+    def test_연결_오류는_채점에서_빼고_따로_센다(self):
+        # 오류는 전사 실패가 아니다. 100% 로 세면 모델을 부당하게 깎고,
+        # 0% 로 세면 부당하게 올린다. 둘 다 틀리므로 아예 뺀다.
+        s = score_rows([{"heard": "과자는달콤해요", "ref": "과자는달콤해요"},
+                        {"error": "ConnectionClosed", "ref": "무언가"}])
+        assert s["cer"] == 0.0
+        assert s["scored"] == 1 and s["errors"] == 1
+
+    def test_공백과_문장부호는_양쪽에서_지운다(self):
+        # AI-Hub 정답엔 문장부호가 없고 모델은 붙인다. 안 지우면 표기 차이가 오류가 된다.
+        assert score_rows([{"heard": "과자는, 달콤해요!",
+                            "ref": "과자는 달콤해요"}])["cer"] == 0.0
+
+    def test_정답_태그는_속내용을_남긴다(self):
+        # realtime_probe 와 같은 규칙이어야 09-02 결과와 비교가 된다.
+        assert score_rows([{"heard": "바다를보고있떠어요",
+                            "ref": "바다를 보고 있(SP:떠)어요"}])["cer"] == 0.0
+
+    def test_완벽일치_개수를_센다(self):
+        s = score_rows([{"heard": "가", "ref": "가"}, {"heard": "나", "ref": "다"}])
+        assert s["exact"] == 1 and s["scored"] == 2

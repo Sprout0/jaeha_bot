@@ -27,7 +27,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from tools.realtime_probe import CHUNK_MS, trim_edges, trim_speech  # noqa: E402
+from tools.realtime_probe import (CHUNK_MS, cer, clean_hyp, clean_ref,  # noqa: E402
+                                  trim_edges, trim_speech)
 
 IN_SR = 16000          # Gemini 입력 규격. OpenAI 는 24000 이다.
 OUT_SR = 24000         # 출력은 24000
@@ -182,13 +183,14 @@ def _log(row: dict, n: int, total: int, sink: Path | None) -> None:
     print(f"  [{n}/{total}] {row['file']:22} "
           f"첫소리 {row.get('t_first_audio', float('nan')):.3f}s  "
           f"입력토큰 {(row.get('tokens') or {}).get('prompt', '?'):>5}  "
-          f"${row.get('cost_usd') or 0:.5f}")
+          f"${row.get('cost_usd') or 0:.5f}"
+          + (f"  들은말 {row.get('heard', '')[:26]!r}" if "ref" in row else ""))
     if sink:
         with sink.open("a", encoding="utf-8") as f:
             f.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
 
 
-async def run(model: str, items: list[Path], cfg: dict, trim: str, pad_s: float,
+async def run(model: str, items: list[dict], cfg: dict, trim: str, pad_s: float,
               sink: Path | None, one_session: bool = False) -> list[dict]:
     """one_session=False 면 발화마다 새 세션(발화끼리 독립 — 지연·CER 용).
     True 면 한 세션에서 이어서 — **이력이 쌓이는 비용**을 보려는 것이다."""
@@ -199,9 +201,12 @@ async def run(model: str, items: list[Path], cfg: dict, trim: str, pad_s: float,
 
     if one_session:
         async with client.aio.live.connect(model=model, config=cfg) as s:
-            for n, path in enumerate(items, 1):
+            for n, it in enumerate(items, 1):
+                path = Path(it["path"])
                 pcm = load_pcm(path, trim)
                 row: dict = {"file": path.name, "turn": n, "sec": len(pcm) / 2 / IN_SR}
+                if it.get("ref") is not None:
+                    row["ref"] = it["ref"]
                 try:
                     row |= await one_turn(s, pcm, pad_s)
                 except Exception as e:
@@ -210,9 +215,12 @@ async def run(model: str, items: list[Path], cfg: dict, trim: str, pad_s: float,
                 _log(rows[-1], n, len(items), sink)
         return rows
 
-    for n, path in enumerate(items, 1):
+    for n, it in enumerate(items, 1):
+        path = Path(it["path"])
         pcm = load_pcm(path, trim)
         row = {"file": path.name, "sec": len(pcm) / 2 / IN_SR}
+        if it.get("ref") is not None:
+            row["ref"] = it["ref"]
         try:
             # 발화마다 새 세션 — 이력 누적을 없애 발화끼리 독립으로 만든다.
             async with client.aio.live.connect(model=model, config=cfg) as s:
@@ -222,6 +230,27 @@ async def run(model: str, items: list[Path], cfg: dict, trim: str, pad_s: float,
         rows.append(_finish(row, model))
         _log(rows[-1], n, len(items), sink)
     return rows
+
+
+def score_rows(rows: list[dict]) -> dict:
+    """아이 말을 얼마나 알아들었나. realtime_probe 와 **같은 자**로 채점한다.
+
+    🔴 빈 전사와 연결 오류를 구분한다. 빈 전사는 전사 실패이므로 100% 로 세고,
+       오류는 전사 실패가 아니므로 아예 뺀다. 섞으면 못 알아들을수록 점수가 오른다.
+    """
+    scored = [r for r in rows if not r.get("error") and r.get("ref") is not None]
+    errors = sum(1 for r in rows if r.get("error"))
+    if not scored:
+        return {"cer": None, "scored": 0, "errors": errors, "empty": 0, "exact": 0}
+    vals, empty, exact = [], 0, 0
+    for r in scored:
+        hyp, ref = clean_hyp(r.get("heard") or ""), clean_ref(r["ref"])
+        v = cer(hyp, ref)
+        vals.append(v)
+        empty += not hyp
+        exact += v == 0.0
+    return {"cer": sum(vals) / len(vals), "scored": len(scored),
+            "errors": errors, "empty": empty, "exact": exact}
 
 
 def accumulation_report(rows: list[dict]) -> list[str]:
@@ -265,6 +294,11 @@ def summarize(model: str, rows: list[dict]) -> list[str]:
     c = [r["cost_usd"] for r in ok if r.get("cost_usd") is not None]
     if c:
         out.append(f"  턴당 비용: 중앙 ${st.median(c):.5f}  합계 ${sum(c):.4f}")
+    if any("ref" in r for r in rows):
+        sc = score_rows([r for r in rows if "ref" in r])
+        out.append(f"  아이 말 CER 평균 {sc['cer']:.2f}%  "
+                   f"(채점 {sc['scored']} · 빈 전사 {sc['empty']} · "
+                   f"완벽일치 {sc['exact']} · 오류 {sc['errors']})")
     cached = sum(r.get("cached_tokens", 0) for r in ok)
     out.append(f"  캐시된 토큰 {cached} — " +
                ("0 이므로 위 비용은 실값이다." if not cached else
@@ -285,6 +319,9 @@ def main() -> None:
     p.add_argument("--instructions",
                    default="너는 다섯 살 아이의 친구 로봇 '티드'야. 밝은 반말로 한두 문장만, "
                            "30자 안쪽으로 짧게 말해. 이모지나 기호는 쓰지 마.")
+    p.add_argument("--manifest", help="{file, stt, age} jsonl — 정답이 있는 집합")
+    p.add_argument("--audio-root", help="--manifest 의 wav 를 찾을 뿌리")
+    p.add_argument("--audio-index", help="이름->경로 색인 캐시 json (없으면 만든다)")
     p.add_argument("--one-session", action="store_true",
                    help="한 세션에서 이어서 돈다 — 이력이 쌓이는 비용을 보려는 것")
     p.add_argument("--lang", default=None,
@@ -297,9 +334,12 @@ def main() -> None:
     if not os.environ.get("GEMINI_API_KEY"):
         sys.exit("GEMINI_API_KEY 가 없다 (.env 확인)")
 
-    items = sorted(Path(a.wav_dir).glob("*.wav"))[:a.n or None]
+    if a.manifest and not a.audio_root:
+        sys.exit("--manifest 를 쓰면 --audio-root 도 필요하다")
+    from tools.realtime_probe import load_items
+    items = load_items(a)
     if not items:
-        sys.exit(f"{a.wav_dir} 에 wav 가 없다")
+        sys.exit("돌릴 오디오가 없다")
     cfg = session_config(a.silence_ms, a.instructions, a.lang)
     print(f"{a.model} | 발화 {len(items)}개 | VAD {a.silence_ms}ms | "
           f"입력 {IN_SR}Hz | trim {a.trim} | 전사언어 {a.lang or '자동'} | "

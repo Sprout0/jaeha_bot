@@ -31,7 +31,14 @@
 
 - [ ] **Step 1: 거실 소음 30~60분 녹음**
 
-봇이 실제로 놓일 자리에서, 평소처럼 지내며 녹음한다(TV·대화·주방 소리 포함, 호출어는 **부르지 않는다**). 16kHz 모노 wav.
+봇이 실제로 놓일 자리에서, 평소처럼 지내며 녹음한다(TV·대화·주방 소리 포함, 호출어는 **부르지 않는다**).
+
+```bash
+python tools/record_noise.py --minutes 45 --out logs/거실.wav
+```
+
+젯슨에서 돌린다 — 마이크가 봇의 것이어야 한다. 봇이 켜져 있으면 먼저 끈다(ReSpeaker 는 장치가 하나다).
+처음 30초가 무음이면 도구가 알아서 멈춘다.
 
 - [ ] **Step 2: 소음에서 유사도 분포를 뽑는다**
 
@@ -43,18 +50,32 @@ C:/Users/Moon/anaconda3/envs/jaeha_bot/python.exe tools/enroll_wake.py --score-n
 
 - [ ] **Step 3: 실제로 쓸 사람 목소리로 본보기를 등록한다**
 
+`enroll_wake --record` 는 wav 을 안 남겨서 나중에 다시 채점할 수가 없다. **녹음은
+`record_wake_real` 로 받아 두고**, 그 폴더를 갈라 등록과 채점에 나눠 쓴다.
+
 ```bash
-C:/Users/Moon/anaconda3/envs/jaeha_bot/python.exe tools/enroll_wake.py --record 5 --out models/wake/v6/templates_haitid.npy
+python tools/record_wake_real.py --n 5
+```
+
+조건 4가지(또박또박·보통·빠르게·흘려서) × 5회 = 20건이 `data/wake_real/adult_<시각>/` 에 쌓인다.
+등록용과 채점용으로 가른다(같은 녹음으로 둘 다 하면 유사도가 1.0 이 나와 무의미하다):
+
+```bash
+D=$(ls -d data/wake_real/adult_* | tail -1) && mkdir -p "$D/enroll" "$D/held" && cp "$D"/또박또박_*.wav "$D/enroll/" && cp "$D"/보통_*.wav "$D"/빠르게_*.wav "$D"/흘려서_*.wav "$D/held/" && echo "등록 $(ls $D/enroll | wc -l)건 / 채점 $(ls $D/held | wc -l)건"
+```
+
+```bash
+python tools/enroll_wake.py --from-dir "$D/enroll" --out models/wake/v6/templates_haitid.npy
 ```
 
 ⚠️ 지금 본보기는 어른 한 사람(`data/wake_real/adult_20260826_1445`) 것이고 **화자 종속**이다. 봇을 쓸 사람이 자기 목소리로 등록하는 것이 기본이다.
 
 - [ ] **Step 4: 진짜 호출 재현율을 잰다**
 
-등록에 **안 쓴** 호출 녹음 10건 이상을 한 폴더에 모아 놓고:
+Step 3 에서 갈라 둔 `held`(15건)를 채점한다:
 
 ```bash
-C:/Users/Moon/anaconda3/envs/jaeha_bot/python.exe tools/enroll_wake.py --score-calls <폴더> --out models/wake/v6/templates_haitid.npy
+python tools/enroll_wake.py --score-calls "$D/held" --out models/wake/v6/templates_haitid.npy
 ```
 
 건별 유사도와 **최저값**, 컷별 재현율이 나온다. 최저값이 컷의 상한이다.

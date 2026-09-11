@@ -27,10 +27,10 @@
 31프레임 = 2.48초가 필요하다. 이 도구의 첫 점검에서 임베딩 판정 72번이 전부
 유사도 0.000 이었다.
 
-그래서 임베딩은 두 가지로 잰다:
-  - 지금 코드 그대로(검증창 = 설정의 window_s) — 고장을 기록으로 남기려고
-  - 검증창만 --embed-window 초로 늘린 것 — "창만 넉넉하면 쓸 만한가" 를 보려고
-임베딩 쪽은 whisper 를 안 쓰므로 창을 늘려도 whisper 조건은 그대로다.
+✅ 같은 날 봇 코드를 고쳤다: 임베딩 전용 창(verify.embed_window_s, 3초)과 임베딩 쪽만
+따로 더 듣는 시간(verify.embed_settle_s, 0.48초)을 둔다. 이 도구는 이제 **봇 설정을
+그대로** 쓴다 — 덮어쓰려면 --embed-window / --embed-settle. 옛 고장을 다시 보려면
+`--embed-window 2.0 --embed-settle 0.3`.
 
 🔴 창을 늘려도 봇의 **검증 시점**이 이르다. 후보는 1단계 점수가 처음 임계를 넘는
 순간 뜨고, 봇은 거기서 settle_s(0.3초 -> 3프레임 = 0.24초)만 더 듣는다. 그런데
@@ -100,8 +100,9 @@ class FileSource(AudioSource):
     """봇의 AudioSource 그대로, 마이크 대신 배열에서 읽는다. 다 읽으면 StopIteration."""
 
     def __init__(self, audio, clock: AudioClock, preroll: float = 0.5,
-                 verify_window: float = 2.0) -> None:
-        super().__init__(preroll=preroll, verify_window=verify_window)
+                 verify_window: float = 2.0, embed_window: float = 3.0) -> None:
+        super().__init__(preroll=preroll, verify_window=verify_window,
+                         embed_window=embed_window)
         a = np.asarray(audio, dtype=np.float32).reshape(-1)
         self._n = a.size // FRAME
         self._audio = a[:self._n * FRAME]
@@ -176,7 +177,8 @@ def build(wcfg: dict, stt, source, mode: str, cut, templates: str, clock: AudioC
           settle=None):
     """봇과 같은 make_detector 로 만들고, 검증 장치에만 시간 재기를 씌운다.
 
-    settle 을 주면 그 방식에서만 verify.settle_s 를 바꾼다(None = 봇 설정 그대로).
+    settle 을 주면 verify.embed_settle_s 를 바꾼다(None = 봇 설정 그대로).
+    whisper 쪽 settle_s 는 절대 안 건드린다.
     """
     from app.wake import make_detector
     w = copy.deepcopy(wcfg)
@@ -193,7 +195,7 @@ def build(wcfg: dict, stt, source, mode: str, cut, templates: str, clock: AudioC
         er["templates"] = templates
         er["min_similarity"] = float(cut)
     if settle is not None:
-        v["settle_s"] = float(settle)
+        v["embed_settle_s"] = float(settle)
     det = make_detector(w, stt if mode == "whisper" else None, source)
 
     # 🔴 조용히 엉뚱한 것을 재지 않도록 여기서 멈춘다.
@@ -211,9 +213,10 @@ def build(wcfg: dict, stt, source, mode: str, cut, templates: str, clock: AudioC
 
 
 def run_one(wcfg, stt, audio, mode, cut, templates, mono: _Monotonic, preroll, window,
-            settle=None):
+            ewin, settle=None):
     mono.clock = AudioClock()
-    src = FileSource(audio, mono.clock, preroll=preroll, verify_window=window)
+    src = FileSource(audio, mono.clock, preroll=preroll, verify_window=window,
+                     embed_window=ewin)
     det, probe = build(wcfg, stt, src, mode, cut, templates, mono.clock, settle)
     wakes = []
     try:
@@ -250,12 +253,12 @@ def main() -> int:
     ap.add_argument("--templates", default=DEFAULT_TEMPLATES)
     ap.add_argument("--cuts", type=float, nargs="+", default=[0.88, 0.85],
                     help="임베딩 컷들(0.88 = 09-11 판정값, 0.85 = 지금 설정값)")
-    ap.add_argument("--embed-window", type=float, default=3.0,
-                    help="임베딩 쪽 검증창(초). 지금 설정 2.0초로는 임베딩이 모자라 늘 0 이 된다")
+    ap.add_argument("--embed-window", type=float, default=None,
+                    help="임베딩 창(초). 없으면 설정의 embed_window_s. 2.48초 미만이면 유사도가 늘 0")
     ap.add_argument("--embed-settle", type=float, default=None,
-                    help="창을 늘린 임베딩 쪽만 후보 뒤 이만큼(초) 더 듣는다(없으면 봇 설정 그대로)")
+                    help="임베딩 쪽만 후보 뒤 이만큼(초) 더 듣는다. 없으면 설정의 embed_settle_s")
     ap.add_argument("--no-whisper", action="store_true",
-                    help="whisper 와 '지금 코드 그대로' 칸을 건너뛴다(이미 잰 뒤 임베딩만 다시 잴 때)")
+                    help="whisper 칸을 건너뛴다(이미 잰 뒤 임베딩만 다시 잴 때)")
     ap.add_argument("--out", default=None, help="결과 JSON(기본 reports/wake/ab_verify_<날짜>.json)")
     args = ap.parse_args()
 
@@ -280,10 +283,11 @@ def main() -> int:
     stt.transcribe(np.zeros(SAMPLE_RATE, dtype=np.float32))     # 첫 호출 워밍업
 
     # whisper 는 봇 그대로, 임베딩은 '지금 코드 그대로(고장)' 하나 + 창을 늘린 컷들.
-    ew = float(args.embed_window)
-    es = args.embed_settle
-    modes = [] if args.no_whisper else [("whisper", None, window, None),
-                                        ("embed", args.cuts[0], window, None)]
+    bot_ew = float(vcfg.get("embed_window_s", 3.0))
+    bot_es = vcfg.get("embed_settle_s")
+    ew = bot_ew if args.embed_window is None else float(args.embed_window)
+    es = bot_es if args.embed_settle is None else float(args.embed_settle)
+    modes = [] if args.no_whisper else [("whisper", None, bot_ew, None)]
     modes += [("embed", c, ew, es) for c in args.cuts]
     heads = [_label(*m) for m in modes]
     result = {"when": stamp, "templates": args.templates, "modes": heads,
@@ -303,7 +307,7 @@ def main() -> int:
                 woke, missed = 0, []
                 for name, audio in clips:
                     wakes, _, _ = run_one(wcfg, stt, audio, m, c, args.templates,
-                                          mono, preroll, w, s)
+                                          mono, preroll, window, w, s)
                     if wakes:
                         woke += 1
                     else:
@@ -322,7 +326,7 @@ def main() -> int:
         for (m, c, w, s), h in zip(modes, heads):
             t0 = time.perf_counter()
             wakes, n_ver, sec = run_one(wcfg, stt, noise, m, c, args.templates,
-                                        mono, preroll, w, s)
+                                        mono, preroll, window, w, s)
             result["noise"][h] = {
                 "false_wakes": len(wakes), "per_hour": round(len(wakes) / hours, 2),
                 "verifies": n_ver, "verify_s_mean": round(sec / n_ver, 4) if n_ver else None,

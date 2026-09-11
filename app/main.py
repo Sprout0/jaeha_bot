@@ -19,6 +19,7 @@ from .metrics import MetricsLogger
 from .wake import is_sleep_command, make_detector
 from .audio_source import AudioSource
 from .audio_device import setup_audio_device as _setup_audio_device
+from .music import MUSIC_FAILED
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
@@ -115,6 +116,45 @@ def _build_filler():
         return None
 
 
+def _build_music(ycfg: dict):
+    """노래 틀기(로컬 음원 + 유튜브). 무슨 일이 있어도 None 을 돌려줄지언정 안 죽는다.
+
+    준비물 중 하나라도 없으면 그 부분만 뺀다: 키가 없거나 크로미움 등이 없으면
+    로컬 음원만 튼다. 이 기능 때문에 봇이 못 뜨면 안 된다.
+    """
+    try:
+        from .audio_player import AudioPlayer, default_library
+        from .config import BASE_DIR
+        from .music import MusicController
+        from .youtube import YouTubePlayer, YouTubeSearch
+
+        library = default_library()
+        search = youtube = None
+        key_env = ycfg.get("key_env", "YOUTUBE_DATA_KEY")
+        key = os.environ.get(key_env, "")
+        if not key:
+            log.warning("노래: %s 가 없어 유튜브를 끈다(로컬 음원만)", key_env)
+        else:
+            player = YouTubePlayer(volume=int(ycfg.get("volume", 80)))
+            lack = player.missing()
+            if lack:
+                log.warning("노래: 준비물이 없어 유튜브를 끈다 %s (./run.sh setup-youtube)", lack)
+            else:
+                youtube = player
+                search = YouTubeSearch(
+                    key, cache_path=BASE_DIR / "logs" / "youtube_cache.json",
+                    max_duration_s=int(ycfg.get("max_duration_s", 600)),
+                    cache_days=float(ycfg.get("cache_days", 7)))
+        log.info("노래 틀기 켬 — 로컬 %d곡%s", len(library.playable("song")),
+                 " + 유튜브" if youtube else "")
+        return MusicController(library=library, local=AudioPlayer(library), search=search,
+                               youtube=youtube,
+                               default_query=str(ycfg.get("default_query", "동요")))
+    except Exception as e:
+        log.warning("노래 틀기 구성 실패(없이 계속): %s: %s", type(e).__name__, str(e)[:120])
+        return None
+
+
 def _respond(agent, games, text, filler=None):
     """놀이가 먼저, 아니면 자유대화. 자유대화로 갈 때만 필러를 낸다.
 
@@ -167,15 +207,20 @@ def _to_standby(detector, source) -> None:
         source.drain()
 
 
-def build_pipeline():
+def build_pipeline(music_on: bool = False):
     stt = STTModule(**settings.models.get("stt", {}))
     tts = TTSModule(**settings.models.get("tts", {}))
     vision = VisionDetector(**settings.models.get("vision", {}))
     llm_cfg = dict(settings.models["llm"])
     model_path = llm_cfg.pop("model_path")
+    system_prompt = settings.prompts["system"]
+    if music_on:
+        # 켜 놓고 '노래는 못 튼다' 규칙을 그대로 두면 봇이 "못 틀어"라고 거짓말한다.
+        from .music import adjust_prompt
+        system_prompt = adjust_prompt(system_prompt)
     agent = LLMAgent(
         model_path=model_path,
-        system_prompt=settings.prompts["system"],
+        system_prompt=system_prompt,
         **llm_cfg,
     )
     # 기동 때 미리 데운다. 첫 턴 지연을 기동 쪽으로 옮기는 것뿐이라 손해가 없다.
@@ -213,8 +258,20 @@ def preload(stt, tts, agent, filler=None) -> None:
 
 def main() -> None:
     log.info("재하봇 1 시작 (모듈 순차 로딩으로 OOM 방지)")
-    _setup_audio_device()
-    stt, tts, vision, agent = build_pipeline()
+    # 노래 틀기(youtube.enabled). 켜면 봇 출력을 공유 장치(respk)로 — 유튜브가 스피커를
+    # 쥐는 동안에도 봇이 말할 수 있어야 한다(ReSpeaker 출력은 독점, 09-11 실측).
+    # 공유 장치가 없으면 노래만 끄고 지금처럼 간다.
+    ycfg = settings.models.get("youtube", {}) or {}
+    music_on = bool(ycfg.get("enabled", False))
+    if music_on and not (settings.models.get("wake", {}) or {}).get("enabled", True):
+        # 노래가 나오는 동안은 호출어로만 불러야 한다. 늘 듣는 모드면 STT 가 가사에 대답한다.
+        log.warning("노래 틀기는 호출어 모드에서만 된다(wake.enabled=false) — 끈다")
+        music_on = False
+    if not _setup_audio_device(
+            output_device=ycfg.get("output_device", "respk") if music_on else None):
+        log.warning("공유 출력 장치가 없어 노래 틀기를 끈다 — ./run.sh setup-youtube")
+        music_on = False
+    stt, tts, vision, agent = build_pipeline(music_on=music_on)
     # 놀이 모드: 흐름은 코드(상태머신), 칭찬·질문 문구만 LLM(agent.render)이 렌더.
     games = GameManager(render=agent.render)
     # STEP 7 계측: 턴마다 단계별 지연·메모리를 파일에 기록(젯슨 이식 전 PC baseline).
@@ -222,6 +279,7 @@ def main() -> None:
     metrics = MetricsLogger(enabled=mcfg.get("enabled", True), tag=mcfg.get("tag", "pc"))
     # 맞장구: 아이가 처음 소리를 듣는 시각을 4.17 -> 1.70초로. 실지연은 안 준다.
     filler = _build_filler()
+    music = _build_music(ycfg) if music_on else None
 
     # 첫 대화 지연을 없애기 위해 무거운 모델을 미리 로드(순차 로딩).
     preload(stt, tts, agent, filler)
@@ -283,6 +341,8 @@ def main() -> None:
                     continue
                 awake = True
                 last_active = time.time()
+                if music is not None and music.pause_for_wake():
+                    log.info("노래 중 호출 → 일시정지하고 듣는다")
                 if result.continued and result.preroll.size:
                     # '하이 티드 이거 뭐야?' 처럼 부르고 바로 이어 말한 경우 —
                     # 인사말을 하면 뒷말을 놓치므로 생략하고 그 오디오를 STT 로 넘긴다.
@@ -314,6 +374,11 @@ def main() -> None:
             # ── 대화 모드 ──
             # 빈 결과: 환각이라 버렸으면 되묻고, 진짜 무음이면 시간을 보고 잠든다.
             if not text:
+                if music is not None and music.resume_after_wake():
+                    log.info("호출 뒤 말이 없음 → 노래 이어서, 대기로")
+                    awake = False
+                    _to_standby(detector, source)
+                    continue
                 action = _empty_text_action(
                     rejected=stt.last_rejected, wake_enabled=wake_enabled,
                     idle_s=time.time() - last_active, sleep_timeout=sleep_timeout)
@@ -343,10 +408,31 @@ def main() -> None:
             # '잘자/바이바이' 등은 대화를 끝내고 대기로(놀이의 '그만'과 겹치지 않는 별도 단어).
             if wake_enabled and is_sleep_command(text, sleep_words):
                 log.info("잠들기 명령 → 대기 모드로")
+                if music is not None:
+                    music.stop()
                 awake = False
                 tts.speak(SLEEP_MSG)
                 time.sleep(ECHO_COOLDOWN)
                 _to_standby(detector, source)
+                continue
+
+            # 노래 명령("○○ 틀어줘 / 그만 / 다른 노래")은 놀이·LLM 보다 먼저 본다.
+            # LLM 은 노래를 틀 수 없다 — 거기까지 가면 "틀어줄게"라는 빈 약속만 나간다.
+            mr = music.handle(text) if music is not None else None
+            if mr is not None:
+                log.info("[티드] %s (노래)", mr.text)
+                tts.speak(mr.text)      # 약속을 먼저 말하고 튼다 — 말 위에 노래가 겹치지 않게
+                ok = mr.action() if mr.action is not None else True
+                if not ok:
+                    tts.speak(MUSIC_FAILED)
+                last_active = time.time()
+                if ok and mr.standby:
+                    awake = False       # 노래 중엔 호출어만 듣는다 — STT 가 가사에 대답하지 않게
+                    _to_standby(detector, source)
+                else:
+                    time.sleep(ECHO_COOLDOWN)
+                    if source is not None:
+                        source.drain()
                 continue
 
             # 생각: (a)놀이 진행중이면 상태머신 처리 (b)아니면 놀이 시작 트리거 (c)둘 다 아니면 LLM.
@@ -380,12 +466,19 @@ def main() -> None:
             time.sleep(ECHO_COOLDOWN)
             if source is not None:
                 source.drain()   # 답하는 동안 쌓인 자기 목소리 버리기
+            # 노래 중에 불러서 한마디 했다 — 답했으니 노래를 이어 틀고 대기로.
+            if music is not None and music.resume_after_wake():
+                log.info("노래 중 호출에 답함 → 노래 이어서, 대기로")
+                awake = False
+                _to_standby(detector, source)
     except KeyboardInterrupt:
         log.info("종료 신호(Ctrl+C) 수신")
     finally:
         metrics.summary()  # 세션 요약(중앙값/p90/최대메모리) 출력·기록
         if source is not None:
             source.close()
+        if music is not None:
+            music.close()      # 크로미움·Xvfb·PulseAudio 를 전부 내린다(안 내리면 남는다)
 
     # 마무리 인사 후 깔끔하게 종료.
     try:

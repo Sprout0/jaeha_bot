@@ -7,6 +7,7 @@
 🔴 '할 수 있는 것'의 정답은 추측이 아니라 코드·파일에서 나온다:
   - 놀이 = education_modes 에 클래스가 실제로 있는 것(_IMPLEMENTED)
   - 노래 = assets/ 에 음원 파일이 실재하는 것(AudioLibrary.playable)
+           단, 노래 틀기(youtube.enabled)가 켜져 있으면 등록된 노래는 전부 틀 수 있다
 그래서 색칠 놀이를 구현하거나 동요 파일을 넣으면 이 판정도 자동으로 따라 바뀐다.
 목록을 두 군데서 관리하지 않는다는 뜻이다.
 
@@ -20,7 +21,7 @@ import json
 import re
 
 from .audio_player import default_library
-from .config import BASE_DIR
+from .config import BASE_DIR, settings
 
 # education_modes.GameManager.maybe_start 가 실제로 만들 수 있는 놀이.
 # ⚠️ 새 놀이를 구현하면 여기도 같이 늘려야 한다(안 늘리면 정직한 답을 날조로 센다).
@@ -69,9 +70,12 @@ def _items() -> tuple[list[tuple[str, list[str]]], list[tuple[str, list[str]]]]:
     # 봇이 "강아지"라고 말하는 건 놀이의 정상 어휘이지 '들려주겠다는 약속'이 아니다
     # (놀이의 핵심은 TTS 로 "멍멍" 하는 것이고 효과음은 흥미 유발용 선택 기능).
     # 반면 "곰 세 마리 불러줄게"는 음원이 있어야만 지킬 수 있는 약속이다.
+    # 🔴 2026-09-11 노래 틀기가 켜져 있으면 파일이 없어도 틀 수 있다(유튜브에서 찾는다).
+    #    그때 "곰 세 마리"를 날조로 세면 정직한 답에 벌점을 준다.
+    music_on = bool((settings.models.get("youtube") or {}).get("enabled"))
     for asset in default_library().songs:
         entry = (asset.title, [asset.title, *asset.aliases])
-        (can if asset.exists else cannot).append(entry)
+        (can if (asset.exists or music_on) else cannot).append(entry)
     return can, cannot
 
 

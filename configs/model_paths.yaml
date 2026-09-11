@@ -232,6 +232,23 @@ audio:
   # PC 는 보통 null(기본)로 충분. 실물 장치 바뀌면 이 이름만 수정.
   device: ReSpeaker
 
+youtube:
+  # 🔴 2026-09-11 노래 틀기 — 유튜브 공식 IFrame Player API(재생) + Data API v3(검색).
+  #   스트림을 뽑지 않는다. 진짜 플레이어를 띄워 튼다(app/youtube.py 머리말).
+  # **기본은 꺼짐.** 꺼 두면 봇은 지금과 완전히 같다.
+  # 켜면 바뀌는 것: 봇 스피커 출력이 공유 장치(respk = ALSA dmix)로 간다. 마이크는 그대로.
+  #   켜기 전 1회:  ./run.sh setup-youtube   (~/.asoundrc 에 respk 를 넣고 준비물을 본다)
+  #   켜는 곳:     그 기계의 configs/local.yaml 에  youtube: {enabled: true}
+  #   키:          .env 의 YOUTUBE_DATA_KEY (값은 여기 적지 않는다)
+  # 준비물이 하나라도 없으면 경고 한 줄 남기고 **노래 기능만 끈다**(봇은 계속 돈다).
+  enabled: false
+  key_env: YOUTUBE_DATA_KEY
+  output_device: respk     # 봇 출력 장치 — **정확한 이름**. 부분일치면 respk_dmix(16kHz 전용)가 먼저 걸린다
+  volume: 80               # 플레이어 0~100. 09-11 실청취: 30%×싱크40%(=12%)는 "좀 작았다"
+  max_duration_s: 600      # 이보다 긴 영상(모음집)은 뒤로 미룬다 — '티니핑 노래' 1위가 20분짜리였다
+  default_query: 동요      # "노래 틀어줘"처럼 곡을 안 말했을 때
+  cache_days: 7            # 검색 결과 캐시(쿼터: 검색 100유닛, 하루 10,000)
+
 wake:
   # 호출어(웨이크워드) 트리거 = '대기↔대화' 세션. false 면 항상 대화(옛 동작).
   # 목적: 부르기 전엔 LLM·TTS 안 돌려 쓸모없는 답변·자원 절약(교수님 요청).

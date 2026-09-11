@@ -28,17 +28,26 @@ from .config import settings
 log = logging.getLogger("jaeha_bot.audio")
 
 
-def setup_audio_device(retries: int = 3, wait_s: float = 0.4) -> None:
+def setup_audio_device(retries: int = 3, wait_s: float = 0.4,
+                       output_device: str | None = None) -> bool:
     """설정된 오디오 장치를 sounddevice 기본값으로 지정한다.
 
     Jetson 등 헤드리스 환경은 기본 장치가 'default'(pulse) 로 잡혀 HDMI/모니터 쪽으로
     라우팅돼 재생·녹음이 멈추는 일이 있다. configs 에 audio.device(이름 부분일치, 예:
     'ReSpeaker') 를 주면 USB 마이크/스피커를 콕 집어 이 문제를 피한다. null 이면 시스템 기본.
+
+    output_device: 출력만 **이름이 정확히 같은** 장치로 바꾼다(유튜브 공유 출력 'respk').
+      부분일치로 찾으면 'respk' 가 'respk_dmix'(16kHz 전용)에 먼저 걸린다 — 젯슨 장치
+      목록에서 respk_dmix 가 respk 보다 앞 번호다(2026-09-11 실측 30 vs 31).
+      못 찾으면 False 를 돌려준다. 호출부는 그걸 보고 노래 기능을 끈다 — 공유 출력 없이
+      유튜브를 켜면 음악이 스피커를 쥐는 동안 **봇이 말을 못 한다**.
     """
     dev = (settings.models.get("audio") or {}).get("device")
-    if not dev:
-        return
+    if not dev and not output_device:
+        return True
     import sounddevice as sd
+    if not dev:
+        return _set_exact_output(sd, output_device)
     # 지정한 장치(예: 젯슨의 'ReSpeaker')가 이 기계엔 없을 수 있다(노트북엔 내장 마이크뿐,
     # 젯슨도 USB 를 안 꽂으면 없음). 주의: sd.default.device 에 '이름 문자열'을 대입하면
     # sounddevice 는 그 자리서 검증하지 않고 재생/녹음 시점에 해석한다. 그래서 장치가 없어도
@@ -67,7 +76,7 @@ def setup_audio_device(retries: int = 3, wait_s: float = 0.4) -> None:
     if din is None and dout is None:
         log.warning("오디오 장치 '%s' 를 찾을 수 없음 -> 시스템 기본 장치 사용. "
                     "(USB 마이크가 연결됐는지 확인하세요)", dev)
-        return
+        return _set_exact_output(sd, output_device) if output_device else True
     cur_in, cur_out = sd.default.device
     sd.default.device = (din if din is not None else cur_in,
                          dout if dout is not None else cur_out)
@@ -75,3 +84,19 @@ def setup_audio_device(retries: int = 3, wait_s: float = 0.4) -> None:
     if din is None or dout is None:
         log.warning("'%s' 의 %s 장치를 못 찾아 그쪽은 기본 장치를 사용합니다",
                     dev, "입력" if din is None else "출력")
+    if output_device:
+        return _set_exact_output(sd, output_device)
+    return True
+
+
+def _set_exact_output(sd, name: str) -> bool:
+    """출력만 이름이 정확히 같은 장치로. 없으면 건드리지 않고 False."""
+    idx = next((i for i, d in enumerate(sd.query_devices())
+                if d["name"] == name and d["max_output_channels"] > 0), None)
+    if idx is None:
+        log.warning("공유 출력 장치 '%s' 가 없다 — ~/.asoundrc 확인(./run.sh setup-youtube)", name)
+        return False
+    cur_in, _ = sd.default.device
+    sd.default.device = (cur_in, idx)
+    log.info("출력 장치를 공유 장치로: %s -> %s", name, idx)
+    return True

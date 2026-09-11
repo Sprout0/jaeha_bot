@@ -1,0 +1,35 @@
+# 재하봇 — ReSpeaker 공유 출력 (2026-09-11)
+#
+# 설치: ./run.sh setup-youtube  (→ ~/.asoundrc. 이미 있으면 덮어쓰지 않는다)
+#
+# 왜 필요한가: ReSpeaker 출력(hw)은 **독점**이다. 유튜브(크로미움 → PulseAudio)가 쥐면
+# 봇이 말을 못 한다 — 젯슨 실측 'Device unavailable'. dmix 로 둘을 섞는다.
+#   respk_dmix : 하드웨어가 받는 형식 그대로(16kHz · S24_3LE · 2ch). 16kHz 만 받는다.
+#   respk      : 위에 변환(plug)을 얹은 것. 16k/22.05k/24k/44.1k 전부 받는다(실측).
+#                → **봇 출력은 이쪽**. TTS 합성 레이트가 16kHz 가 아니기 때문이다.
+# 출력 지연(sd.play 기본 latency=high): hw 직접 96ms vs respk 100ms — 차이 4ms(실측).
+#
+# 기본 장치(default)는 건드리지 않는다. 이름 둘을 **추가**할 뿐이라, 이 파일이 있어도
+# 아무도 respk 를 안 열면 지금과 똑같다.
+#
+# 카드는 번호(hw:0) 대신 **이름**으로 적는다 — USB 를 다시 꽂으면 번호가 바뀔 수 있다.
+# 이름은 /proc/asound/cards 의 대괄호 안 값(ArrayUAC10).
+pcm.respk_dmix {
+    type dmix
+    ipc_key 5577
+    ipc_perm 0660
+    slave {
+        pcm "hw:ArrayUAC10,0"
+        format S24_3LE
+        rate 16000
+        channels 2
+        period_size 320
+        buffer_size 2560
+    }
+    hint { show on description "ReSpeaker shared (dmix, 16kHz only)" }
+}
+pcm.respk {
+    type plug
+    slave.pcm "respk_dmix"
+    hint { show on description "ReSpeaker shared (any rate)" }
+}

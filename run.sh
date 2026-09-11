@@ -11,7 +11,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-MODE="${1:-local}"                  # local | docker | dev | check
+MODE="${1:-local}"                  # local | docker | dev | check | setup-youtube
 ENV_NAME="${JAEHA_ENV:-jaeha_bot}"  # 다른 이름을 쓰면 JAEHA_ENV=... ./run.sh
 
 # 이 환경의 python 을 찾는다.
@@ -54,11 +54,33 @@ print("모듈:", "전부 있음" if not bad else f"❌ 없음 -> {bad}")
 sys.exit(1 if bad else 0)
 PYEOF
     "$PY" -m app.audio_player | head -4 ;;
+  setup-youtube)  # 노래 틀기 준비물 점검 + ~/.asoundrc 설치 (2026-09-11)
+    # 공유 출력 장치(respk)를 ~/.asoundrc 에 넣는다. 기본 장치는 안 바꾸고 이름만 추가한다.
+    # 🔴 이미 있는 ~/.asoundrc 는 덮어쓰지 않는다 — 누가 무엇을 넣어 뒀는지 모른다.
+    SRC=configs/alsa/respk.asoundrc
+    if [ -f "$HOME/.asoundrc" ]; then
+      if grep -q "pcm.respk_dmix" "$HOME/.asoundrc"; then
+        echo "✅ ~/.asoundrc 에 respk 가 이미 있다"
+      else
+        echo "❌ ~/.asoundrc 가 이미 있고 respk 가 없다 — 덮어쓰지 않는다. $SRC 를 직접 합칠 것"; exit 1
+      fi
+    else
+      cp "$SRC" "$HOME/.asoundrc" && echo "✅ ~/.asoundrc 설치 ($SRC)"
+    fi
+    for b in Xvfb pulseaudio pactl snap; do
+      command -v "$b" >/dev/null && echo "✅ $b" || echo "❌ $b 없음"
+    done
+    snap list chromium >/dev/null 2>&1 && echo "✅ chromium (snap)" || echo "❌ chromium 없음 — sudo snap install chromium"
+    grep -qE '^\s*YOUTUBE_DATA_KEY\s*=' .env 2>/dev/null && echo "✅ .env 에 YOUTUBE_DATA_KEY" \
+      || echo "❌ .env 에 YOUTUBE_DATA_KEY 없음 — 검색이 안 된다(로컬 음원만 튼다)"
+    PY="$(resolve_or_die)"
+    "$PY" -c "import sounddevice as sd; n=[d['name'] for d in sd.query_devices()]; print('✅ 공유 출력 respk 보임' if 'respk' in n else '❌ respk 가 장치 목록에 없다')" 2>/dev/null
+    echo "켜기: 이 기계의 configs/local.yaml 에  youtube: {enabled: true}" ;;
   docker)  # Jetson 컨테이너
     docker compose up --build ;;
   dev)     # PC 개발용 컨테이너
     docker build -f Dockerfile.dev -t jaeha_bot:dev .
     docker run --rm -it --device /dev/snd jaeha_bot:dev ;;
   *)
-    echo "usage: ./run.sh [local|check|docker|dev]"; exit 1 ;;
+    echo "usage: ./run.sh [local|check|setup-youtube|docker|dev]"; exit 1 ;;
 esac

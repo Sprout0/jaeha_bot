@@ -40,15 +40,7 @@ python tools/record_noise.py --minutes 45 --out logs/거실.wav
 젯슨에서 돌린다 — 마이크가 봇의 것이어야 한다. 봇이 켜져 있으면 먼저 끈다(ReSpeaker 는 장치가 하나다).
 처음 30초가 무음이면 도구가 알아서 멈춘다.
 
-- [ ] **Step 2: 소음에서 유사도 분포를 뽑는다**
-
-```bash
-C:/Users/Moon/anaconda3/envs/jaeha_bot/python.exe tools/enroll_wake.py --score-noise <녹음.wav>
-```
-
-기록할 것: 후보 자리 유사도의 최대·p99·p95. **이게 컷의 하한이다.**
-
-- [ ] **Step 3: 실제로 쓸 사람 목소리로 본보기를 등록한다**
+- [ ] **Step 2: 실제로 쓸 사람 목소리로 본보기를 등록한다**
 
 `enroll_wake --record` 는 wav 을 안 남겨서 나중에 다시 채점할 수가 없다. **녹음은
 `record_wake_real` 로 받아 두고**, 그 폴더를 갈라 등록과 채점에 나눠 쓴다.
@@ -70,9 +62,9 @@ python tools/enroll_wake.py --from-dir "$D/enroll" --out models/wake/v6/template
 
 ⚠️ 지금 본보기는 어른 한 사람(`data/wake_real/adult_20260826_1445`) 것이고 **화자 종속**이다. 봇을 쓸 사람이 자기 목소리로 등록하는 것이 기본이다.
 
-- [ ] **Step 4: 진짜 호출 재현율을 잰다**
+- [ ] **Step 3: 진짜 호출 재현율을 잰다**
 
-Step 3 에서 갈라 둔 `held`(15건)를 채점한다:
+Step 2 에서 갈라 둔 `held`(15건)를 채점한다:
 
 ```bash
 python tools/enroll_wake.py --score-calls "$D/held" --out models/wake/v6/templates_haitid.npy
@@ -88,6 +80,18 @@ python tools/enroll_wake.py --score-calls "$D/held" --out models/wake/v6/templat
 > 이 값은 08-26 에 다른 경로로 기록된 "살린 것 중 최저 0.873" 과 일치한다(검산됨).
 > 1건(흘려서_04)은 1단계 0.012 로 탈락했다. **이 숫자는 아버지 목소리라 채택값이
 > 아니다** — 본보기는 화자 종속이고, 봇을 쓸 사람으로 다시 재야 한다.
+
+- [ ] **Step 4: 소음에서 유사도 분포를 뽑는다**
+
+🔴 **본보기가 있어야 돈다** — 소음이 '등록한 목소리와 얼마나 닮았나' 를 재는 것이라서다.
+그래서 Step 2(등록) 뒤에 온다. (처음 이 계획은 순서가 거꾸로였다.)
+
+```bash
+python tools/enroll_wake.py --score-noise logs/거실.wav --out models/wake/v6/templates_haitid.npy
+```
+
+기록할 것: 후보 자리 유사도의 최대·p99. **최대가 컷의 하한이다.**
+45분 녹음이면 젯슨에서 몇 분 걸린다.
 
 - [ ] **Step 5: 컷을 정하고 근거를 적는다**
 

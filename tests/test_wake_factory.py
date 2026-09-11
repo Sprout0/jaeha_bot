@@ -172,3 +172,21 @@ def test_stt가_있으면_예전처럼_폴백한다(monkeypatch):
 def test_detector가_stt인데_stt가_없으면_죽는다():
     with pytest.raises(RuntimeError):
         make_detector({"detector": "stt", "word": "하이티드"}, stt=None, source=object())
+
+
+# ── 임베딩 쪽 기다림 (2026-09-11) ────────────────────────────────────────
+def test_embed_settle_s_가_감지기로_넘어간다(monkeypatch):
+    # 임베딩은 후보 뒤 0.48초를 더 들어야 호출어 끝이 창에 들어온다(젯슨 A/B).
+    seen = _capture_kwargs(monkeypatch)
+    cfg = {"detector": "onnx", "word": "하이티드",
+           "onnx": {"verify": {"enabled": True, "mode": "embed", "embed_settle_s": 0.5}}}
+    make_detector(cfg, stt=None, source=object())
+    assert seen["verify_embed_settle_s"] == 0.5
+
+
+def test_embed_settle_s_가_없으면_None_이라_whisper_기다림을_따른다(monkeypatch):
+    seen = _capture_kwargs(monkeypatch)
+    cfg = {"detector": "onnx", "word": "하이티드",
+           "onnx": {"verify": {"enabled": True}}}
+    make_detector(cfg, stt=FakeStt([]), source=object())
+    assert seen["verify_embed_settle_s"] is None

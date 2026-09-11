@@ -316,6 +316,9 @@ def make_detector(wcfg: dict, stt, source):
             verify_bypass=float(vcfg.get("bypass_score", 1.01)),
             # 후보가 뜬 순간의 창은 호출어를 자르고 있을 수 있다 — 이만큼 더 듣고 본다.
             verify_settle_s=float(vcfg.get("settle_s", 0.0)),
+            # 임베딩 대조만 따로 더 듣는다(없으면 위와 같음) — 2026-09-11 젯슨 A/B.
+            verify_embed_settle_s=(float(vcfg["embed_settle_s"])
+                                   if vcfg.get("embed_settle_s") is not None else None),
             # whisper 가 지어낸 글 때문에 죽은 진짜 호출을 소리로 건진다(꺼져 있으면 None).
             embed_rescue=_make_embed_rescue(vcfg),
         )

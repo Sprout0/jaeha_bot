@@ -243,10 +243,12 @@ def main() -> None:
     if wake_enabled:
         # 검증창은 프리롤과 **별도 버퍼**다. 프리롤을 늘리면 호출 직전 TV·부모 말소리가
         # 섞여 whisper 가 환각하므로 0.5초를 유지하고, 2단계 검증만 긴 창을 쓴다.
+        vcfg = (wcfg.get("onnx") or {}).get("verify") or {}
         source = AudioSource(
             preroll=float(wcfg.get("preroll", 0.5)),
-            verify_window=float(((wcfg.get("onnx") or {}).get("verify") or {})
-                                .get("window_s", 2.0)),
+            verify_window=float(vcfg.get("window_s", 2.0)),
+            # 임베딩 대조 전용 창 — 2.48초 이상이어야 한다(app/audio_source.py 참고).
+            embed_window=float(vcfg.get("embed_window_s", 3.0)),
         ).open()
         detector = make_detector(wcfg, stt, source)
         # ONNX 감지기만 .source 를 갖는다. 폴백(STT)이면 공유 스트림을 닫아 충돌을 막는다.

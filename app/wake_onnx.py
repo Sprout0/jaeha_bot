@@ -68,7 +68,8 @@ class OnnxWakeDetector:
                  verify_rearm_delta: float = 0.05,
                  verify_bypass: float = 1.01,
                  verify_settle_s: float = 0.0,
-                 embed_rescue=None) -> None:
+                 embed_rescue=None,
+                 verify_embed_settle_s: float | None = None) -> None:
         import pathlib
 
         import onnxruntime as ort
@@ -90,7 +91,7 @@ class OnnxWakeDetector:
         self._init_state(threshold, trigger_frames, continuation_window, source,
                          verifier, verify_cooldown_s, verify_min_rms,
                          verify_rearm_delta, verify_bypass, verify_settle_s,
-                         embed_rescue)
+                         embed_rescue, verify_embed_settle_s)
 
     def _init_state(self, threshold, trigger_frames, continuation_window, source,
                     verifier=None, verify_cooldown_s: float = 1.0,
@@ -98,7 +99,7 @@ class OnnxWakeDetector:
                     verify_rearm_delta: float = 0.05,
                     verify_bypass: float = 1.01,
                     verify_settle_s: float = 0.0,
-                    embed_rescue=None):
+                    embed_rescue=None, verify_embed_settle_s=None):
         """__init__ 과 테스트가 공유하는 순수 상태 초기화(ONNX 로드 없음).
 
         ⚠️ 새 상태는 **반드시 여기에** 둔다. __init__ 에만 두면 _init_state 로 만든
@@ -132,6 +133,12 @@ class OnnxWakeDetector:
         #    이만큼 더 듣고 나서 창을 뜬다. 검증창은 '최근 N초' 라 읽는 만큼 뒤로 따라온다.
         #    ⚠️ 이 시간은 그대로 깨움 지연에 더해진다 — 짧게 잡을 것.
         self.verify_settle_s = float(verify_settle_s)
+        # 🔴 2026-09-11 임베딩 대조만 따로 더 듣는다(None = 위와 같음). 1단계 최고점은
+        #    첫 임계 넘김보다 0.3~0.5초 뒤인데 본보기는 최고점 자리로 만들었다 — 0.24초만
+        #    듣고 창을 뜨면 호출어 끝이 잘린다(젯슨 A/B, 3초 창: +0.24초 6/11 -> +0.48초 10/11).
+        #    임베딩은 0.08초에 끝나서 더 기다려도 whisper(0.24+0.78초)보다 먼저 깨운다.
+        self.verify_embed_settle_s = (None if verify_embed_settle_s is None
+                                      else float(verify_embed_settle_s))
         # 🔴 whisper 가 지어낸 글 때문에 죽은 진짜 호출을 소리로 건지는 장치(없으면 None).
         #    app/wake_embed.py 참고. **whisper 를 대체하지 않고 OR 로 붙는다.**
         self.embed_rescue = embed_rescue
@@ -302,11 +309,9 @@ class OnnxWakeDetector:
         self._last_score = score
         # 호출어 끝을 창 안에 넣는다(위 verify_settle_s 주석 참고). 읽는 프레임은
         # 버려지지 않는다 — 프리롤·검증창 링버퍼로 그대로 들어간다.
-        for _ in range(int(self.verify_settle_s * SAMPLE_RATE / FRAME)):
-            try:
-                self.source.read()
-            except StopIteration:
-                break
+        # 임베딩 단독이면 임베딩 쪽 기다림을 쓴다(whisper 쪽은 그대로).
+        settle = self._embed_settle() if self.verifier is None else self.verify_settle_s
+        self._read_ahead(self._n_frames(settle))
         audio = self.source.verify_window()
 
         # 에너지 게이트 — **디지털 무음만** 거른다. whisper 를 헛되이 부르지 않기 위한 것뿐이다.
@@ -334,7 +339,8 @@ class OnnxWakeDetector:
             if self.embed_rescue is None:
                 return True          # 검증 장치가 아예 없다 = 옛 동작(1단계 단독)
             try:
-                ok, sim = self.embed_rescue.passes(self.embed_sequence(audio))
+                ok, sim = self.embed_rescue.passes(
+                    self.embed_sequence(self._embed_audio(audio)))
             except Exception as e:      # noqa: BLE001 — 검증 장치가 봇을 죽이면 안 된다
                 log.warning("[검증] 임베딩 단독 실패(기각 처리): %s: %s",
                             type(e).__name__, e)
@@ -371,7 +377,12 @@ class OnnxWakeDetector:
             #    녹음인데 whisper 가 '안녕히계세요'로 적는다. 글자로는 손쓸 방법이 없다.
             #    자세한 근거·한계는 app/wake_embed.py 머리말에 있다.
             try:
-                saved, sim = self.embed_rescue.passes(self.embed_sequence(audio))
+                # 임베딩은 whisper 보다 더 들어야 한다(verify_embed_settle_s). whisper 가
+                # 도는 동안 쌓인 소리라 읽는 데 시간이 거의 안 든다.
+                self._read_ahead(self._n_frames(self._embed_settle())
+                                 - self._n_frames(self.verify_settle_s))
+                saved, sim = self.embed_rescue.passes(
+                    self.embed_sequence(self._embed_audio(audio)))
             except Exception as e:      # noqa: BLE001 — 구제 장치가 봇을 죽이면 안 된다
                 log.warning("[검증] 임베딩 대조 실패(무시): %s: %s", type(e).__name__, e)
             else:
@@ -394,6 +405,29 @@ class OnnxWakeDetector:
                      float(getattr(self.source, "noise_floor", 0.0) or 0.0))
         self._hits = 0
         return ok
+
+    # ------------------------------------------------------ 검증창 도우미
+    @staticmethod
+    def _n_frames(seconds: float) -> int:
+        return int(seconds * SAMPLE_RATE / FRAME)
+
+    def _embed_settle(self) -> float:
+        s = self.verify_embed_settle_s
+        return self.verify_settle_s if s is None else s
+
+    def _read_ahead(self, n: int) -> None:
+        """호출어 끝을 창 안에 넣으려고 n 프레임 더 읽는다. 읽은 프레임은 버려지지 않는다 —
+        프리롤·검증창·임베딩창 링버퍼로 그대로 들어간다(verify_settle_s 주석 참고)."""
+        for _ in range(max(0, n)):
+            try:
+                self.source.read()
+            except StopIteration:
+                break
+
+    def _embed_audio(self, fallback: np.ndarray) -> np.ndarray:
+        """임베딩 대조에 쓸 소리 — 소스에 임베딩 창이 있으면 그것, 없으면 검증창."""
+        grab = getattr(self.source, "embed_window", None)
+        return grab() if grab is not None else fallback
 
     # 검증 동안 밀린 오디오를 거두되 상한을 둔다. 무한정 거두면 몇 초 전 TV 소리까지
     # 딸려와 whisper 가 그걸 받아쓴다(2026-08-12 에 프리롤을 0.5초로 묶은 것과 같은 이유).

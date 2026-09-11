@@ -459,3 +459,25 @@ def test_the_lookup_stops_as_soon_as_it_finds_both(monkeypatch):
     m._setup_audio_device(retries=5, wait_s=1.0)
 
     assert calls["n"] == 1
+
+
+def test_임베딩_창은_검증창과_따로_더_길게_담는다():
+    """2026-09-11: 임베딩 대조에는 2.48초 이상이 든다. whisper 창(2초)을 늘리면 호출 전
+    TV·부모 말이 섞여 환각하므로 임베딩만 따로 긴 창을 쓴다."""
+    src = FakeSource(_ramp(50, 0), preroll=0.5, verify_window=2.0, embed_window=3.0)
+    for _ in range(50):
+        src.read()
+    assert src.verify_window().size == src.verify_frames * FRAME
+    e = src.embed_window()
+    assert src.embed_frames == int(3.0 * SAMPLE_RATE / FRAME)
+    assert e.size == src.embed_frames * FRAME
+    assert e[-1] == 49.0 and e[0] == float(50 - src.embed_frames)
+
+
+def test_clear_preroll_은_임베딩_창도_비운다():
+    """낡은 소리로 임베딩을 재면 안 된다 — 프리롤·검증창과 같이 비운다."""
+    src = FakeSource(_ramp(5, 0), preroll=0.5, embed_window=3.0)
+    for _ in range(5):
+        src.read()
+    src.clear_preroll()
+    assert src.embed_window().size == 0

@@ -842,3 +842,95 @@ def test_임베딩_계산이_터져도_봇이_안_죽는다():
 
     d.embed_sequence = boom
     assert d.wait_for_wake(max_frames=3) is None
+
+
+# ── 임베딩 검증창 (2026-09-11) ────────────────────────────────────────────
+# 🔴 봇의 임베딩 검증은 여태 한 번도 통과할 수 없었다. 검증창 2.0초(25프레임)에서는
+#    임베딩이 10개만 나오는데 본보기 대조는 16개를 요구해 유사도가 늘 0 이었다
+#    (젯슨 A/B 판정 72번 전부 0.000). 위 시험들은 embed_sequence 와 passes 를
+#    가짜로 바꿔 끼워서 이걸 못 잡았다. 아래는 **실제 길이**를 본다.
+from app.wake_embed import TEMPLATE_FRAMES  # noqa: E402
+from app.wake_onnx import MEL_PER_FRAME, MEL_WINDOW  # noqa: E402
+
+
+def _embeddings_from(seconds: float) -> int:
+    """embed_sequence 가 이 길이의 소리에서 내는 임베딩 수(첫 임베딩에 멜 76줄 = 16프레임)."""
+    frames = int(seconds * SAMPLE_RATE / FRAME)
+    return max(0, frames - -(-MEL_WINDOW // MEL_PER_FRAME) + 1)
+
+
+def test_옛_검증창_2초로는_임베딩이_모자랐다():
+    assert _embeddings_from(2.0) == 10 < TEMPLATE_FRAMES
+
+
+def test_설정의_임베딩_창은_본보기_대조에_충분하다():
+    from app.config import settings
+    v = settings.models["wake"]["onnx"]["verify"]
+    assert _embeddings_from(float(v["embed_window_s"])) >= TEMPLATE_FRAMES
+
+
+def test_소스의_기본_임베딩_창도_충분하다():
+    s = AudioSource()
+    assert _embeddings_from(s.embed_frames * FRAME / SAMPLE_RATE) >= TEMPLATE_FRAMES
+
+
+LEAD = 40      # 후보가 41번째 프레임에서 뜬다
+
+
+def _embed_det(verifier=None, rescue_ok=True, **kw):
+    """임베딩에 넘어간 소리 길이와 그때까지 읽은 프레임 수를 잡는 감지기."""
+    seen = {}
+    r = _Rescue(ok=rescue_ok)
+    d, src = _det([0.0] * LEAD + [0.9], verifier=verifier, embed_rescue=r,
+                  verify_settle_s=0.3, **kw)
+
+    def emb(audio):
+        seen["size"] = np.asarray(audio).size
+        seen["read"] = src._i
+        return object()
+    d.embed_sequence = emb
+    return d, src, seen, r
+
+
+def test_임베딩_단독은_임베딩_창을_쓴다():
+    d, src, seen, _ = _embed_det(verify_embed_settle_s=0.5)
+    assert d.wait_for_wake(max_frames=60) is not None
+    assert seen["size"] == src.embed_frames * FRAME
+    assert _embeddings_from(seen["size"] / SAMPLE_RATE) >= TEMPLATE_FRAMES
+
+
+def test_임베딩_단독은_따로_더_듣는다():
+    """1단계 최고점은 첫 임계 넘김보다 0.3~0.5초 뒤다. 0.24초만 듣고 창을 뜨면 호출어
+    끝이 잘린다(젯슨 A/B, 3초 창: +0.24초 6/11 -> +0.48초 10/11)."""
+    d, src, seen, _ = _embed_det(verify_embed_settle_s=0.5)
+    d.wait_for_wake(max_frames=60)
+    assert seen["read"] == LEAD + 1 + int(0.5 * SAMPLE_RATE / FRAME)
+
+
+def test_임베딩_기다림을_안_정하면_whisper_와_같다():
+    d, src, seen, _ = _embed_det()
+    d.wait_for_wake(max_frames=60)
+    assert seen["read"] == LEAD + 1 + int(0.3 * SAMPLE_RATE / FRAME)
+
+
+def test_whisper_경로의_창과_기다림은_그대로다():
+    """임베딩용 설정이 whisper 쪽에 새면 기본 동작(지금 봇)이 바뀐다."""
+    seen = {}
+
+    def whisper(audio):
+        seen["read"] = src._i
+        seen["size"] = np.asarray(audio).size
+        return True
+    d, src = _det([0.0] * LEAD + [0.9], verifier=whisper,
+                  verify_settle_s=0.3, verify_embed_settle_s=0.5)
+    assert d.wait_for_wake(max_frames=60) is not None
+    assert seen["read"] == LEAD + 1 + int(0.3 * SAMPLE_RATE / FRAME)
+    assert seen["size"] == src.verify_frames * FRAME
+
+
+def test_보강도_임베딩_창과_추가_기다림을_쓴다():
+    d, src, seen, r = _embed_det(verifier=lambda a: False, verify_embed_settle_s=0.5)
+    assert d.wait_for_wake(max_frames=60) is not None
+    assert r.calls == 1
+    assert seen["size"] == src.embed_frames * FRAME
+    assert seen["read"] == LEAD + 1 + int(0.5 * SAMPLE_RATE / FRAME)

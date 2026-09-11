@@ -43,13 +43,19 @@ class AudioSource:
     """
 
     def __init__(self, samplerate: int = SAMPLE_RATE, frame: int = FRAME,
-                 preroll: float = 0.5, verify_window: float = 2.0) -> None:
+                 preroll: float = 0.5, verify_window: float = 2.0,
+                 embed_window: float = 3.0) -> None:
         self.samplerate = samplerate
         self.frame = frame
         self.preroll_frames = max(1, int(preroll * samplerate / frame))
         self.verify_frames = max(1, int(verify_window * samplerate / frame))
         self._ring: deque[np.ndarray] = deque(maxlen=self.preroll_frames)
         self._verify_ring: deque[np.ndarray] = deque(maxlen=self.verify_frames)
+        # 🔴 2026-09-11 임베딩 대조 전용 창. 검증창(2초)으로는 임베딩이 10개뿐인데 본보기
+        #    대조는 16개(= 2.48초)가 든다 — 여태 봇의 임베딩 검증은 유사도가 늘 0 이었다.
+        #    whisper 창을 늘리지 않는 이유: 호출 전 TV·부모 말이 섞여 환각한다.
+        self.embed_frames = max(1, int(embed_window * samplerate / frame))
+        self._embed_ring: deque[np.ndarray] = deque(maxlen=self.embed_frames)
         self._stream = None
         self.noise_floor = 0.0
         # 마이크가 순수한 0 만 주면 True. 어떤 마이크도 자체잡음이 있으므로 0 은
@@ -208,10 +214,11 @@ class AudioSource:
         return len(self._queue) * self.frame
 
     def read(self) -> np.ndarray:
-        """프레임 하나를 읽고 두 링버퍼(프리롤·검증창)에도 넣는다."""
+        """프레임 하나를 읽고 세 링버퍼(프리롤·검증창·임베딩창)에도 넣는다."""
         f = self._read_frame()
         self._ring.append(f)
         self._verify_ring.append(f)
+        self._embed_ring.append(f)
         return f
 
     # --------------------------------------------------------------- 프리롤
@@ -230,10 +237,17 @@ class AudioSource:
             return np.zeros(0, dtype=np.float32)
         return np.concatenate(list(self._verify_ring)).astype(np.float32)
 
+    def embed_window(self) -> np.ndarray:
+        """임베딩 대조용 — 최근 embed_window 초. 검증창보다 길다(__init__ 주석 참고)."""
+        if not self._embed_ring:
+            return np.zeros(0, dtype=np.float32)
+        return np.concatenate(list(self._embed_ring)).astype(np.float32)
+
     def clear_preroll(self) -> None:
-        """두 버퍼를 함께 비운다 — 낡은 오디오를 검증에 쓰면 안 된다."""
+        """세 버퍼를 함께 비운다 — 낡은 오디오를 검증에 쓰면 안 된다."""
         self._ring.clear()
         self._verify_ring.clear()
+        self._embed_ring.clear()
 
     # ----------------------------------------------------------------- 비우기
     def read_buffered(self, max_frames: int) -> list:

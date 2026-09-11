@@ -1,0 +1,91 @@
+{
+ "when": "20260911_1234",
+ "templates": "models/wake/v6/templates_haitid.npy",
+ "modes": [
+  "임베딩0.88/3초+0.5",
+  "임베딩0.85/3초+0.5"
+ ],
+ "verify_window_s": 2.0,
+ "embed_window_s": 3.0,
+ "embed_settle_s": 0.5,
+ "bot_settle_s": 0.3,
+ "calls": {
+  "data/wake_real/adult_20260911_1144/held": {
+   "임베딩0.88/3초+0.5": {
+    "woke": 10,
+    "total": 15,
+    "missed": [
+     "보통_03.wav",
+     "흘려서_00.wav",
+     "흘려서_01.wav",
+     "흘려서_02.wav",
+     "흘려서_04.wav"
+    ]
+   },
+   "임베딩0.85/3초+0.5": {
+    "woke": 10,
+    "total": 15,
+    "missed": [
+     "보통_03.wav",
+     "흘려서_00.wav",
+     "흘려서_01.wav",
+     "흘려서_02.wav",
+     "흘려서_04.wav"
+    ]
+   }
+  },
+  "data/wake_real/adult_20260826_1445": {
+   "임베딩0.88/3초+0.5": {
+    "woke": 11,
+    "total": 20,
+    "missed": [
+     "보통_00.wav",
+     "보통_03.wav",
+     "빠르게_00.wav",
+     "빠르게_01.wav",
+     "흘려서_00.wav",
+     "흘려서_01.wav",
+     "흘려서_02.wav",
+     "흘려서_03.wav",
+     "흘려서_04.wav"
+    ]
+   },
+   "임베딩0.85/3초+0.5": {
+    "woke": 15,
+    "total": 20,
+    "missed": [
+     "보통_03.wav",
+     "빠르게_00.wav",
+     "흘려서_00.wav",
+     "흘려서_03.wav",
+     "흘려서_04.wav"
+    ]
+   }
+  }
+ },
+ "noise": {
+  "path": "logs/거실.wav",
+  "minutes": 45.0,
+  "임베딩0.88/3초+0.5": {
+   "false_wakes": 0,
+   "per_hour": 0.0,
+   "verifies": 139,
+   "verify_s_mean": 0.0816,
+   "wall_s": 191.3,
+   "wakes": []
+  },
+  "임베딩0.85/3초+0.5": {
+   "false_wakes": 1,
+   "per_hour": 1.33,
+   "verifies": 139,
+   "verify_s_mean": 0.0816,
+   "wall_s": 192.1,
+   "wakes": [
+    {
+     "t_s": 646.48,
+     "score": 0.064
+    }
+   ]
+  }
+ }
+}

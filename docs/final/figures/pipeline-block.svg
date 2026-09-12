@@ -69,7 +69,7 @@
     <text x="582.5" y="259">낱말 규칙 기반 필터</text>
     <text x="582.5" y="275">function calling 아님</text>
     <text x="357.5" y="259">Supertonic · TensorRT @24</text>
-    <text x="357.5" y="275">합성 829.5 → 371.9 ms</text>
+    <text x="357.5" y="275">합성 817.0 → 453.8 ms</text>
     <text x="132.5" y="259">첫 소리 1,090 → 721 ms</text>
     <text x="132.5" y="275">PLAY_PAD_S 0.15 (미계측)</text>
   </g>

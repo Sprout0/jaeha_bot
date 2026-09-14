@@ -134,3 +134,37 @@ def test_bridge_hands_out_commands_in_order():
     assert [c["op"] for c in b.since(1)] == ["pause"]
     b.update({"state": 1})
     assert b.wait_for(lambda s: s.get("state") == 1, 0.1)
+
+
+# ── 곡이 자연히 끝났을 때 ────────────────────────────────────────────────────
+# "그만" 은 sink 를 재워 ReSpeaker 를 놓는다. 그런데 곡이 끝까지 가면 아무도 안 놓아
+# PulseAudio 가 장치를 계속 쥔다 — 호출어 녹음처럼 hw 를 직접 여는 도구가 막힌다.
+# 페이지는 1초마다 상태를 보내므로, 놓는 일은 **들어간 순간 한 번만** 해야 한다.
+def _player_with_fake_pactl():
+    p = yt.YouTubePlayer()
+    calls = []
+    p._pactl = lambda *a: calls.append(a)
+    p._started = True
+    return p, calls
+
+
+def test_sink_is_released_when_the_song_ends_by_itself():
+    p, calls = _player_with_fake_pactl()
+    p._bridge.update({"state": yt.PLAYING, "vid": "a"})
+    p._bridge.update({"state": yt.ENDED, "vid": "a"})
+    assert ("suspend-sink", p.sink_name, "1") in calls
+
+
+def test_sink_is_released_only_once_though_the_page_repeats_ended():
+    p, calls = _player_with_fake_pactl()
+    p._bridge.update({"state": yt.PLAYING, "vid": "a"})
+    for _ in range(5):                       # 1초마다 같은 상태가 온다
+        p._bridge.update({"state": yt.ENDED, "vid": "a"})
+    assert calls.count(("suspend-sink", p.sink_name, "1")) == 1
+
+
+def test_playing_never_releases_the_sink():
+    p, calls = _player_with_fake_pactl()
+    p._bridge.update({"state": yt.PLAYING, "vid": "a"})
+    p._bridge.update({"state": yt.BUFFERING, "vid": "a"})
+    assert calls == []

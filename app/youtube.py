@@ -241,11 +241,12 @@ ENDED, PLAYING, PAUSED, BUFFERING = 0, 1, 2, 3
 class _Bridge:
     """봇 ↔ 페이지. 페이지가 명령을 물어가고(poll) 상태를 보낸다. 추가 라이브러리 불필요."""
 
-    def __init__(self) -> None:
+    def __init__(self, on_state=None) -> None:
         self._cond = threading.Condition()
         self._cmds: list[dict] = []
         self._seq = 0
         self.state: dict = {}
+        self._on_state = on_state
 
     def push(self, **cmd) -> None:
         with self._cond:
@@ -260,6 +261,12 @@ class _Bridge:
         with self._cond:
             self.state.update(st)
             self._cond.notify_all()
+        # 잠금 밖에서 부른다 — 여기서 pactl(최대 5초)을 돌리므로 wait_for 를 막으면 안 된다.
+        if self._on_state is not None:
+            try:
+                self._on_state(dict(self.state))
+            except Exception as e:
+                log.warning("상태 알림 실패(무시): %s: %s", type(e).__name__, str(e)[:80])
 
     def wait_for(self, pred, timeout: float) -> bool:
         with self._cond:
@@ -341,7 +348,8 @@ class YouTubePlayer:
         self.start_timeout_s, self.play_timeout_s = start_timeout_s, play_timeout_s
         self.profile_dir = profile_dir or str(Path.home() / "snap/chromium/common/jaeha-youtube")
         self.chromium = chromium
-        self._bridge = _Bridge()
+        self._bridge = _Bridge(on_state=self._on_state)
+        self._last_state = None
         self._server: ThreadingHTTPServer | None = None
         self._procs: list[subprocess.Popen] = []
         self._tmp: tempfile.TemporaryDirectory | None = None
@@ -355,6 +363,18 @@ class YouTubePlayer:
     def missing(self) -> list[str]:
         need = ["Xvfb", "pulseaudio", "pactl", self.chromium[0]]
         return [b for b in need if not shutil.which(b)]
+
+    def _on_state(self, st: dict) -> None:
+        """곡이 끝까지 갔다 — 아무도 안 부르므로 여기서 ReSpeaker 를 놓는다.
+
+        페이지가 1초마다 같은 상태를 보내니 **들어간 순간 한 번만** 재운다.
+        (stop() 은 자기가 재우고, resume()·play() 는 깨운다.)
+        """
+        state, prev = st.get("state"), self._last_state
+        self._last_state = state
+        if state == ENDED and prev != ENDED and self._started:
+            log.info("[노래] 곡이 끝났다 — 출력 장치를 놓는다")
+            self._pactl("suspend-sink", self.sink_name, "1")
 
     def _pactl(self, *args: str) -> subprocess.CompletedProcess:
         env = dict(os.environ, XDG_RUNTIME_DIR=self._runtime)

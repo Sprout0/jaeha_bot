@@ -60,7 +60,12 @@ B=14:00; S=14:02; E=14:17; L=~/jaeha_bot/logs/jaeha_$(date +%Y%m%d).log; grep '�
 헛깨움 ÷ 켜 둔 시간 = 시간당 헛깨움. 합격선은 1회 이하.
 시간을 못 내면 오프라인 45분 결과(1회 = 1.33/h, 같은 코드)를 근거로 쓰되, 문서에는 "실기 미계측"으로 적는다.
 
-## C. 1단계 단독 함정 막기 — 저장소 기본을 바꾸기 전에 꼭
+## C. 1단계 단독 함정 막기 — ✅ 09-14 함(스위트 1,032개 통과)
+
+`make_detector` 가 try 밖에서 임베딩 대조를 먼저 만들고, embed 인데 None 이면 RuntimeError 로 멈춘다.
+기존 시험 4개는 본보기 없이 embed 를 쓰고 있어 `_rescue_cfg(tmp_path)` 를 넣어 고쳤다.
+🔴 **아직 젯슨에 안 올렸다** — 배포는 A·B 판정 뒤에 `app/wake.py` 한 파일만 scp.
+
 
 **문제:** `mode: embed` 인데 `embed_rescue.enabled: false` 거나 본보기 파일이 없으면
 `_make_embed_rescue` 가 None 을 준다. whisper 검증기도 None 이라 **2단계 없이 1단계 단독**으로 돈다

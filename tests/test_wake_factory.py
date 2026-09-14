@@ -1,6 +1,7 @@
 """감지기 선택과 폴백. ONNX 파일이 없어도 봇이 죽지 않아야 한다."""
 import logging
 
+import numpy as np
 import pytest
 
 from app.wake import SttWakeDetector, make_detector
@@ -18,6 +19,16 @@ class FakeStt:
         t = self._texts[self._i]
         self._i += 1
         return t, 0.1
+
+
+def _rescue_cfg(tmp_path):
+    """임베딩 대조를 켤 수 있는 최소 설정 — 본보기 한 줄짜리 파일을 만들어 가리킨다.
+
+    본보기 한 줄 = 임베딩 16개(TEMPLATE_FRAMES)를 펼친 것. 값은 안 본다.
+    """
+    p = tmp_path / "templates.npy"
+    np.save(p, np.ones((1, 16 * 96), dtype=np.float32))
+    return {"enabled": True, "templates": str(p), "min_similarity": 0.85}
 
 
 def test_stt_detector_wakes_on_wake_word():
@@ -113,19 +124,21 @@ def test_mode가_없으면_현행대로_whisper를_쓴다(monkeypatch):
     assert seen["verifier"] is not None
 
 
-def test_mode가_embed면_whisper를_안_만든다(monkeypatch):
+def test_mode가_embed면_whisper를_안_만든다(monkeypatch, tmp_path):
     seen = _capture_kwargs(monkeypatch)
     cfg = {"detector": "onnx", "word": "하이티드",
-           "onnx": {"verify": {"enabled": True, "mode": "embed"}}}
+           "onnx": {"verify": {"enabled": True, "mode": "embed",
+                              "embed_rescue": _rescue_cfg(tmp_path)}}}
     make_detector(cfg, stt=FakeStt([]), source=object())
     assert seen["verifier"] is None
 
 
-def test_mode가_embed면_stt가_없어도_만들어진다(monkeypatch):
+def test_mode가_embed면_stt가_없어도_만들어진다(monkeypatch, tmp_path):
     # S2S 구성에서는 stt 인스턴스 자체가 없다. 그때 죽으면 안 된다.
     seen = _capture_kwargs(monkeypatch)
     cfg = {"detector": "onnx", "word": "하이티드",
-           "onnx": {"verify": {"enabled": True, "mode": "embed"}}}
+           "onnx": {"verify": {"enabled": True, "mode": "embed",
+                              "embed_rescue": _rescue_cfg(tmp_path)}}}
     make_detector(cfg, stt=None, source=object())
     assert seen["verifier"] is None
 
@@ -141,7 +154,7 @@ def test_모르는_mode는_죽는다(monkeypatch):
 
 # ── stt 없이 부팅 (2026-09-02) ───────────────────────────────────────────
 
-def test_stt가_없는데_onnx가_죽으면_조용히_넘어가지_않는다(monkeypatch):
+def test_stt가_없는데_onnx가_죽으면_조용히_넘어가지_않는다(monkeypatch, tmp_path):
     # 🔴 조용한 폴백이 제일 나쁘다. SttWakeDetector 는 stt 로 듣는데 stt 가 None 이면
     #    부를 수 없는 객체다. 그걸 돌려주면 봇이 영영 안 깨어나면서 로그엔 '폴백함'
     #    한 줄만 남아 원인을 못 찾는다.
@@ -152,7 +165,8 @@ def test_stt가_없는데_onnx가_죽으면_조용히_넘어가지_않는다(mon
 
     monkeypatch.setattr(wake_onnx, "OnnxWakeDetector", _boom)
     cfg = {"detector": "onnx", "word": "하이티드",
-           "onnx": {"verify": {"enabled": True, "mode": "embed"}}}
+           "onnx": {"verify": {"enabled": True, "mode": "embed",
+                              "embed_rescue": _rescue_cfg(tmp_path)}}}
     with pytest.raises(RuntimeError):
         make_detector(cfg, stt=None, source=object())
 
@@ -175,11 +189,12 @@ def test_detector가_stt인데_stt가_없으면_죽는다():
 
 
 # ── 임베딩 쪽 기다림 (2026-09-11) ────────────────────────────────────────
-def test_embed_settle_s_가_감지기로_넘어간다(monkeypatch):
+def test_embed_settle_s_가_감지기로_넘어간다(monkeypatch, tmp_path):
     # 임베딩은 후보 뒤 0.48초를 더 들어야 호출어 끝이 창에 들어온다(젯슨 A/B).
     seen = _capture_kwargs(monkeypatch)
     cfg = {"detector": "onnx", "word": "하이티드",
-           "onnx": {"verify": {"enabled": True, "mode": "embed", "embed_settle_s": 0.5}}}
+           "onnx": {"verify": {"enabled": True, "mode": "embed", "embed_settle_s": 0.5,
+                              "embed_rescue": _rescue_cfg(tmp_path)}}}
     make_detector(cfg, stt=None, source=object())
     assert seen["verify_embed_settle_s"] == 0.5
 
@@ -190,3 +205,44 @@ def test_embed_settle_s_가_없으면_None_이라_whisper_기다림을_따른다
            "onnx": {"verify": {"enabled": True}}}
     make_detector(cfg, stt=FakeStt([]), source=object())
     assert seen["verify_embed_settle_s"] is None
+
+
+# ── embed 인데 2단계가 없는 상태 (2026-09-14) ────────────────────────────
+# 🔴 mode: embed 는 임베딩 대조가 **유일한** 2단계다(whisper 검증기를 아예 안 만든다).
+#    대조가 꺼져 있거나 본보기 파일이 없으면 둘 다 None 이라 1단계 단독으로 돈다
+#    — 거실에서 시간당 160회 깨어난다(08-26 실측). 로그엔 경고 한 줄뿐이라 못 찾는다.
+
+def test_mode가_embed인데_대조가_꺼져있으면_죽는다(monkeypatch):
+    _capture_kwargs(monkeypatch)
+    cfg = {"detector": "onnx", "word": "하이티드",
+           "onnx": {"verify": {"enabled": True, "mode": "embed"}}}
+    with pytest.raises(RuntimeError):
+        make_detector(cfg, stt=FakeStt([]), source=object())
+
+
+def test_mode가_embed인데_본보기가_없으면_죽는다(monkeypatch, tmp_path):
+    # 🔴 STT 폴백으로 둔갑하면 안 된다 — 폴백은 '깨어나긴 한다'라서 더 안 드러난다.
+    _capture_kwargs(monkeypatch)
+    cfg = {"detector": "onnx", "word": "하이티드",
+           "onnx": {"verify": {"enabled": True, "mode": "embed", "embed_rescue": {
+               "enabled": True, "templates": str(tmp_path / "없다.npy")}}}}
+    with pytest.raises(RuntimeError):
+        make_detector(cfg, stt=FakeStt([]), source=object())
+
+
+def test_mode가_embed인데_본보기가_있으면_그대로_만들어진다(monkeypatch, tmp_path):
+    # 가드가 정상 설정까지 막으면 안 된다(젯슨이 이 설정으로 돈다).
+    seen = _capture_kwargs(monkeypatch)
+    cfg = {"detector": "onnx", "word": "하이티드",
+           "onnx": {"verify": {"enabled": True, "mode": "embed",
+                               "embed_rescue": _rescue_cfg(tmp_path)}}}
+    make_detector(cfg, stt=None, source=object())
+    assert seen["embed_rescue"] is not None
+
+
+def test_whisper는_대조가_꺼져있어도_그대로_돈다(monkeypatch):
+    # 현행 기본값이다. 여기서 죽으면 모든 기계가 안 켜진다.
+    seen = _capture_kwargs(monkeypatch)
+    cfg = {"detector": "onnx", "word": "하이티드", "onnx": {"verify": {"enabled": True}}}
+    make_detector(cfg, stt=FakeStt([]), source=object())
+    assert seen["embed_rescue"] is None

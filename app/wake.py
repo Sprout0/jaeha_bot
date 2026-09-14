@@ -298,6 +298,19 @@ def make_detector(wcfg: dict, stt, source):
             f"wake.onnx.verify.mode 가 이상하다: {mode!r} "
             "— whisper | embed | both 중 하나여야 한다")
 
+    # 🔴 2026-09-14 embed 에서는 임베딩 대조가 **유일한** 2단계다(위에서 whisper 검증기를
+    #    아예 안 만든다). 대조가 꺼져 있거나 본보기 파일이 없으면 둘 다 None 이라
+    #    1단계 단독으로 돈다 — 거실에서 시간당 160회 깨어난다(08-26 실측).
+    #    남는 자취는 wake_embed 의 경고 한 줄뿐이라 '켰는데 왜 이러지' 를 못 찾는다.
+    #    이 검사도 **try 밖이어야 한다** — 안에 두면 폴백 except 가 삼켜 '모델 로드 실패'
+    #    로 둔갑한다.
+    embed_rescue = _make_embed_rescue(vcfg)
+    if mode == "embed" and embed_rescue is None:
+        raise RuntimeError(
+            "wake.onnx.verify.mode 가 embed 인데 임베딩 대조를 못 만들었다 "
+            "— embed_rescue.enabled 가 true 인지, templates 파일이 있는지 확인할 것"
+            "(tools/enroll_wake.py 로 등록). 이대로면 2단계 없이 1단계 단독으로 돈다")
+
     try:
         from .wake_onnx import OnnxWakeDetector
         verifier = None if mode == "embed" else make_wake_verifier(vcfg, stt, word)
@@ -320,7 +333,7 @@ def make_detector(wcfg: dict, stt, source):
             verify_embed_settle_s=(float(vcfg["embed_settle_s"])
                                    if vcfg.get("embed_settle_s") is not None else None),
             # whisper 가 지어낸 글 때문에 죽은 진짜 호출을 소리로 건진다(꺼져 있으면 None).
-            embed_rescue=_make_embed_rescue(vcfg),
+            embed_rescue=embed_rescue,
         )
     except Exception as e:
         if fallback is None:

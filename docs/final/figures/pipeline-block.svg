@@ -12,7 +12,7 @@
   <rect x="0" y="0" width="1000" height="640" fill="#ffffff"/>
 
   <text x="24" y="34" font-size="19" font-weight="700" fill="#0f172a">그림 1. 재하봇 파이프라인과 구간별 실측 지연</text>
-  <text x="24" y="56" font-size="12.5" fill="#475569">Jetson Orin Nano 8GB + ReSpeaker · 기준 시점 doc-baseline-2026-09 · 지연은 2026-09-07 젯슨 실기 5턴</text>
+  <text x="24" y="56" font-size="12.5" fill="#475569">Jetson Orin Nano 8GB + ReSpeaker · 기준 시점 doc-baseline-2026-09-12 · 지연은 2026-09-07 젯슨 실기 5턴</text>
 
   <!-- ── 입력 경로 (왼 → 오) ────────────────────────────── -->
   <text x="24" y="92" font-size="12" font-weight="700" fill="#1d4ed8">듣기</text>

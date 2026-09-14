@@ -11,6 +11,23 @@
 | [figures/](figures/) | 그림 1(파이프라인 블록도), 도면 1(2단계 검증 타이밍도) | 본문·특허 삽입용 |
 | [2026-09-final-report-outline.md](2026-09-final-report-outline.md) | 뼈대와 근거 지도 | 작업용. 본문을 고칠 때 함께 본다 |
 
+## 제출 파일(docx) 만들기
+
+markdown 이 원본이고 docx 는 만들어 내는 것이다. 손으로 고친 docx 는 다음 실행에서
+지워지니, 고칠 일이 있으면 `.md` 를 고치고 다시 만든다. 산출물은 `docs/final/docx/`
+에 나오며 저장소에는 넣지 않는다(`.gitignore`).
+
+```
+python tools/build_docs_docx.py          # markdown -> docx (A4, 맑은 고딕, 그림 포함)
+powershell tools/update_docx_fields.ps1  # 목차·쪽번호 채우기. -Pdf 를 주면 PDF 도
+```
+
+`pandoc` 이 없으면 `pip install pypandoc_binary` 로 받은 뒤 그 파이썬으로 돌린다.
+그림(SVG)을 PNG 로 굽는 데 크롬을, 목차 필드를 채우는 데 워드를 쓴다. 두 번째 단계를
+건너뛰면 목차가 빈 채로 나간다.
+
+서식(글꼴·용지·제목 크기·표 테두리)은 `tools/docx_reference.py` 한 곳에서 정한다.
+
 ## 두 보고서를 나눈 이유
 
 `report.md` 는 서술형이라 읽는 데 시간이 걸린다. 심사자가 먼저 보는 것은 **무엇을 했고

@@ -56,6 +56,11 @@ DOCS = [
     (os.path.join("patent", "wake-two-stage-verification.md"),
      "03_별첨2_특허정리_호출어2단계검증.docx", True),
     ("api-전환안.md", "04_별첨3_전면API구성검토.docx", False),
+    # 산학협력단 발명신고용. 한글 양식에 옮겨 붙일 내용이라 목차는 필요 없다.
+    (os.path.join("patent", "발명신고서-초안.md"),
+     "05_발명신고서_초안.docx", False),
+    (os.path.join("patent", "발명의내용설명서-초안.md"),
+     "06_발명의내용설명서_초안.docx", False),
 ]
 
 

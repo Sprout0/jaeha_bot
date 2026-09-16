@@ -57,10 +57,11 @@ add_env_libs() {
 }
 
 case "$MODE" in
-  local)   # 보드/PC 네이티브 실행
+  local)   # 보드/PC 네이티브 실행. configs 의 pipeline 이 realtime 이면 전면 API 봇.
     PY="$(resolve_or_die)"; add_env_libs "$PY"
-    echo "▶ $PY -m app.main"
-    exec "$PY" -m app.main ;;
+    ENTRY="$("$PY" -c 'from app.config import settings; print("app.main_realtime" if settings.models.get("pipeline", "local") == "realtime" else "app.main")')"
+    echo "▶ $PY -m $ENTRY"
+    exec "$PY" -m "$ENTRY" ;;
   check)   # 봇을 띄우지 않고 **기동 준비만** 확인한다 (시연 직전에 쓰라고 만든 것)
     PY="$(resolve_or_die)"; add_env_libs "$PY"
     echo "python: $PY"
@@ -79,6 +80,18 @@ try:
 except Exception as e:
     print(f"STT 엔진: ❌ import 실패 -> {type(e).__name__}: {e}")
     bad.append("faster_whisper")
+from app.config import settings as _s
+_p = _s.models.get("pipeline", "local")
+print("대화 경로:", _p)
+if _p == "realtime":
+    import os
+    print("websockets:", "있음" if importlib.util.find_spec("websockets") else "❌ 없음 -> pip install websockets==16.1.1")
+    try:
+        from app.main_realtime import check_startup
+        check_startup(_s.models, os.environ)
+        print("기동 검사: 통과(키 있음, 호출어 임베딩 검증)")
+    except Exception as e:
+        print(f"기동 검사: ❌ {e}")
 sys.exit(1 if bad else 0)
 PYEOF
     "$PY" -m app.audio_player | head -4 ;;

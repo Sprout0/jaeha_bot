@@ -467,24 +467,35 @@ class GameManager:
                 return out
         return beat["fallback"]
 
-    def maybe_start(self, text: str) -> str | None:
-        """시작 트리거면 놀이를 시작하고 첫 멘트를 돌려준다. 아니면 None."""
+    def maybe_start_beat(self, text: str) -> dict | None:
+        """시작 트리거면 놀이를 시작하고 첫 **지시(beat)** 를 돌려준다. 아니면 None.
+
+        Realtime 경로는 지시를 문장으로 바꾸지 않고 모델에 그대로 넘긴다(2026-09-16).
+        """
         if self.active is not None:
             return None
         kind = match_trigger(text)
         if not kind:
             return None
         self.active = AnimalSoundGame() if kind == "animal" else RepeatWordGame()
-        return self._voice(self.active.start())
+        return self.active.start()
 
-    def handle(self, text: str) -> str | None:
-        """진행 중 놀이가 있으면 한 턴 처리. 없으면 None(→ 평소 대화로)."""
+    def maybe_start(self, text: str) -> str | None:
+        """시작 트리거면 놀이를 시작하고 첫 멘트를 돌려준다. 아니면 None."""
+        return self._voice(self.maybe_start_beat(text))
+
+    def handle_beat(self, text: str) -> dict | None:
+        """진행 중 놀이가 있으면 한 턴 처리해 **지시(beat)** 를 돌려준다. 없으면 None."""
         if self.active is None:
             return None
         beat = self.active.step(text)
         if self.active.done:
             self.active = None
-        return self._voice(beat)
+        return beat
+
+    def handle(self, text: str) -> str | None:
+        """진행 중 놀이가 있으면 한 턴 처리. 없으면 None(→ 평소 대화로)."""
+        return self._voice(self.handle_beat(text))
 
 
 def _repl() -> None:

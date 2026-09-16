@@ -30,6 +30,24 @@ powershell tools/update_docx_fields.ps1  # 목차·쪽번호 채우기. -Pdf 를
 
 서식(글꼴·용지·제목 크기·표 테두리)은 `tools/docx_reference.py` 한 곳에서 정한다.
 
+## 발명신고 양식(HWP) 채우기
+
+세종대 산학협력단 양식은 저장소 밖에 있다(`jaeha_bot_docs/docs/제출 보고서`). 원본은
+읽기만 하고 `*_초안.hwp` 로 따로 낸다.
+
+```
+python tools/make_invention_hwp.py "<양식 폴더>" docs/final/figures/wake-two-stage.png
+```
+
+한글과 `pyhwpx` 가 필요하다. 채우는 내용은 `tools/invention_desc_content.py` 에 있고,
+칸 주소는 구역(list) 번호로 잡되 쓰기 전에 그 칸의 문구를 확인한다 — 엉뚱한 칸에 쓰는
+사고를 막는 장치다.
+
+🔴 **보안 모듈이 등록돼 있지 않으면 `open()` 이 조용히 멈춘다.** 파일을 읽을 때만 그렇고
+저장은 된다(보이지 않는 승인 대화상자가 떠서 기다린다). 그때는 미리 받아 둔 HWPML 을
+`--hwpml` 로 넘기면 파일을 읽지 않으므로 통과한다. 자세한 함정 세 가지는 스크립트
+맨 위에 적어 두었다.
+
 ## 두 보고서를 나눈 이유
 
 `report.md` 는 서술형이라 읽는 데 시간이 걸린다. 심사자가 먼저 보는 것은 **무엇을 했고

@@ -1,0 +1,256 @@
+"""깨어 있는 한 구간 — 연결을 열고, 턴을 돌리고, 대기로 갈 이유가 생기면 닫는다.
+
+세 일이 동시에 돈다: 마이크 보내기 / 이벤트 받기 / 시계(맞장구·응답 제한·무응답).
+끝나는 이유: sleep(잠들기 명령) · idle(무응답) · music(노래 틀고 대기) ·
+music_resumed(노래 중 호출에 답했거나 말이 없었다) · lost(끊김).
+"""
+from __future__ import annotations
+
+import asyncio
+import base64
+import logging
+import time
+from dataclasses import dataclass, field
+
+import numpy as np
+
+from . import safety
+from .realtime_audio import MicGate, PcmAccumulator, to_pcm16
+from .realtime_protocol import (append_audio, cached_tokens, cancel, cost_usd, event_kind,
+                                respond, say_exactly)
+from .realtime_session import ConnectionLost
+from .realtime_turn import PHRASES, Route, missing_required, route
+
+log = logging.getLogger("jaeha_bot.realtime")
+
+
+@dataclass
+class _Pending:
+    route: Route
+    child: str
+    stopped_at: float | None
+    transcript_at: float
+    requested_at: float
+    first_audio_at: float | None = None
+    said: str = ""
+    filler: bool = False
+    acc: PcmAccumulator = field(default_factory=PcmAccumulator)
+
+
+class Conversation:
+    def __init__(self, *, session, mic: asyncio.Queue, speaker, cache, cfg, music, games,
+                 sleep_words, instructions: str, history: list, metrics=None,
+                 sleep_timeout: float = 30.0, filler_phrases=(), clock=time.monotonic,
+                 tick_s: float = 0.05) -> None:
+        self.session, self.mic, self.speaker, self.cache = session, mic, speaker, cache
+        self.cfg, self.music, self.games = cfg, music, games
+        self.sleep_words, self.instructions = sleep_words, instructions
+        self.history, self.metrics = history, metrics
+        self.sleep_timeout = float(sleep_timeout)
+        self.filler_phrases = list(filler_phrases)
+        self.clock, self.tick_s = clock, tick_s
+        self.gate = MicGate(cfg.mic_pad_s)
+        self._pending: _Pending | None = None
+        self._stopped_at: float | None = None
+        self._last_active = clock()
+        self._started = clock()
+        self._heard_speech = False
+        self._woke_during_music = False
+        self._filler_i = 0
+        self._done: asyncio.Future | None = None
+
+    # ── 밖에서 부르는 것 ──────────────────────────────────────────────────
+    async def run(self, *, preroll=None, greet: bool = True,
+                  woke_during_music: bool = False) -> str:
+        self._done = asyncio.get_running_loop().create_future()
+        self._woke_during_music = woke_during_music
+        self._started = self._last_active = self.clock()
+        try:
+            await self.session.open(self.instructions, self.history)
+        except ConnectionLost as e:
+            log.warning("Realtime 연결 실패: %s", e)
+            self._say_cached("lost")
+            await self._wait_quiet()
+            return "lost"
+        if preroll is not None and np.asarray(preroll[0]).size:
+            await self._send(append_audio(to_pcm16(preroll[0], preroll[1])))
+            log.info("호출 직후 이어진 말 %.2fs 를 먼저 보냄", np.asarray(preroll[0]).size / preroll[1])
+        elif greet:
+            self._say_cached("wake")
+        tasks = [asyncio.create_task(self._pump_mic()),
+                 asyncio.create_task(self._read_events()),
+                 asyncio.create_task(self._tick())]
+        try:
+            reason = await self._done
+        finally:
+            for t in tasks:
+                t.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            await self._wait_quiet()
+            await self.session.close()
+        log.info("대화 구간 끝 → %s", reason)
+        return reason
+
+    # ── 내부 ────────────────────────────────────────────────────────────
+    def _finish(self, reason: str) -> None:
+        if self._done is not None and not self._done.done():
+            self._done.set_result(reason)
+
+    async def _send(self, msg: dict) -> None:
+        try:
+            await self.session.send(msg)
+        except ConnectionLost as e:
+            self._lost(e)
+
+    def _lost(self, e) -> None:
+        if self._done is not None and self._done.done():
+            return
+        log.warning("Realtime 끊김: %s", e)
+        self._pending = None
+        self._say_cached("lost")
+        self._finish("lost")
+
+    def _say_cached(self, key: str) -> None:
+        audio = self.cache.get(PHRASES[key])
+        if audio is None:
+            log.warning("고정 문구 캐시가 없다(%s) — 말 없이 넘어간다", key)
+            return
+        self.speaker.push(audio)
+
+    async def _wait_quiet(self, cap_s: float = 15.0) -> None:
+        end = self.clock() + cap_s
+        while self.speaker.busy and self.clock() < end:
+            await asyncio.sleep(self.tick_s)
+
+    async def _pump_mic(self) -> None:
+        while True:
+            frame, rate = await self.mic.get()
+            now = self.clock()
+            self.gate.sync(self.speaker.busy, now)
+            if self.gate.should_send(now):
+                await self._send(append_audio(to_pcm16(frame, rate)))
+
+    async def _read_events(self) -> None:
+        try:
+            async for ev in self.session.events():
+                await self._on_event(ev)
+        except ConnectionLost as e:
+            self._lost(e)
+
+    async def _on_event(self, ev: dict) -> None:
+        k, now, p = event_kind(ev), self.clock(), self._pending
+        if k == "speech_started":
+            self._last_active, self._heard_speech = now, True
+        elif k == "speech_stopped":
+            self._stopped_at, self._last_active = now, now
+        elif k == "transcript":
+            await self._on_transcript((ev.get("transcript") or "").strip(), now)
+        elif k == "audio" and p is not None:
+            if p.first_audio_at is None:
+                p.first_audio_at = now
+            self.speaker.push(p.acc.feed(base64.b64decode(ev.get("delta", ""))))
+        elif k == "text" and p is not None:
+            p.said += ev.get("delta", "")
+        elif k == "done" and p is not None:
+            await self._on_done(p, ev.get("response", {}) or {})
+        elif k == "error":
+            log.warning("Realtime 오류 이벤트: %s", ev.get("error"))
+
+    async def _on_transcript(self, text: str, now: float) -> None:
+        self._last_active = now
+        if self._pending is not None:
+            log.info("[아이] %s (답하는 중이라 이번 말은 넘긴다)", text)
+            return
+        r = route(text, music=self.music, games=self.games, sleep_words=self.sleep_words)
+        if r.kind == "empty":
+            log.info("받아 적기 결과 없음 → 계속 듣는다")
+            return
+        log.info("[아이] %s (%s)", text, r.kind)
+        if r.kind == "sleep":
+            self._say_cached("sleep")
+            self._finish("sleep")
+            return
+        if r.kind == "music" or (r.kind.startswith("game") and not r.instructions):
+            msg = say_exactly(r.say)
+        elif r.kind.startswith("game"):
+            msg = respond(r.instructions)
+        else:
+            msg = respond()
+        self._pending = _Pending(r, text, self._stopped_at, now, self.clock())
+        await self._send(msg)
+
+    async def _on_done(self, p: _Pending, response: dict) -> None:
+        self._pending = None
+        self._last_active = self.clock()
+        reply, kind = p.said.strip(), p.route.kind
+        flags = safety.check_reply(reply, child_text=p.child) if reply else []
+        if flags:
+            log.warning("[안전] %s ← %s (로그만)", flags, reply)
+        missing = missing_required(reply, p.route.require) if p.route.instructions else []
+        if missing:
+            log.warning("[놀이] 필수 낱말 빠짐 %s ← %s (R2)", missing, reply)
+        log.info("[티드] %s (%s)", reply, kind)
+        usage = response.get("usage", {}) or {}
+        if self.metrics is not None:
+            got_audio = p.first_audio_at is not None
+            self.metrics.record_realtime_turn(
+                kind=kind,
+                perceived_s=(p.first_audio_at - p.stopped_at
+                             if got_audio and p.stopped_at is not None else None),
+                transcribe_s=(p.transcript_at - p.stopped_at if p.stopped_at is not None else None),
+                respond_first_s=(p.first_audio_at - p.requested_at if got_audio else None),
+                filler=p.filler, reply=reply, child_text=p.child,
+                cost_usd=cost_usd(self.cfg.model, usage), cached_tokens=cached_tokens(usage),
+                safety=flags, game_missing=missing)
+        if kind in ("chat", "game", "game_start") and reply:
+            self.history.append((p.child, reply))
+            if len(self.history) > self.cfg.history_turns:
+                del self.history[:len(self.history) - self.cfg.history_turns]
+        if kind == "music":
+            await self._wait_quiet()
+            mr = p.route.music
+            ok = mr.action() if mr.action is not None else True
+            if not ok:
+                self._say_cached("music_failed")
+            if ok and mr.standby:
+                self._finish("music")
+            return
+        if self._woke_during_music and self.music is not None:
+            await self._wait_quiet()
+            if self.music.resume_after_wake():
+                self._finish("music_resumed")
+
+    async def _tick(self) -> None:
+        while True:
+            await asyncio.sleep(self.tick_s)
+            now, p = self.clock(), self._pending
+            if p is not None and p.first_audio_at is None:
+                waited = now - p.requested_at
+                if (p.route.kind == "chat" and not p.filler and self.filler_phrases
+                        and waited >= self.cfg.filler_after_s):
+                    phrase = self.filler_phrases[self._filler_i % len(self.filler_phrases)]
+                    self._filler_i += 1
+                    audio = self.cache.get(phrase)
+                    if audio is not None:
+                        self.speaker.push(audio)
+                    p.filler = True
+                if waited >= self.cfg.response_timeout_s:
+                    log.warning("답이 %.1fs 동안 안 왔다 → 취소하고 되묻는다", waited)
+                    self._pending = None
+                    await self._send(cancel())
+                    self._say_cached("recovery")
+                    self._last_active = now
+                continue
+            if p is not None or self.speaker.busy:
+                continue
+            if (self._woke_during_music and not self._heard_speech
+                    and now - self._started >= self.cfg.wake_listen_s):
+                if self.music is not None and self.music.resume_after_wake():
+                    log.info("노래 중 호출 뒤 말이 없음 → 노래 이어서, 대기로")
+                    self._finish("music_resumed")
+                    return
+            if now - self._last_active >= self.sleep_timeout:
+                log.info("무응답 %.0f초 → 대기 모드로", self.sleep_timeout)
+                self._say_cached("sleep")
+                self._finish("idle")
+                return

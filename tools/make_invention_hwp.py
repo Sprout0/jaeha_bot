@@ -15,13 +15,13 @@
 
 한글 자동화에서 부딪힌 것 세 가지. 전부 조용히 멈추거나 터진다.
 
-🔴 1. 보안 모듈이 등록되지 않으면 `open()` 이 영구히 멈춘다. 파일을 읽을 때만 그렇고
-   저장은 된다 — 보이지 않는 승인 대화상자가 떠서 기다리기 때문이다. 확인 방법은
-   `hwp.RegisterModule("FilePathCheckDLL", "FilePathCheckerModule")` 이 False 를
-   돌려주는지 보는 것이다. 레지스트리 HKCU\\Software\\HNC\\HwpAutomation\\Modules 에
-   경로만 있고 그 DLL 이 COM 등록되지 않은 경우가 있다(regsvr32 로 등록하면 된다).
-   등록 없이도 쓸 수 있도록 --hwpml 을 둔다. 미리 받아 둔 HWPML 을 문자열로 넘기면
-   파일을 읽지 않으므로 대화상자가 뜨지 않는다.
+🔴 1. `open()` 이 가끔 영구히 멈춘다. 한글을 강제 종료(taskkill)한 직후 연달아 띄울 때
+   생겼고, 몇 초 기다린 뒤 새로 띄우면 정상으로 열렸다(2026-09-16, 연속 3회 확인).
+   ⚠️ 보안 모듈 탓이 아니다. `RegisterModule(...)` 은 이 PC 에서 늘 False 를 돌려주지만
+   열기는 잘 되고, 아예 부르지 않아도 열린다. 보안 모듈 DLL 은 레지스트리
+   HKCU\\Software\\HNC\\HwpAutomation\\Modules 로 등록하는 방식이며 regsvr32 대상이
+   아니다(DllRegisterServer 가 없고 IsAccessiblePath 하나만 내보낸다).
+   만약을 위해 --hwpml 을 둔다. 미리 받아 둔 HWPML 을 문자열로 넘기면 파일을 읽지 않는다.
 
 🔴 2. SetTextFile 로 올린 문서를 고친 뒤 save_as 를 부르면 영구히 멈춘다. 고치지 않은
    상태의 save_as 는 즉시 끝난다. 그래서 '고치기'와 '저장'을 나눈다.
@@ -144,8 +144,6 @@ def fill_cells(hwp, plan):
 
 def phase_dump(src, out_xml):
     hwp = new_hwp()
-    if not hwp.RegisterModule("FilePathCheckDLL", "FilePathCheckerModule"):
-        print("  ⚠ 보안 모듈 등록 실패 — open() 이 멈출 수 있다. --hwpml 을 쓸 것")
     if not hwp.open(src):
         sys.exit("양식을 열지 못했다: %s" % src)
     open(out_xml, "w", encoding="utf-8").write(hwp.GetTextFile("HWPML2X", ""))

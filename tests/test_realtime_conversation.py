@@ -232,3 +232,50 @@ def test_호출_직후_이어진_말을_먼저_보낸다():
         return s
 
     assert asyncio.run(go()).sent[0]["type"] == "input_audio_buffer.append"
+
+
+# ── 말끝 시각 (2026-09-16 실측) ─────────────────────────────────────────
+# 🔴 speech_stopped 는 무음 대기(1.2초)가 **끝난 뒤** 온다. audio_end_ms 도 그 대기를
+#    포함한다(실측: 실제 말끝 4,209ms → audio_end_ms 5,504ms). 이벤트 도착 시각부터 재면
+#    체감이 1.2초 넘게 좋게 나와 로컬 4.14초와 비교할 수 없다.
+
+def test_보낸_오디오_위치를_벽시계로_바꾼다():
+    c = _conv(FakeSession())
+    c._sent_log = [(80.0, 10.08), (160.0, 10.16), (240.0, 10.24)]
+    assert abs(c._wall_at(120.0) - 10.12) < 1e-9
+    assert abs(c._wall_at(240.0) - 10.24) < 1e-9
+    assert c._wall_at(500.0) is None and c._wall_at(-5.0) is None
+
+
+def test_체감은_실제_말끝부터_잰다():
+    class Clock:
+        t = 100.0
+        def __call__(self):
+            return self.t
+
+    class Rec:
+        def __init__(self):
+            self.kw = None
+        def record_realtime_turn(self, **kw):
+            self.kw = kw
+
+    async def go():
+        clock, rec, s = Clock(), Rec(), FakeSession()
+        c = Conversation(session=s, mic=asyncio.Queue(), speaker=FakeSpeaker(), cache=FakeCache(),
+                         cfg=_cfg(), music=None, games=GameManager(render=None), sleep_words=None,
+                         instructions="지시", history=[], metrics=rec, clock=clock, tick_s=0.01)
+        c._sent_log = [(1000.0, 101.0), (2000.0, 102.0), (3300.0, 103.3)]
+        clock.t = 103.4
+        await c._on_event({"type": "input_audio_buffer.speech_stopped", "audio_end_ms": 3200})
+        clock.t = 104.0
+        await c._on_transcript("안녕", clock.t)
+        clock.t = 104.5
+        await c._on_event(_audio_delta())
+        await c._on_event({"type": "response.done", "response": {}})
+        return rec.kw
+
+    kw = asyncio.run(go())
+    # 실제 말끝 = 3200 - 1200 = 2000ms → 102.0 / 첫 소리 104.5
+    assert abs(kw["perceived_s"] - 2.5) < 1e-9
+    assert abs(kw["vad_tail_s"] - 1.4) < 1e-9          # 103.4 - 102.0
+    assert abs(kw["transcribe_s"] - 0.6) < 1e-9        # 104.0 - 103.4

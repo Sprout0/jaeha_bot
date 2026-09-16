@@ -28,7 +28,8 @@ log = logging.getLogger("jaeha_bot.realtime")
 class _Pending:
     route: Route
     child: str
-    stopped_at: float | None
+    stopped_at: float | None          # 서버가 말끝을 판정한 순간(무음 대기 뒤)
+    speech_end_at: float | None       # 실제 말끝 — 체감의 시작점
     transcript_at: float
     requested_at: float
     first_audio_at: float | None = None
@@ -52,6 +53,10 @@ class Conversation:
         self.gate = MicGate(cfg.mic_pad_s)
         self._pending: _Pending | None = None
         self._stopped_at: float | None = None
+        self._speech_end_at: float | None = None
+        # 보낸 오디오 누적 ms → 보낸 벽시계. 서버의 audio_end_ms 를 벽시계로 되돌린다.
+        self._sent_log: list[tuple[float, float]] = []
+        self._sent_ms = 0.0
         self._last_active = clock()
         self._started = clock()
         self._heard_speech = False
@@ -73,7 +78,7 @@ class Conversation:
             await self._wait_quiet()
             return "lost"
         if preroll is not None and np.asarray(preroll[0]).size:
-            await self._send(append_audio(to_pcm16(preroll[0], preroll[1])))
+            await self._send_audio(preroll[0], preroll[1])
             log.info("호출 직후 이어진 말 %.2fs 를 먼저 보냄", np.asarray(preroll[0]).size / preroll[1])
         elif greet:
             self._say_cached("wake")
@@ -122,13 +127,30 @@ class Conversation:
         while self.speaker.busy and self.clock() < end:
             await asyncio.sleep(self.tick_s)
 
+    async def _send_audio(self, frame, rate: int) -> None:
+        pcm = to_pcm16(frame, rate)
+        await self._send(append_audio(pcm))
+        self._sent_ms += len(pcm) / 2 / 24000 * 1000
+        self._sent_log.append((self._sent_ms, self.clock()))
+        if len(self._sent_log) > 4000:
+            del self._sent_log[:2000]
+
+    def _wall_at(self, ms: float) -> float | None:
+        """보낸 오디오의 ms 위치가 **보내진** 벽시계 시각. 기록 밖이면 None."""
+        prev_ms = 0.0
+        for cum_ms, wall in self._sent_log:
+            if prev_ms <= ms <= cum_ms and ms >= 0:
+                return wall - (cum_ms - ms) / 1000.0
+            prev_ms = cum_ms
+        return None
+
     async def _pump_mic(self) -> None:
         while True:
             frame, rate = await self.mic.get()
             now = self.clock()
             self.gate.sync(self.speaker.busy, now)
             if self.gate.should_send(now):
-                await self._send(append_audio(to_pcm16(frame, rate)))
+                await self._send_audio(frame, rate)
 
     async def _read_events(self) -> None:
         try:
@@ -143,6 +165,10 @@ class Conversation:
             self._last_active, self._heard_speech = now, True
         elif k == "speech_stopped":
             self._stopped_at, self._last_active = now, now
+            # 🔴 audio_end_ms 는 무음 대기를 포함한다(09-16 실측 +1,295ms). 대기만큼 빼야 실제 말끝.
+            end_ms = ev.get("audio_end_ms")
+            self._speech_end_at = (self._wall_at(float(end_ms) - self.cfg.silence_ms)
+                                   if end_ms is not None else None)
         elif k == "transcript":
             await self._on_transcript((ev.get("transcript") or "").strip(), now)
         elif k == "audio" and p is not None:
@@ -176,7 +202,7 @@ class Conversation:
             msg = respond(r.instructions)
         else:
             msg = respond()
-        self._pending = _Pending(r, text, self._stopped_at, now, self.clock())
+        self._pending = _Pending(r, text, self._stopped_at, self._speech_end_at, now, self.clock())
         await self._send(msg)
 
     async def _on_done(self, p: _Pending, response: dict) -> None:
@@ -195,8 +221,10 @@ class Conversation:
             got_audio = p.first_audio_at is not None
             self.metrics.record_realtime_turn(
                 kind=kind,
-                perceived_s=(p.first_audio_at - p.stopped_at
-                             if got_audio and p.stopped_at is not None else None),
+                perceived_s=(p.first_audio_at - p.speech_end_at
+                             if got_audio and p.speech_end_at is not None else None),
+                vad_tail_s=(p.stopped_at - p.speech_end_at
+                            if p.stopped_at is not None and p.speech_end_at is not None else None),
                 transcribe_s=(p.transcript_at - p.stopped_at if p.stopped_at is not None else None),
                 respond_first_s=(p.first_audio_at - p.requested_at if got_audio else None),
                 filler=p.filler, reply=reply, child_text=p.child,

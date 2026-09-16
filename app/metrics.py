@@ -317,12 +317,15 @@ class MetricsLogger:
                              transcribe_s: float | None, respond_first_s: float | None,
                              filler: bool, reply: str, child_text: str,
                              cost_usd: float | None, cached_tokens: int,
-                             safety: list[str], game_missing: list[str]) -> None:
+                             safety: list[str], game_missing: list[str],
+                             vad_tail_s: float | None = None) -> None:
         """전면 API(Realtime) 한 턴. 로컬 필드와 이름이 달라 samples 에는 안 넣는다.
 
-        perceived_s     : 서버가 말끝을 잡은 순간 → 첫 답 소리. 로컬 resp_felt_s 와 비교
-                          (둘 다 무음 대기 1.2초를 포함한다).
-        transcribe_s    : 말끝 → 받아 적기 완료. 턴을 우리가 쥐는 값(spec R1).
+        perceived_s     : **실제 말끝** → 첫 답 소리. 로컬 resp_felt_s 와 비교(둘 다 무음 대기 포함).
+        vad_tail_s      : 실제 말끝 → 서버가 말끝을 판정한 순간(무음 대기). 🔴 09-16 실측:
+                          speech_stopped 는 대기가 끝난 뒤 오므로 거기서 재면 체감이 1.2초 넘게
+                          좋게 나온다 — audio_end_ms 에서 silence_ms 를 빼 실제 말끝을 구한다.
+        transcribe_s    : 서버가 말끝을 판정한 순간 → 받아 적기 완료(spec R1).
         respond_first_s : response.create → 첫 오디오 조각.
         """
         if not self.enabled:
@@ -335,15 +338,16 @@ class MetricsLogger:
         rec = {"ts": datetime.now().isoformat(timespec="seconds"), "tag": self.tag,
                "event": "rt_turn", "metric_ver": "rt1", "turn": self.turn, "kind": kind,
                "perceived_s": r(perceived_s), "transcribe_s": r(transcribe_s),
-               "respond_first_s": r(respond_first_s), "filler": bool(filler),
+               "respond_first_s": r(respond_first_s), "vad_tail_s": r(vad_tail_s),
+               "filler": bool(filler),
                "cost_usd": None if cost_usd is None else round(cost_usd, 6),
                "cached_tokens": int(cached_tokens), "safety": list(safety),
                "game_missing": list(game_missing), "reply_len": len(reply or ""),
                "child_text": child_text, "reply": reply,
                **_sys_stats_now(), **self._sampler.pop()}
         self._write(rec)
-        log.info("[계측] rt턴%d %s 체감 %s (받아적기 %s / 요청→첫소리 %s)%s | $%s | RSS %sMB",
-                 self.turn, kind, rec["perceived_s"], rec["transcribe_s"],
+        log.info("[계측] rt턴%d %s 체감 %s (꼬리 %s + 받아적기 %s + 요청→첫소리 %s)%s | $%s | RSS %sMB",
+                 self.turn, kind, rec["perceived_s"], rec["vad_tail_s"], rec["transcribe_s"],
                  rec["respond_first_s"], " +맞장구" if filler else "",
                  rec["cost_usd"], rec.get("rss_mb"))
 

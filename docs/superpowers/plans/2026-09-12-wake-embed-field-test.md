@@ -20,7 +20,9 @@ A·B 는 C 를 기다리지 않는다(젯슨 설정은 이미 올바르다 — �
 
 ---
 
-## A. 20번 부르기 시험
+## A. 20번 부르기 시험 — ✅ 09-16 18/20 (첫 번 16/20, 놓침 전부 2단계 컷 바로 밑)
+
+결과와 해석은 `reports/wake/ab_verify_20260911.md` 끝 "실기 판정 1".
 
 봇을 끈 상태에서(마이크 장치가 하나라서 둘이 같이 못 연다):
 
@@ -64,7 +66,7 @@ B=14:00; S=14:02; E=14:17; L=~/jaeha_bot/logs/jaeha_$(date +%Y%m%d).log; grep '�
 
 `make_detector` 가 try 밖에서 임베딩 대조를 먼저 만들고, embed 인데 None 이면 RuntimeError 로 멈춘다.
 기존 시험 4개는 본보기 없이 embed 를 쓰고 있어 `_rescue_cfg(tmp_path)` 를 넣어 고쳤다.
-🔴 **아직 젯슨에 안 올렸다** — 배포는 A·B 판정 뒤에 `app/wake.py` 한 파일만 scp.
+✅ 09-14 젯슨에 `app/wake.py` 올림(md5 54a86fc35310), 젯슨 설정으로 감지기 생성 확인 — 본보기 5개·컷 0.85.
 
 
 **문제:** `mode: embed` 인데 `embed_rescue.enabled: false` 거나 본보기 파일이 없으면

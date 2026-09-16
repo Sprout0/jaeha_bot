@@ -68,13 +68,7 @@ URL = "wss://api.openai.com/v1/realtime?model={model}"
 SR = 24000            # Realtime pcm16 규격
 CHUNK_MS = 40         # 실기 마이크 프레임과 비슷한 크기로 흘린다
 
-# USD / 1M tokens. 2026-09-02 developers.openai.com/api/docs/pricing 확인.
-PRICE = {
-    "gpt-realtime":      {"audio_in": 32.0, "cached": 0.40, "audio_out": 64.0,
-                          "text_in": 4.00, "text_out": 16.0},
-    "gpt-realtime-mini": {"audio_in": 10.0, "cached": 0.30, "audio_out": 20.0,
-                          "text_in": 0.60, "text_out": 2.40},
-}
+from app.realtime_protocol import PRICE, cost_usd  # noqa: E402,F401 — 옮겼다. 도구·시험이 이 이름으로 쓴다
 
 INSTRUCTIONS = (
     "너는 다섯 살 아이의 친구 로봇 '티드'야. 밝은 반말로 한두 문장만, 30자 안쪽으로 "
@@ -255,22 +249,6 @@ def session_config(silence_ms: int, transcribe_model: str, voice: str,
     if tools:
         s |= {"tools": tools, "tool_choice": "auto"}
     return {"type": "session.update", "session": s}
-
-
-def cost_usd(model: str, usage: dict) -> float | None:
-    """usage 를 그대로 값으로. 모양이 낯설면 None — 추측해서 채우지 않는다."""
-    p = PRICE.get(model)
-    if not p or not usage:
-        return None
-    ind = usage.get("input_token_details", {}) or {}
-    outd = usage.get("output_token_details", {}) or {}
-    cached = (ind.get("cached_tokens_details", {}) or {}).get("audio_tokens", 0)
-    a_in = max(0, ind.get("audio_tokens", 0) - cached)
-    parts = (a_in * p["audio_in"], cached * p["cached"],
-             ind.get("text_tokens", 0) * p["text_in"],
-             outd.get("audio_tokens", 0) * p["audio_out"],
-             outd.get("text_tokens", 0) * p["text_out"])
-    return sum(parts) / 1e6 if any(parts) else None
 
 
 async def drain(ws, quiet_s: float = 0.6) -> None:

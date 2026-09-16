@@ -703,3 +703,19 @@ filler:
   max_await_s: 0.5
   # 목소리·speed·확산스텝·문구·음량기준·앞뒤무음이 바뀌면 키가 달라져 자동으로 다시 굽는다.
   cache_dir: "~/.cache/jaeha_filler"
+
+# 2026-09-16 전면 API(Realtime) 대화 경로 — docs/superpowers/specs/2026-09-16-realtime-pipeline-design.md
+#   local    : app.main (호출어 → faster-whisper → gpt → Supertonic). 보고서가 서술하는 경로.
+#   realtime : app.main_realtime (호출어 → OpenAI Realtime). 젯슨 local.yaml 에서만 켠다.
+pipeline: local
+realtime:
+  model: gpt-realtime-mini          # 40턴 월 21,200원(gpt-realtime 73,300원) — report 7.2
+  voice: marin                      # 09-07 블라인드
+  transcribe_model: gpt-4o-transcribe   # whisper-1 은 아동 발화 39% 빈 문자열
+  silence_ms: 1200
+  mic_pad_s: 0.15
+  history_turns: 6
+  filler_after_s: 0.7
+  response_timeout_s: 8
+  wake_listen_s: 8
+  voice_cache_dir: ~/.cache/jaeha_voice

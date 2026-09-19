@@ -126,7 +126,7 @@ def _build_music(ycfg: dict):
         from .audio_player import AudioPlayer, default_library
         from .config import BASE_DIR
         from .music import MusicController
-        from .youtube import YouTubePlayer, YouTubeSearch
+        from .youtube import YouTubeSearch, make_player
 
         library = default_library()
         search = youtube = None
@@ -135,7 +135,7 @@ def _build_music(ycfg: dict):
         if not key:
             log.warning("노래: %s 가 없어 유튜브를 끈다(로컬 음원만)", key_env)
         else:
-            player = YouTubePlayer(volume=int(ycfg.get("volume", 80)))
+            player = make_player(ycfg)
             lack = player.missing()
             if lack:
                 log.warning("노래: 준비물이 없어 유튜브를 끈다 %s (./run.sh setup-youtube)", lack)

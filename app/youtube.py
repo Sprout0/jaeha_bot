@@ -347,8 +347,12 @@ class YouTubePlayer:
     def __init__(self, *, volume: int = 80, sink_device: str = "respk",
                  sink_name: str = "jaeha_respk", start_timeout_s: float = 25.0,
                  play_timeout_s: float = 12.0, profile_dir: str | None = None,
-                 chromium: tuple[str, ...] = ("snap", "run", "chromium")) -> None:
+                 chromium: tuple[str, ...] = ("snap", "run", "chromium"),
+                 leveler=None, sink_volume_pct: int = 100) -> None:
         self.volume = max(0, min(100, int(volume)))
+        # 영상마다 다른 음량 맞추기(app/loudness.py). 켜면 싱크를 키우고 기본 볼륨을 낮춘다.
+        self.leveler = leveler
+        self.sink_volume_pct = int(sink_volume_pct)
         self.sink_device, self.sink_name = sink_device, sink_name
         self.start_timeout_s, self.play_timeout_s = start_timeout_s, play_timeout_s
         self.profile_dir = profile_dir or str(Path.home() / "snap/chromium/common/jaeha-youtube")
@@ -393,6 +397,7 @@ class YouTubePlayer:
         if r.returncode == 0:
             if self.sink_name in r.stdout:
                 log.info("PulseAudio 가 이미 떠 있다 — 그대로 쓴다")
+                self._pactl("set-sink-volume", self.sink_name, f"{self.sink_volume_pct}%")
                 return
             raise YouTubeError("다른 PulseAudio 가 떠 있는데 우리 싱크가 없다")
         assert self._tmp is not None
@@ -402,7 +407,8 @@ class YouTubePlayer:
             f"load-module module-alsa-sink device={self.sink_device} sink_name={self.sink_name}"
             " rate=16000 channels=2\n"
             f"set-default-sink {self.sink_name}\n"
-            f"set-sink-volume {self.sink_name} 0x10000\n", encoding="utf-8")
+            f"set-sink-volume {self.sink_name} {int(0x10000 * self.sink_volume_pct / 100)}\n",
+            encoding="utf-8")
         env = dict(os.environ, XDG_RUNTIME_DIR=self._runtime)
         p = subprocess.Popen(["pulseaudio", "-n", "-F", str(script), "--exit-idle-time=-1",
                               "--daemonize=no", "--log-target=stderr"],
@@ -451,14 +457,53 @@ class YouTubePlayer:
                 self._teardown()
                 raise
             self._started = True
+            if self.leveler is not None:
+                self._start_leveler()
             log.info("유튜브 플레이어 준비 (%.1fs)", time.perf_counter() - t0)
+
+    # 16kHz 모노 s16 0.5초. 싱크를 16kHz 로 연다(_start_pulse) — 그대로 잰다.
+    _LEVEL_BLOCK = 16000
+
+    def _start_leveler(self) -> None:
+        """나가는 소리(싱크 모니터)를 재서 플레이어 볼륨을 고친다. 실패해도 노래는 나온다."""
+        env = dict(os.environ, XDG_RUNTIME_DIR=self._runtime)
+        try:
+            p = subprocess.Popen(
+                ["parec", "-s", f"unix:{self._pulse_sock}", "-d", f"{self.sink_name}.monitor",
+                 "--format=s16le", "--rate=16000", "--channels=1", "--raw"],
+                env=env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                start_new_session=True)
+        except Exception as e:
+            log.warning("음량 맞춤을 못 켰다(노래는 그대로): %s", e)
+            return
+        self._procs.append(p)
+        threading.Thread(target=self._level_loop, args=(p,), daemon=True).start()
+
+    def _level_loop(self, p) -> None:
+        import numpy as np
+        while True:
+            data = p.stdout.read(self._LEVEL_BLOCK) if p.stdout else b""
+            if not data:
+                return
+            if not self.is_playing:
+                continue
+            block = np.frombuffer(data[:len(data) // 2 * 2], "<i2").astype(np.float32) / 32768
+            v = self.leveler.feed(block, time.monotonic())
+            if v is not None:
+                self._bridge.push(op="volume", volume=v)
+                log.info("[노래] 음량 맞춤 — 크게 나오는 구간 %.1f dBFS → 볼륨 %d (목표 %.0f)",
+                         self.leveler.last_level, v, self.leveler.target_db)
 
     def play(self, video_id: str) -> bool:
         try:
             self.start()
             self._pactl("suspend-sink", self.sink_name, "0")
             self._bridge.update({"state": None, "vid": "", "error": None})
-            self._bridge.push(op="load", id=video_id, volume=self.volume)
+            volume = self.volume
+            if self.leveler is not None:
+                self.leveler.reset(time.monotonic())
+                volume = self.leveler.volume
+            self._bridge.push(op="load", id=video_id, volume=volume)
             ok = self._bridge.wait_for(
                 lambda s: s.get("error") is not None
                 or (s.get("state") == PLAYING and s.get("vid") == video_id),
@@ -508,3 +553,16 @@ class YouTubePlayer:
         with self._lock:
             self._teardown()
             self._started = False
+
+
+def make_player(ycfg: dict) -> YouTubePlayer:
+    """설정 → 플레이어. level.enabled 면 음량 맞춤(app/loudness.py)을 붙인다."""
+    lcfg = ycfg.get("level") or {}
+    if not lcfg.get("enabled", False):
+        return YouTubePlayer(volume=int(ycfg.get("volume", 80)))
+    from .loudness import LoudnessLeveler
+    lv = LoudnessLeveler(target_db=float(lcfg.get("target_db", -19)),
+                         base=int(lcfg.get("base_volume", 20)),
+                         lo=int(lcfg.get("min_volume", 5)), hi=int(lcfg.get("max_volume", 100)))
+    return YouTubePlayer(volume=lv.base, leveler=lv,
+                         sink_volume_pct=int(lcfg.get("sink_volume_pct", 160)))

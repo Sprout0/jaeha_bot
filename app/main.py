@@ -144,7 +144,8 @@ def _build_music(ycfg: dict):
                 search = YouTubeSearch(
                     key, cache_path=BASE_DIR / "logs" / "youtube_cache.json",
                     max_duration_s=int(ycfg.get("max_duration_s", 600)),
-                    cache_days=float(ycfg.get("cache_days", 7)))
+                    cache_days=float(ycfg.get("cache_days", 7)),
+                    kids_only=bool(ycfg.get("kids_only", True)))
         log.info("노래 틀기 켬 — 로컬 %d곡%s", len(library.playable("song")),
                  " + 유튜브" if youtube else "")
         return MusicController(library=library, local=AudioPlayer(library), search=search,

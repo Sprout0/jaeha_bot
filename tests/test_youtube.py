@@ -168,3 +168,24 @@ def test_playing_never_releases_the_sink():
     p._bridge.update({"state": yt.PLAYING, "vid": "a"})
     p._bridge.update({"state": yt.BUFFERING, "vid": "a"})
     assert calls == []
+
+
+# ── 아동용 영상만 (2026-09-19) ─────────────────────────────────────────────
+# 유튜브 키즈 목록 자체는 API 가 없다. 키즈 앱이 가져가는 풀인 '아동용(madeForKids)'
+# 지정 영상만 튼다. 실검색: '티니핑 노래' 8/10·'동요' 10/10 vs '스파이더맨 OST' 0/10.
+
+def test_아동용만_켜면_아동용이_아닌_영상은_안_튼다():
+    details = {"a": _detail("a", kids=False), "b": _detail("b", kids=True)}
+    s = YouTubeSearch(KEY, fetch=_fake_api(["a", "b"], details, []), kids_only=True)
+    assert s.find("x").id == "b"
+
+
+def test_아동용이_하나도_없으면_못_찾음():
+    s = YouTubeSearch(KEY, fetch=_fake_api(["a"], {"a": _detail("a", kids=False)}, []),
+                      kids_only=True)
+    assert s.find("스파이더맨 OST") is None
+
+
+def test_아동용만_끄면_옛_동작():
+    s = YouTubeSearch(KEY, fetch=_fake_api(["a"], {"a": _detail("a", kids=False)}, []))
+    assert s.find("x").id == "a"

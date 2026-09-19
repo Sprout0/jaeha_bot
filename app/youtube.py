@@ -107,8 +107,12 @@ class YouTubeSearch:
 
     def __init__(self, key: str | None, *, fetch=None, cache_path: Path | None = None,
                  max_duration_s: int = 600, cache_days: float = 7, results: int = 10,
-                 region: str = "KR", lang: str = "ko", now=time.time) -> None:
+                 region: str = "KR", lang: str = "ko", now=time.time,
+                 kids_only: bool = False) -> None:
         self.key = key or ""
+        # 🔴 2026-09-19 '아동용(madeForKids)' 지정 영상만. 유튜브 키즈 목록은 API 가 없고,
+        #    키즈 앱은 이 지정 영상 풀에서 가져간다 — 가장 가까운 공식 기준이다.
+        self.kids_only = bool(kids_only)
         self._fetch = fetch or _default_fetch
         self.cache_path = Path(cache_path) if cache_path else None
         self.max_duration_s = int(max_duration_s)
@@ -196,7 +200,8 @@ class YouTubeSearch:
     def find(self, query: str, exclude=()) -> Video | None:
         """제일 나은 후보 하나. exclude 는 '다른 노래'일 때 방금 튼 것들."""
         skip = set(exclude)
-        return next((v for v in self.candidates(query) if v.id not in skip), None)
+        return next((v for v in self.candidates(query)
+                     if v.id not in skip and (v.made_for_kids or not self.kids_only)), None)
 
 
 # ── 플레이어 ────────────────────────────────────────────────────────────────

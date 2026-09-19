@@ -78,7 +78,8 @@ def _build_music(ycfg: dict):
                 search = YouTubeSearch(
                     key, cache_path=BASE_DIR / "logs" / "youtube_cache.json",
                     max_duration_s=int(ycfg.get("max_duration_s", 600)),
-                    cache_days=float(ycfg.get("cache_days", 7)))
+                    cache_days=float(ycfg.get("cache_days", 7)),
+                    kids_only=bool(ycfg.get("kids_only", True)))
         else:
             log.warning("노래: 유튜브 키가 없어 로컬 음원만")
         log.info("노래 틀기 켬 — 로컬 %d곡%s", len(library.playable("song")),

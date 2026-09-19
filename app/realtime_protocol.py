@@ -33,6 +33,7 @@ class RealtimeConfig:
     voice: str = "marin"                          # 09-07 블라인드 선택
     speed: float = 1.0                            # API 허용 0.25~1.5(09-19 실측)
     transcribe_model: str = "gpt-4o-transcribe"   # whisper-1 은 아동 발화 39% 빈 문자열
+    transcribe_prompt: str = ""                   # 받아쓰기 힌트(노래·캐릭터 이름). 봇이 채운다
     silence_ms: int = 1200                        # 로컬 VAD 꼬리와 같게 — 비교 가능
     mic_pad_s: float = 0.15                       # 08-24 실측
     history_turns: int = 6                        # agent.MAX_HISTORY_TURNS 와 같게
@@ -48,6 +49,9 @@ class RealtimeConfig:
 
 
 def session_update(cfg: RealtimeConfig, instructions: str) -> dict:
+    transcription = {"model": cfg.transcribe_model, "language": "ko"}
+    if cfg.transcribe_prompt:
+        transcription["prompt"] = cfg.transcribe_prompt
     return {"type": "session.update", "session": {
         "type": "realtime",
         "instructions": instructions,
@@ -55,7 +59,7 @@ def session_update(cfg: RealtimeConfig, instructions: str) -> dict:
         "audio": {
             "input": {
                 "format": {"type": "audio/pcm", "rate": SR},
-                "transcription": {"model": cfg.transcribe_model, "language": "ko"},
+                "transcription": transcription,
                 # 🔴 create_response=false: 받아 적기를 보고 우리가 답을 요청한다.
                 #    서버가 먼저 답하면 노래·놀이 명령을 가로챌 수 없다.
                 "turn_detection": {"type": "server_vad", "threshold": 0.5,

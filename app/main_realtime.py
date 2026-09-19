@@ -169,6 +169,10 @@ def main(argv=None) -> None:
     wake_on = bool(wcfg.get("enabled", True)) and not a.no_wake
     api_key = check_startup(models, os.environ, wake=wake_on)
     cfg = RealtimeConfig.from_dict(models.get("realtime"))
+    if not cfg.transcribe_prompt:
+        # 09-19 '티니핑' → '비니닝'. 노래·캐릭터 이름을 받아쓰기 힌트로(app/song_names.py)
+        from .song_names import transcribe_prompt
+        cfg.transcribe_prompt = transcribe_prompt()
     log.info("재하봇(Realtime) 시작 — %s / 목소리 %s / 받아적기 %s",
              cfg.model, cfg.voice, cfg.transcribe_model)
 

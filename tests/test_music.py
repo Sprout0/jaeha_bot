@@ -250,3 +250,11 @@ def test_prompt_no_longer_says_it_cannot_play():
 
 def test_prompt_without_the_rule_gets_it_appended():
     assert adjust_prompt("규칙:\n- 반말로 말한다.\n").endswith(NEW_SONG_RULE)
+
+
+def test_잘못_적힌_노래_이름은_바로잡아_검색하고_그_이름으로_말한다():
+    # 09-19 실기: '티니핑' 이 '비니닝' 으로 적혀 유튜브에서 못 찾았다.
+    c, local, yt, search = make()
+    r = c.handle("비니닝 노래 틀어줘")
+    assert search.queries[0][0] == "티니핑 노래"
+    assert r.text == "티니핑 노래 틀어 줄게!"

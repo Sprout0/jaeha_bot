@@ -74,3 +74,11 @@ def test_비용과_캐시_토큰():
     assert abs(cost_usd("gpt-realtime-mini", usage) - (20 * 10.0 + 80 * 0.30 + 50 * 20.0) / 1e6) < 1e-12
     assert cached_tokens(usage) == 80
     assert cost_usd("모르는모델", usage) is None
+
+
+def test_받아쓰기_힌트가_있으면_세션에_싣고_없으면_안_싣는다():
+    # 09-19 실기: '티니핑' → '비니닝'. 이름 목록을 받아쓰기 모델에 힌트로 준다.
+    s = session_update(RealtimeConfig(transcribe_prompt="티니핑, 뽀로로"), "지시")["session"]
+    assert s["audio"]["input"]["transcription"]["prompt"] == "티니핑, 뽀로로"
+    s = session_update(RealtimeConfig(), "지시")["session"]
+    assert "prompt" not in s["audio"]["input"]["transcription"]

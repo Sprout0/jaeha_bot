@@ -25,6 +25,8 @@ import re
 from dataclasses import dataclass
 from typing import Callable
 
+from .song_names import correct
+
 log = logging.getLogger("jaeha_bot.music")
 
 MUSIC_FAILED = "어? 노래가 안 나오네. 다음에 다시 해 보자!"
@@ -153,6 +155,8 @@ class MusicController:
         if cmd.different and not query:
             query = self._current[2] if self._current else ""
         query = query or self.default_query
+        # 받아쓰기가 이름을 틀리게 적었으면 사전 이름으로(확실할 때만) — '비니닝' → '티니핑'
+        query = correct(query)
         # 1) 로컬 — 원문을 넘긴다(find 는 '틀어줘' 같은 요청 단서를 본다)
         if self.library is not None and self.local is not None and not cmd.different:
             asset = self.library.find(text, kind="song")

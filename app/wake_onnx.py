@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -52,6 +52,9 @@ class WakeResult:
     preroll: np.ndarray   # 감지 직전 오디오(+이어진 발화). continued=False 면 빈 배열
     continued: bool       # 감지 직후에도 말이 이어졌는가(인사말 생략 판단)
     score: float = 0.0
+    # 호출어 **뒤** 소리만(프리롤 제외). 전면 API 는 이것만 보낸다 — 프리롤째 보내면
+    # 서버가 호출어를 아이 말로 받아 적는다(09-19 실기: '하이즈들' → "안녕! 잘 지냈어?").
+    tail: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=np.float32))
 
 
 class OnnxWakeDetector:
@@ -69,7 +72,8 @@ class OnnxWakeDetector:
                  verify_bypass: float = 1.01,
                  verify_settle_s: float = 0.0,
                  embed_rescue=None,
-                 verify_embed_settle_s: float | None = None) -> None:
+                 verify_embed_settle_s: float | None = None,
+                 continuation_min_rms: float | None = None) -> None:
         import pathlib
 
         import onnxruntime as ort
@@ -91,7 +95,7 @@ class OnnxWakeDetector:
         self._init_state(threshold, trigger_frames, continuation_window, source,
                          verifier, verify_cooldown_s, verify_min_rms,
                          verify_rearm_delta, verify_bypass, verify_settle_s,
-                         embed_rescue, verify_embed_settle_s)
+                         embed_rescue, verify_embed_settle_s, continuation_min_rms)
 
     def _init_state(self, threshold, trigger_frames, continuation_window, source,
                     verifier=None, verify_cooldown_s: float = 1.0,
@@ -99,7 +103,8 @@ class OnnxWakeDetector:
                     verify_rearm_delta: float = 0.05,
                     verify_bypass: float = 1.01,
                     verify_settle_s: float = 0.0,
-                    embed_rescue=None, verify_embed_settle_s=None):
+                    embed_rescue=None, verify_embed_settle_s=None,
+                    continuation_min_rms=None):
         """__init__ 과 테스트가 공유하는 순수 상태 초기화(ONNX 로드 없음).
 
         ⚠️ 새 상태는 **반드시 여기에** 둔다. __init__ 에만 두면 _init_state 로 만든
@@ -116,6 +121,12 @@ class OnnxWakeDetector:
         self.verifier = verifier
         self.verify_cooldown_s = float(verify_cooldown_s)
         self.verify_min_rms = float(verify_min_rms)   # 에너지 게이트 하한(무음만 거른다)
+        # 뒷말 판정 기준. None 이면 위 게이트 값을 같이 쓴다(옛 동작).
+        # 🔴 2026-09-19 게이트 값(0.005)은 '디지털 무음' 기준이라 방 소음(젯슨 ~0.007)보다
+        #    낮다 — 뒷말 판정에 쓰면 호출어만 말해도 늘 '이어짐'이 된다. 따로 둔다.
+        #    소음 바닥에 비례시키지 않는 원칙(아래 _observe_continuation)은 그대로다.
+        self.continuation_min_rms = (None if continuation_min_rms is None
+                                     else float(continuation_min_rms))
         # 직전 검증보다 이만큼 높은 점수는 '새 사건'으로 보고 재무장한다.
         # 소음이 계속돼 점수가 임계 아래로 안 내려가는 상황의 유일한 탈출구다.
         self.verify_rearm_delta = float(verify_rearm_delta)
@@ -260,7 +271,8 @@ class OnnxWakeDetector:
                 audio = np.zeros(0, dtype=np.float32)
                 self.source.clear_preroll()
             return WakeResult(preroll=audio.astype(np.float32),
-                              continued=continued, score=score)
+                              continued=continued, score=score,
+                              tail=(tail if continued else np.zeros(0)).astype(np.float32))
         return None
 
     def _verify(self, score: float) -> bool:
@@ -466,7 +478,8 @@ class OnnxWakeDetector:
         #    실측: 소음바닥 0.0081 -> 기준 0.0162 로 고정값의 3.2배. 유튜브를 틀면 더 오른다.
         #    즉 **시끄러울수록 "이어 말했다"를 못 알아본다** — 인사말을 하고, 그 사이
         #    '이거 뭐야?'가 통째로 날아간다. 정확히 게이트 때 겪은 그 고장이다.
-        thr = self.verify_min_rms
+        thr = (self.verify_min_rms if self.continuation_min_rms is None
+               else self.continuation_min_rms)
         loudest = max(float(np.sqrt(np.mean(np.square(f)))) for f in frames)
         continued = loudest >= thr
         # 🔴 판정을 **항상** 남긴다. 이 줄이 없어서 '호출 직후 뒷말'이 언제부터 안 되는지

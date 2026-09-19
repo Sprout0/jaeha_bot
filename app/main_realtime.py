@@ -13,6 +13,7 @@ import os
 import queue
 import threading
 import time
+from pathlib import Path
 
 from .config import settings
 
@@ -32,6 +33,20 @@ def check_startup(models: dict, env, *, wake: bool = True) -> str:
                 "전면 API 에는 whisper 가 없다 — wake.detector: onnx, wake.onnx.verify.mode: embed "
                 f"여야 한다(지금 detector={wcfg.get('detector')}, mode={mode})")
     return key
+
+
+def _add_file_log() -> None:
+    """로컬 봇(app/main.py)처럼 logs/jaeha_YYYYMMDD.log 에도 남긴다.
+
+    🔴 2026-09-19 전면 API 봇은 터미널에만 찍어서, '호출어만 말했는데 뒷말로 본다'를
+       [호출] 뒷말 줄로 사후 확인할 수 없었다.
+    """
+    from datetime import datetime
+    d = Path(__file__).resolve().parent.parent / "logs"
+    d.mkdir(parents=True, exist_ok=True)
+    h = logging.FileHandler(d / f"jaeha_{datetime.now():%Y%m%d}.log", encoding="utf-8")
+    h.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+    logging.getLogger().addHandler(h)
 
 
 def build_instructions(music_on: bool) -> str:
@@ -148,6 +163,7 @@ def main(argv=None) -> None:
     a = ap.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    _add_file_log()
     models = settings.models
     wcfg = models.get("wake", {}) or {}
     wake_on = bool(wcfg.get("enabled", True)) and not a.no_wake
@@ -203,8 +219,10 @@ def main(argv=None) -> None:
                 if music is not None and music.pause_for_wake():
                     log.info("노래 중 호출 → 일시정지하고 듣는다")
                     woke_during_music = True
-                if result.continued and result.preroll.size:
-                    preroll, greet = (result.preroll, source.samplerate), False
+                # 🔴 2026-09-19 호출어 **뒤** 소리만 보낸다. 프리롤(호출어 포함)째 보내면
+                #    서버가 '하이 티드' 를 아이 말로 받아 적고 답한다('하이즈들' 실기).
+                if result.continued and result.tail.size:
+                    preroll, greet = (result.tail, source.samplerate), False
             mic = _MicThread(source)
             try:
                 reason = asyncio.run(_awake_period(

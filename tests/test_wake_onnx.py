@@ -83,7 +83,8 @@ def make_detector(score=0.0, **kw):
     d._init_state(threshold=kw.get("threshold", 0.5),
                   trigger_frames=kw.get("trigger_frames", 2),
                   continuation_window=kw.get("continuation_window", 0.5),
-                  source=kw.get("source"))
+                  source=kw.get("source"),
+                  continuation_min_rms=kw.get("continuation_min_rms"))
     return d
 
 

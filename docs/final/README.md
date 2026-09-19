@@ -8,7 +8,7 @@
 | [report.md](report.md) | 별첨 1. 기술 상세 — 설계 결정과 측정의 전체 기록 (1,150행) | 본문 수치의 근거. 물어보시면 여는 문서 |
 | [patent/wake-two-stage-verification.md](patent/wake-two-stage-verification.md) | 별첨 2. 특허 정리 1건 | 변리사 상담 및 출원 판단용 |
 | [patent/발명신고서-초안.md](patent/발명신고서-초안.md) | 산학협력단 발명신고서 칸별 기재안 | 출원 결정 시 한글 양식에 옮긴다 |
-| [patent/발명의내용설명서-초안.md](patent/발명의내용설명서-초안.md) | 같은 양식의 내용설명서. 발명 = 재하봇 시스템 전체, 핵심 구성 = 호출어 2단계 검증 | 위와 같다. `tools/invention_desc_content.py` 에서 만들어진다 |
+| [patent/발명의내용설명서-초안.md](patent/발명의내용설명서-초안.md) | 같은 양식의 내용설명서. 발명 = 재하봇(유아용 대화·놀이 로봇) 전체, 호출어는 구성요소 하나 | 위와 같다. `tools/invention_desc_content.py` 에서 만들어진다 |
 | [api-전환안.md](api-전환안.md) | 별첨 3. 전면 API 구성 검토 | 로컬 기준 본문과 분리 |
 | [figures/](figures/) | 그림 1(파이프라인 블록도), 도면 1(2단계 검증 타이밍도) | 본문·특허 삽입용 |
 | [2026-09-final-report-outline.md](2026-09-final-report-outline.md) | 뼈대와 근거 지도 | 작업용. 본문을 고칠 때 함께 본다 |

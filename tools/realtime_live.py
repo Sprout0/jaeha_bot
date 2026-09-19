@@ -266,6 +266,8 @@ def main() -> None:
     p.add_argument("--model", default="gpt-realtime-mini", choices=sorted(PRICE))
     p.add_argument("--voice", default="marin",
                    help="2단계에서 쓸 목소리. 09-07 블라인드에서 marin(voice_A) 선택")
+    p.add_argument("--speed", type=float, default=1.0,
+                   help="말 속도 0.25~1.5(API 한계). 봇은 configs realtime.speed")
     p.add_argument("--duplex", default="half", choices=("half", "full"),
                    help="full 은 마이크를 계속 열어 둔다 — 에코를 재는 모드")
     p.add_argument("--pad", type=float, default=0.15,
@@ -291,9 +293,10 @@ def main() -> None:
         return
 
     cfg = session_config(a.silence_ms, a.transcribe_model, a.voice)
+    cfg["session"]["audio"]["output"]["speed"] = a.speed
     if a.real_prompt:
         cfg["session"]["instructions"] = real_prompt()
-    print(f"{a.model} | 목소리 {a.voice} | 꼬리 {a.silence_ms}ms | {a.seconds:.0f}초 | "
+    print(f"{a.model} | 목소리 {a.voice} ×{a.speed:g} | 꼬리 {a.silence_ms}ms | {a.seconds:.0f}초 | "
           f"프롬프트 {'실기' if a.real_prompt else '시험용 60자'}")
     print("  말을 걸어 보세요. Ctrl+C 로 끝냅니다.\n")
     try:

@@ -18,13 +18,15 @@ log = logging.getLogger("jaeha_bot.voice_cache")
 
 
 class VoiceCache:
-    def __init__(self, cache_dir, voice: str, model: str) -> None:
+    def __init__(self, cache_dir, voice: str, model: str, speed: float = 1.0) -> None:
         self.dir = Path(cache_dir).expanduser()
-        self.voice, self.model = voice, model
+        self.voice, self.model, self.speed = voice, model, float(speed)
         self._mem: dict[str, np.ndarray] = {}
 
     def key(self, phrase: str) -> str:
-        return hashlib.sha1(f"{self.voice}|{self.model}|{phrase}".encode("utf-8")).hexdigest()[:16]
+        # 기본 속도(1.0)는 옛 키 그대로 — 이미 만든 wav 를 버리지 않는다.
+        voice = self.voice if self.speed == 1.0 else f"{self.voice}@{self.speed:g}"
+        return hashlib.sha1(f"{voice}|{self.model}|{phrase}".encode("utf-8")).hexdigest()[:16]
 
     def path(self, phrase: str) -> Path:
         return self.dir / f"{self.key(phrase)}.wav"

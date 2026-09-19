@@ -20,6 +20,13 @@ def test_세션은_자동으로_답하지_않는다():
     assert td["silence_duration_ms"] == 1200
     assert s["audio"]["input"]["transcription"]["model"] == "gpt-4o-transcribe"
     assert s["audio"]["output"]["voice"] == "marin" and s["instructions"] == "지시"
+    assert s["audio"]["output"]["speed"] == 1.0
+
+
+def test_말_속도를_세션에_싣는다():
+    # API 는 0.25~1.5 만 받는다(09-19 실측: 2.0 은 decimal_above_max_value).
+    s = session_update(RealtimeConfig.from_dict({"speed": 1.2}), "지시")["session"]
+    assert s["audio"]["output"]["speed"] == 1.2
 
 
 def test_이력은_최근_턴만_아이_말과_봇_답으로_넣는다():

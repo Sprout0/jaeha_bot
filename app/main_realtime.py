@@ -167,7 +167,7 @@ def main(argv=None) -> None:
     fcfg = models.get("filler", {}) or {}
     filler_phrases = list(fcfg.get("phrases", [])) if fcfg.get("enabled", True) else []
 
-    cache = VoiceCache(cfg.voice_cache_dir, cfg.voice, cfg.model)
+    cache = VoiceCache(cfg.voice_cache_dir, cfg.voice, cfg.model, cfg.speed)
     made = cache.ensure(list(PHRASES.values()) + filler_phrases,
                         lambda p: asyncio.run(synthesize(cfg, api_key, p)))
     log.info("고정 문구 캐시 준비(새로 만듦 %d)", made)

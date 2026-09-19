@@ -10,6 +10,12 @@ def test_목소리나_모델이_바뀌면_키가_바뀐다():
     assert a == VoiceCache("y", "marin", "m").key("안녕")
 
 
+def test_속도가_바뀌면_키가_바뀌고_기본_속도는_옛_키를_그대로_쓴다():
+    a = VoiceCache("x", "marin", "m").key("안녕")
+    assert a == VoiceCache("x", "marin", "m", speed=1.0).key("안녕")   # 이미 만든 wav 재사용
+    assert a != VoiceCache("x", "marin", "m", speed=1.2).key("안녕")
+
+
 def test_없는_것만_만들고_읽는다(tmp_path):
     made = []
 

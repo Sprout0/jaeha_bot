@@ -31,6 +31,7 @@ PRICE = {
 class RealtimeConfig:
     model: str = "gpt-realtime-mini"
     voice: str = "marin"                          # 09-07 블라인드 선택
+    speed: float = 1.0                            # API 허용 0.25~1.5(09-19 실측)
     transcribe_model: str = "gpt-4o-transcribe"   # whisper-1 은 아동 발화 39% 빈 문자열
     silence_ms: int = 1200                        # 로컬 VAD 꼬리와 같게 — 비교 가능
     mic_pad_s: float = 0.15                       # 08-24 실측
@@ -63,7 +64,8 @@ def session_update(cfg: RealtimeConfig, instructions: str) -> dict:
                                    "create_response": False,
                                    "interrupt_response": False},
             },
-            "output": {"format": {"type": "audio/pcm", "rate": SR}, "voice": cfg.voice},
+            "output": {"format": {"type": "audio/pcm", "rate": SR}, "voice": cfg.voice,
+                       "speed": float(cfg.speed)},
         },
     }}
 

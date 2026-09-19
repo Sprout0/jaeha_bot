@@ -711,7 +711,7 @@ pipeline: local
 realtime:
   model: gpt-realtime-mini          # 40턴 월 21,200원(gpt-realtime 73,300원) — report 7.2
   voice: marin                      # 09-07 블라인드
-  speed: 1.0                        # 말 속도. API 허용 0.25~1.5
+  speed: 1.05                       # 09-19 젯슨 라이브에서 marin 1.05 선택. API 허용 0.25~1.5
   transcribe_model: gpt-4o-transcribe   # whisper-1 은 아동 발화 39% 빈 문자열
   silence_ms: 1200
   mic_pad_s: 0.15

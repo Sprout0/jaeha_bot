@@ -8,7 +8,7 @@
 | [report.md](report.md) | 별첨 1. 기술 상세 — 설계 결정과 측정의 전체 기록 (1,150행) | 본문 수치의 근거. 물어보시면 여는 문서 |
 | [patent/wake-two-stage-verification.md](patent/wake-two-stage-verification.md) | 별첨 2. 특허 정리 1건 | 변리사 상담 및 출원 판단용 |
 | [patent/발명신고서-초안.md](patent/발명신고서-초안.md) | 산학협력단 발명신고서 칸별 기재안 | 출원 결정 시 한글 양식에 옮긴다 |
-| [patent/발명의내용설명서-초안.md](patent/발명의내용설명서-초안.md) | 같은 양식의 내용설명서 (명칭·도면·상세설명·청구범위) | 위와 같다 |
+| [patent/발명의내용설명서-초안.md](patent/발명의내용설명서-초안.md) | 같은 양식의 내용설명서. 발명 = 재하봇 시스템 전체, 핵심 구성 = 호출어 2단계 검증 | 위와 같다. `tools/invention_desc_content.py` 에서 만들어진다 |
 | [api-전환안.md](api-전환안.md) | 별첨 3. 전면 API 구성 검토 | 로컬 기준 본문과 분리 |
 | [figures/](figures/) | 그림 1(파이프라인 블록도), 도면 1(2단계 검증 타이밍도) | 본문·특허 삽입용 |
 | [2026-09-final-report-outline.md](2026-09-final-report-outline.md) | 뼈대와 근거 지도 | 작업용. 본문을 고칠 때 함께 본다 |
@@ -36,16 +36,17 @@ powershell tools/update_docx_fields.ps1  # 목차·쪽번호 채우기. -Pdf 를
 읽기만 하고 `*_초안.hwp` 로 따로 낸다.
 
 ```
-python tools/make_invention_hwp.py "<양식 폴더>" docs/final/figures/wake-two-stage.png
+python tools/make_invention_hwp.py "<양식 폴더>"     # 도면 두 장은 알아서 굽는다
 ```
 
 한글과 `pyhwpx` 가 필요하다. 채우는 내용은 `tools/invention_desc_content.py` 에 있고,
 칸 주소는 구역(list) 번호로 잡되 쓰기 전에 그 칸의 문구를 확인한다 — 엉뚱한 칸에 쓰는
 사고를 막는 장치다.
 
-🔴 **한글을 강제 종료한 직후 다시 띄우면 `open()` 이 조용히 멈출 수 있다.** 몇 초 기다렸다
-돌리면 된다. 보안 모듈 등록과는 관계없다(레지스트리 방식으로 이미 등록돼 있고,
-regsvr32 대상이 아니다). 그래도 막히면 미리 받아 둔 HWPML 을 `--hwpml` 로 넘긴다.
+🔴 **실행 중 한글 보안 팝업이 뜨면 사람이 눌러 줘야 진행된다.** 이 PC 의 한글 2024 는
+보안 모듈을 받아들이지 않아서(`RegisterModule` 이 늘 False, 9-19 확인) 한글을 새로 띄울
+때마다 팝업이 뜬다. 멈춘 것처럼 보이면 팝업을 찾아 허용할 것 — 예전에 '강제 종료 직후
+멈춤'으로 적었던 것은 이 팝업을 잘못 읽은 것이었다. 양식 열기는 `--hwpml` 로 건너뛸 수 있다.
 자세한 함정은 스크립트 맨 위에 적어 두었다.
 
 ## 두 보고서를 나눈 이유

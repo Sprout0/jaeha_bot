@@ -5,8 +5,10 @@
 넣는 내용의 출처는 docs/final/patent/ 의 두 초안 문서다.
 
 사용
-  python tools/make_invention_hwp.py "<양식 폴더>" [도면.png]
-  python tools/make_invention_hwp.py "<양식 폴더>" [도면.png] --hwpml <신고서.xml> <설명서.xml>
+  python tools/make_invention_hwp.py "<양식 폴더>"
+  python tools/make_invention_hwp.py "<양식 폴더>" --hwpml <신고서.xml> <설명서.xml>
+
+도면 두 장은 docs/final/figures 의 SVG 를 크롬으로 구워 넣는다(FIGS).
 
 만드는 방식
   * 체크박스는 HWPML 의 Value 를 고친다. 양식 개체라서 글자가 아니다.
@@ -15,13 +17,14 @@
 
 한글 자동화에서 부딪힌 것 세 가지. 전부 조용히 멈추거나 터진다.
 
-🔴 1. `open()` 이 가끔 영구히 멈춘다. 한글을 강제 종료(taskkill)한 직후 연달아 띄울 때
-   생겼고, 몇 초 기다린 뒤 새로 띄우면 정상으로 열렸다(2026-09-16, 연속 3회 확인).
-   ⚠️ 보안 모듈 탓이 아니다. `RegisterModule(...)` 은 이 PC 에서 늘 False 를 돌려주지만
-   열기는 잘 되고, 아예 부르지 않아도 열린다. 보안 모듈 DLL 은 레지스트리
-   HKCU\\Software\\HNC\\HwpAutomation\\Modules 로 등록하는 방식이며 regsvr32 대상이
-   아니다(DllRegisterServer 가 없고 IsAccessiblePath 하나만 내보낸다).
-   만약을 위해 --hwpml 을 둔다. 미리 받아 둔 HWPML 을 문자열로 넘기면 파일을 읽지 않는다.
+🔴 1. 파일을 읽고 쓰는 동작(열기·저장·그림 넣기)이 멈춘다면 **보안 승인 팝업**이 사람의
+   클릭을 기다리는 것이다(2026-09-19 확인: 창 제목 '한글'인 대화상자가 떠 있었다).
+   한글 2024(13.0.0.2151)에서 `RegisterModule(...)` 이 늘 False 이고, pyhwpx 에 딸린 DLL 은
+   32비트 프로세스에서 잘 올라오며 레지스트리 이름도 맞는데도 거부된다 — 모듈이 먹지
+   않으니 한글 프로세스를 새로 띄울 때마다 팝업이 뜬다. 보안 모듈 DLL 은 레지스트리
+   HKCU\\Software\\HNC\\HwpAutomation\\Modules 로 등록하는 방식이며 regsvr32 대상이 아니다.
+   각 단계에 시간 제한을 두어 무한정 기다리지 않게 했고, --hwpml 로 양식 열기를 건너뛸 수
+   있다(미리 받아 둔 HWPML 을 문자열로 넘기면 파일을 읽지 않는다).
 
 🔴 2. SetTextFile 로 올린 문서를 고친 뒤 save_as 를 부르면 영구히 멈춘다. 고치지 않은
    상태의 save_as 는 즉시 끝난다. 그래서 '고치기'와 '저장'을 나눈다.
@@ -33,19 +36,38 @@
 import importlib.util
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-TITLE_KO = ("검증 구간의 개시 시점을 지연시키고 제1 검출기의 임베딩 추출기를 "
-            "재사용하는 호출어 검출 방법 및 그 장치")
+
+
+def load_content():
+    spec = importlib.util.spec_from_file_location(
+        "desc_content", os.path.join(ROOT, "tools", "invention_desc_content.py"))
+    C = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(C)
+    return C
+
+
+TITLE_KO = load_content().TITLE_KO
 
 SRC_SINKO = "[양식] 01.발명신고서 등_2023 (1).hwp"
 SRC_DESC = "[양식] 2. 발명의내용설명서 (3).hwp"
-OUT_SINKO = "발명신고서_호출어2단계검증_초안.hwp"
-OUT_DESC = "발명의내용설명서_호출어2단계검증_초안.hwp"
+OUT_SINKO = "발명신고서_재하봇_초안.hwp"
+OUT_DESC = "발명의내용설명서_재하봇_초안.hwp"
+
+# 도면: (SVG, 원본 크기 px, 그림 안 제목 바꾸기(원래, 바꿀 것), 넣을 크기 mm)
+# 보고서용 그림을 그대로 쓰되 제목만 도면 번호로 바꾼다. 칸 안쪽 폭이 130mm 남짓이다.
+FIGS = [
+    ("pipeline-block.svg", (1000, 640),
+     ("그림 1. 재하봇 파이프라인과 구간별 실측 지연", "【도 1】 시스템 구성과 구간별 실측 지연"),
+     (124, 79)),
+    ("wake-two-stage.svg", (1000, 600), ("【도 1】", "【도 2】"), (124, 74)),
+]
 
 # 체크할 양식 개체. 이름은 양식이 들고 있는 것이고, 캡션으로 한 번 더 확인한다.
 # 동의 항목(CheckBox18~25)은 본인이 직접 체크할 사항이라 건드리지 않는다.
@@ -73,10 +95,7 @@ PLAN_SINKO = [
 
 
 def plan_desc():
-    spec = importlib.util.spec_from_file_location(
-        "desc_content", os.path.join(ROOT, "tools", "invention_desc_content.py"))
-    C = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(C)
+    C = load_content()
     return [   # 위와 같은 이유로 내림차순
         (13, "B8", "반드시 작성하지 않아도", C.CHUNGGU),
         (11, "B7", "3.4 발명의 구성 및 작용", C.SANGSE_4),
@@ -89,6 +108,29 @@ def plan_desc():
 
 
 PLANS = {"sinko": lambda: PLAN_SINKO, "desc": plan_desc}
+
+
+def render_figs(work):
+    """도면 SVG 의 제목을 바꿔 PNG 로 굽는다. 경로 목록을 돌려준다."""
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    from build_docs_docx import find_chrome
+    chrome, out = find_chrome(), []
+    for svg, (w, h), (old, new), _ in FIGS:
+        text = open(os.path.join(ROOT, "docs", "final", "figures", svg), encoding="utf-8").read()
+        if old not in text:
+            sys.exit("%s 에 제목 %r 가 없다" % (svg, old))
+        src = os.path.join(work, svg)
+        open(src, "w", encoding="utf-8").write(text.replace(old, new, 1))
+        png = src[:-4] + ".png"
+        subprocess.run(
+            [chrome, "--headless", "--disable-gpu", "--no-sandbox", "--hide-scrollbars",
+             "--default-background-color=FFFFFFFF", "--force-device-scale-factor=2",
+             "--window-size=%d,%d" % (w, h), "--screenshot=" + png.replace("\\", "/"),
+             "file:///" + src.replace("\\", "/")], capture_output=True, timeout=180)
+        if not os.path.exists(png):
+            sys.exit("도면을 굽지 못했다: " + svg)
+        out.append(png)
+    return out
 
 
 def new_hwp():
@@ -149,19 +191,19 @@ def phase_dump(src, out_xml):
     open(out_xml, "w", encoding="utf-8").write(hwp.GetTextFile("HWPML2X", ""))
 
 
-def phase_fill(in_xml, out_xml, plan_name, fig, fig_list):
+def phase_fill(in_xml, out_xml, plan_name, figs, fig_list):
     hwp = new_hwp()
     if hwp.SetTextFile(open(in_xml, encoding="utf-8").read(), "HWPML2X", "") != 1:
         sys.exit("HWPML 을 문서로 올리지 못했다")
     fill_cells(hwp, PLANS[plan_name]())
-    if fig and os.path.exists(fig):
+    if figs:
         hwp.set_pos(fig_list, 0, 0)
         hwp.MoveListEnd()
-        hwp.BreakPara()
-        # sizeoption=1 이 지정 크기다(0 은 원래 크기라 width 를 무시한다).
-        # 칸 안쪽 폭이 130mm 남짓이므로 그보다 작게. 원본 비율 1000:600.
-        hwp.insert_picture(fig, embedded=True, sizeoption=1, width=124, height=74)
-        print("  도면 삽입")
+        for png, (*_, (w, h)) in zip(figs, FIGS):
+            hwp.BreakPara()
+            # sizeoption=1 이 지정 크기다(0 은 원래 크기라 width 를 무시한다).
+            hwp.insert_picture(png, embedded=True, sizeoption=1, width=w, height=h)
+        print("  도면 %d장 삽입" % len(figs))
     open(out_xml, "w", encoding="utf-8").write(hwp.GetTextFile("HWPML2X", ""))
 
 
@@ -172,38 +214,60 @@ def phase_save(in_xml, out_hwp):
     hwp.save_as(out_hwp)      # 고치지 않은 상태라 멈추지 않는다
 
 
-def run(*args):
-    r = subprocess.run([sys.executable, os.path.abspath(__file__), "--phase"] + list(args))
-    if r.returncode != 0:
+def hwp_pids():
+    out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq Hwp.exe", "/FO", "CSV", "/NH"],
+                         capture_output=True, text=True).stdout
+    return {int(line.split('","')[1]) for line in out.splitlines() if line.startswith('"Hwp')}
+
+
+def run(*args, timeout=300):
+    # 🔴 단계는 os._exit 로 끝나서 한글을 닫지 않는다. 그 단계가 띄운 한글만 골라 끈다 —
+    # 안 끄면 돌릴 때마다 숨은 한글이 쌓이고, 다음 열기가 멈춘다. 사용자가 원래 열어 둔
+    # 한글은 before 에 들어 있으므로 건드리지 않는다.
+    before = hwp_pids()
+    try:
+        r = subprocess.run([sys.executable, os.path.abspath(__file__), "--phase"] + list(args),
+                           timeout=timeout)
+        ok = r.returncode == 0
+    except subprocess.TimeoutExpired:
+        ok = False
+        print("  %d초 안에 끝나지 않았다 — 한글 보안 팝업이 응답을 기다리는 중일 수 있다" % timeout)
+    for pid in hwp_pids() - before:
+        subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
+    if not ok:
         sys.exit("단계 실패: %s" % (args,))
 
 
-def build(xml, plan_name, out, fig=None, fig_list=0):
+def build(xml, plan_name, out, figs=(), fig_list=0):
     work = tempfile.mkdtemp(prefix="hwpfill-")
     a = os.path.join(work, "a.xml")
     b = os.path.join(work, "b.xml")
     open(a, "w", encoding="utf-8").write(xml)
-    run("fill", a, b, plan_name, fig or "", str(fig_list))
+    run("fill", a, b, plan_name, ";".join(figs), str(fig_list))
     run("save", b, out)
+    shutil.rmtree(work, ignore_errors=True)
     print("  → %s" % os.path.basename(out))
 
 
-def main(folder, fig, xml_sinko, xml_desc):
+def main(folder, xml_sinko, xml_desc):
     def hwpml(given, template):
         if given:
             return open(given, encoding="utf-8").read()
         work = tempfile.mkdtemp(prefix="hwpdump-")
         p = os.path.join(work, "t.xml")
         run("dump", os.path.join(folder, template), p)
-        return open(p, encoding="utf-8").read()
+        xml = open(p, encoding="utf-8").read()
+        shutil.rmtree(work, ignore_errors=True)
+        return xml
 
     print("발명신고서")
     build(check_boxes(hwpml(xml_sinko, SRC_SINKO)), "sinko",
           os.path.join(folder, OUT_SINKO))
 
     print("발명의 내용 설명서")
+    figs = render_figs(tempfile.mkdtemp(prefix="hwpfig-"))
     build(hwpml(xml_desc, SRC_DESC), "desc",
-          os.path.join(folder, OUT_DESC), fig=fig, fig_list=6)
+          os.path.join(folder, OUT_DESC), figs=figs, fig_list=6)
 
 
 if __name__ == "__main__":
@@ -213,7 +277,8 @@ if __name__ == "__main__":
         if kind == "dump":
             phase_dump(args[2], args[3])
         elif kind == "fill":
-            phase_fill(args[2], args[3], args[4], args[5] or None, int(args[6]))
+            phase_fill(args[2], args[3], args[4], [p for p in args[5].split(";") if p],
+                       int(args[6]))
         elif kind == "save":
             phase_save(args[2], args[3])
         else:
@@ -230,4 +295,4 @@ if __name__ == "__main__":
         args = args[:i]
     if not args:
         sys.exit(__doc__)
-    main(args[0], args[1] if len(args) > 1 else None, xs, xd)
+    main(args[0], xs, xd)

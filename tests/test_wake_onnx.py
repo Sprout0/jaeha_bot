@@ -423,3 +423,25 @@ def test_continuation_works_on_sources_without_read_buffered():
     d = make_detector(score=0.9, source=src)
     r = d.wait_for_wake(max_frames=150)
     assert r is not None and r.continued is True
+
+
+# ── 뒷말 기준을 소음 바닥 위로 (2026-09-19 젯슨 실기) ─────────────────────
+# 🔴 에너지 게이트 값(0.005)을 뒷말 판정에도 썼는데, 젯슨 방 소음(RMS ~0.007)이 그보다
+#    커서 **호출어만 말해도 늘 '이어짐'** 이었다. 전면 API 봇은 그때 호출어 소리까지
+#    서버로 보내 '하이즈들' 을 아이 말로 받아 적고 답했다(09-19 metrics 첫 턴).
+
+def test_뒷말_기준을_따로_주면_방_소음은_이어짐이_아니다():
+    noise = np.full(FRAME, 0.008, dtype=np.float32)    # 젯슨 방 소음 수준
+    src = ScriptedSource([noise] * 200)
+    d = make_detector(score=0.9, source=src, continuation_min_rms=0.03)
+    r = d.wait_for_wake(max_frames=150)
+    assert r is not None and r.continued is False and r.tail.size == 0
+
+
+def test_뒷말_기준을_넘는_말은_이어짐이고_호출어_뒤_소리만_따로_준다():
+    speech = np.full(FRAME, 0.05, dtype=np.float32)
+    src = ScriptedSource([speech] * 200)
+    d = make_detector(score=0.9, source=src, continuation_min_rms=0.03)
+    r = d.wait_for_wake(max_frames=150)
+    assert r is not None and r.continued is True
+    assert 0 < r.tail.size < r.preroll.size, "tail 은 프리롤(호출어 포함)을 뺀 뒷부분이다"

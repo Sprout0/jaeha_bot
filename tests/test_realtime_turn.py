@@ -1,3 +1,4 @@
+import pytest
 from app.education_modes import GameManager
 from app.music import MusicReply
 from app.realtime_turn import PHRASES, missing_required, route
@@ -70,3 +71,44 @@ def test_기존_놀이_함수_동작은_그대로다():
     g = GameManager(render=None)
     assert isinstance(g.maybe_start("동물 소리 놀이 하자"), str)
     assert isinstance(g.handle("야옹"), str)
+
+
+# ── 대화를 끝내고 싶다는 말 → 다시 대기 (2026-09-19) ─────────────────────
+# 실기: "됐어 좀 쉬고 있어" 가 자유대화로 가서 봇이 계속 말을 걸었다.
+# '그만할래' 는 놀이·노래를 끄는 말이기도 해서, 둘 다 없을 때만 대기로 보낸다.
+
+class _Idle:
+    def handle(self, text):
+        return None
+
+
+class _NoGame:
+    def handle_beat(self, text):
+        return None
+
+    def maybe_start_beat(self, text):
+        return None
+
+
+class _GameOn(_NoGame):
+    def handle_beat(self, text):
+        return {"fallback": "놀이 끝!"}
+
+
+@pytest.mark.parametrize("text", ["됐어 좀 쉬고 있어.", "대화 그만할래", "이제 얘기 그만하자",
+                                  "나 이제 갈게", "잘 가", "그만할래.", "그만하자", "그만."])
+def test_끝내고_싶다는_말이면_대기로(text):
+    assert route(text, music=_Idle(), games=_NoGame(), sleep_words=None).kind == "sleep"
+
+
+def test_놀이_중_그만할래는_놀이를_끈다():
+    assert route("그만할래", music=_Idle(), games=_GameOn(), sleep_words=None).kind == "game"
+
+
+def test_놀이_중이라도_대화_그만은_대기로():
+    assert route("대화 그만하자", music=_Idle(), games=_GameOn(), sleep_words=None).kind == "sleep"
+
+
+@pytest.mark.parametrize("text", ["그만 울어", "쉬는 시간이 뭐야?", "가위가 어딨지?", "그만큼 커?"])
+def test_끝내자는_말이_아니면_대화(text):
+    assert route(text, music=_Idle(), games=_NoGame(), sleep_words=None).kind == "chat"

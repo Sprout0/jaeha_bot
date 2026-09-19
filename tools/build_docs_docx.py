@@ -47,6 +47,8 @@ CHROME_CANDIDATES = [
 FIGURES = {
     "pipeline-block.svg": (1000, 640),
     "wake-two-stage.svg": (1000, 600),
+    "patent-system.svg": (1000, 600),     # 발명신고용 도 1·2 (흑백, 수치 없음)
+    "patent-wake.svg": (1000, 620),
 }
 
 # (원본 md, 결과 docx, 목차 생성 여부)

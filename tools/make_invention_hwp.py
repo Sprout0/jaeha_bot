@@ -60,14 +60,17 @@ SRC_DESC = "[양식] 2. 발명의내용설명서 (3).hwp"
 OUT_SINKO = "발명신고서_재하봇_초안.hwp"
 OUT_DESC = "발명의내용설명서_재하봇_초안.hwp"
 
-# 도면: (SVG, 원본 크기 px, 그림 안 제목 바꾸기(원래, 바꿀 것), 넣을 크기 mm)
-# 보고서용 그림을 그대로 쓰되 제목만 도면 번호로 바꾼다. 칸 안쪽 폭이 130mm 남짓이다.
+# 도면: (SVG, 원본 크기 px, 넣을 크기 mm). 발명신고용으로 흑백·수치 없이 따로 그린 것이다
+# (보고서용 그림은 수치와 주석이 많아 칸 폭으로 줄이면 읽히지 않았다). 칸 안쪽 폭 130mm 남짓.
 FIGS = [
-    ("pipeline-block.svg", (1000, 640),
-     ("그림 1. 재하봇 파이프라인과 구간별 실측 지연", "【도 1】 시스템 구성과 구간별 실측 지연"),
-     (124, 79)),
-    ("wake-two-stage.svg", (1000, 600), ("【도 1】", "【도 2】"), (124, 74)),
+    ("patent-system.svg", (1000, 600), (124, 74)),
+    ("patent-wake.svg", (1000, 620), (124, 77)),
 ]
+
+# 양식 본문의 글꼴. 양식 안내글(3.1~3.4 제목 포함)이 한컴바탕 10pt 이고, 그냥 쓰면
+# 칸마다 다른 기본 글꼴이 딸려 온다(명칭 칸은 고정폭 글꼴로 나왔다).
+BODY_FONT = ("한컴바탕", 10)
+
 
 # 체크할 양식 개체. 이름은 양식이 들고 있는 것이고, 캡션으로 한 번 더 확인한다.
 # 동의 항목(CheckBox18~25)은 본인이 직접 체크할 사항이라 건드리지 않는다.
@@ -107,21 +110,18 @@ def plan_desc():
     ]
 
 
-PLANS = {"sinko": lambda: PLAN_SINKO, "desc": plan_desc}
+# (칸 계획, 글꼴). 신고서 칸은 양식 글꼴이 그대로 따라와서 건드리지 않는다.
+PLANS = {"sinko": (lambda: PLAN_SINKO, None), "desc": (plan_desc, BODY_FONT)}
 
 
 def render_figs(work):
-    """도면 SVG 의 제목을 바꿔 PNG 로 굽는다. 경로 목록을 돌려준다."""
+    """도면 SVG 를 2배 해상도 PNG 로 굽는다. 경로 목록을 돌려준다."""
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     from build_docs_docx import find_chrome
     chrome, out = find_chrome(), []
-    for svg, (w, h), (old, new), _ in FIGS:
-        text = open(os.path.join(ROOT, "docs", "final", "figures", svg), encoding="utf-8").read()
-        if old not in text:
-            sys.exit("%s 에 제목 %r 가 없다" % (svg, old))
-        src = os.path.join(work, svg)
-        open(src, "w", encoding="utf-8").write(text.replace(old, new, 1))
-        png = src[:-4] + ".png"
+    for svg, (w, h), _ in FIGS:
+        src = os.path.join(ROOT, "docs", "final", "figures", svg)
+        png = os.path.join(work, svg[:-4] + ".png")
         subprocess.run(
             [chrome, "--headless", "--disable-gpu", "--no-sandbox", "--hide-scrollbars",
              "--default-background-color=FFFFFFFF", "--force-device-scale-factor=2",
@@ -150,7 +150,7 @@ def check_boxes(xml):
     return xml
 
 
-def fill_cells(hwp, plan):
+def fill_cells(hwp, plan, font=None):
     for lid, addr, expect, lines in plan:
         if not hwp.set_pos(lid, 0, 0):
             sys.exit("구역 %d 로 이동 실패" % lid)
@@ -177,6 +177,8 @@ def fill_cells(hwp, plan):
         hwp.MoveListBegin()
         hwp.MoveSelListEnd()
         hwp.CharShapeTextColorBlack()
+        if font:
+            hwp.set_font(FaceName=font[0], Height=font[1], Bold=False)
         hwp.Cancel()
         print("  %s — %d줄" % (addr, len(lines)))
 
@@ -195,7 +197,8 @@ def phase_fill(in_xml, out_xml, plan_name, figs, fig_list):
     hwp = new_hwp()
     if hwp.SetTextFile(open(in_xml, encoding="utf-8").read(), "HWPML2X", "") != 1:
         sys.exit("HWPML 을 문서로 올리지 못했다")
-    fill_cells(hwp, PLANS[plan_name]())
+    plan, font = PLANS[plan_name]
+    fill_cells(hwp, plan(), font)
     if figs:
         hwp.set_pos(fig_list, 0, 0)
         hwp.MoveListEnd()

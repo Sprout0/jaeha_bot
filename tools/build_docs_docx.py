@@ -45,24 +45,26 @@ CHROME_CANDIDATES = [
 
 # SVG 원본 → 내보낼 픽셀 크기. viewBox 와 같게 두고 2배로 굽는다.
 FIGURES = {
-    "pipeline-block.svg": (1000, 640),
+    "pipeline-block.svg": (1000, 620),
     "wake-two-stage.svg": (1000, 600),
     "patent-system.svg": (1000, 600),     # 발명신고용 도 1·2 (흑백, 수치 없음)
     "patent-dialog.svg": (1000, 700),
 }
 
 # (원본 md, 결과 docx, 목차 생성 여부)
+# 번호와 이름은 결과보고서 끝의 '별첨' 표와 같아야 한다.
 DOCS = [
     ("결과보고서.md", "01_결과보고서.docx", True),
-    ("report.md", "02_별첨1_상세보고서.docx", False),  # 본문에 목차가 이미 있다
-    (os.path.join("patent", "wake-two-stage-verification.md"),
-     "03_별첨2_특허정리_호출어2단계검증.docx", True),
-    ("api-전환안.md", "04_별첨3_전면API구성검토.docx", False),
-    # 산학협력단 발명신고용. 한글 양식에 옮겨 붙일 내용이라 목차는 필요 없다.
+    ("report.md", "02_별첨1_기술상세보고서.docx", True),
+    # 별첨 2 = 출원 서류 초안 두 장. 한글 양식에 옮겨 붙일 내용이라 목차는 없다.
     (os.path.join("patent", "발명신고서-초안.md"),
-     "05_발명신고서_초안.docx", False),
+     "03_별첨2_발명신고서_초안.docx", False),
     (os.path.join("patent", "발명의내용설명서-초안.md"),
-     "06_발명의내용설명서_초안.docx", False),
+     "04_별첨2_발명의내용설명서_초안.docx", False),
+    ("api-전환안.md", "05_별첨3_전면API구성검토.docx", False),
+    # 별첨이 아니라 근거 자료 — 결과보고서 5.1 의 선행조사 과정이 여기에 있다.
+    (os.path.join("patent", "wake-two-stage-verification.md"),
+     "06_근거_호출어2단계검증_선행기술대비.docx", True),
 ]
 
 

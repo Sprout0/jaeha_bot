@@ -21,10 +21,42 @@ try {
         $doc = $word.Documents.Open($f.FullName, $false, $false)
         # 본문뿐 아니라 머리글·바닥글의 필드까지 훑어야 쪽번호가 제대로 박힌다
         foreach ($story in $doc.StoryRanges) { $null = $story.Fields.Update() }
-        foreach ($toc in $doc.TablesOfContents) { $toc.Update() }
+        foreach ($toc in $doc.TablesOfContents) {
+            $toc.Update()
+            # 목차 줄간격은 참조 서식으로 못 잡는다(워드가 자기 TOC 스타일을 쓴다).
+            # 기본값이면 12쪽 문서의 목차가 두 쪽으로 넘쳐 한 쪽이 거의 빈다.
+            foreach ($p in $toc.Range.Paragraphs) {
+                $p.Format.SpaceBefore = 0
+                $p.Format.SpaceAfter = 2
+                $p.Format.LineSpacingRule = 0   # 0 = wdLineSpaceSingle
+            }
+        }
         # pandoc 은 모든 칸을 같은 너비로 박아 놓는다. 워드에게 내용에 맞춰 다시 잡게 한 뒤
         # (1=내용에 맞춤) 본문 폭까지 늘린다(2=창에 맞춤). 비율은 내용이 정한다.
-        foreach ($t in $doc.Tables) { $t.AutoFitBehavior(1); $t.AutoFitBehavior(2) }
+        foreach ($t in $doc.Tables) {
+            $t.AutoFitBehavior(1); $t.AutoFitBehavior(2)
+            # 칸 하나가 쪽 경계에서 반으로 갈리지 않게.
+            $t.Rows.AllowBreakAcrossPages = $false
+            # 표를 안내 문장과 붙여 둔다. 작은 표(6줄 이하)는 통째로, 큰 표는 머리행과
+            # 앞 두 줄만 — 머리행 하나만 쪽 끝에 남는 꼴을 막는다.
+            $n = $t.Rows.Count
+            $keep = if ($n -le 6) { $n - 1 } else { 2 }
+            for ($i = 1; $i -le $keep; $i++) {
+                $t.Rows($i).Range.ParagraphFormat.KeepWithNext = $true
+            }
+            $prev = $t.Range.Previous(4, 1)      # 4 = wdParagraph
+            if ($prev) { $prev.ParagraphFormat.KeepWithNext = $true }
+        }
+        # 표·목록 바로 뒤 문단은 붙어 보인다. 그 문단에만 위 여백을 준다.
+        $prevWasBlock = $false
+        foreach ($p in $doc.Paragraphs) {
+            $isList = ($p.Range.ListFormat.ListType -ne 0)
+            $inTable = $p.Range.Information(12)  # 12 = wdWithInTable
+            if ($prevWasBlock -and -not $isList -and -not $inTable) {
+                $p.Format.SpaceBefore = 8
+            }
+            $prevWasBlock = ($isList -or $inTable)
+        }
         $doc.Repaginate()
         $pages = $doc.ComputeStatistics(2)   # wdStatisticPages
         $doc.Save()

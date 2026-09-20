@@ -111,6 +111,16 @@ restyle("TOCHeading",
         '<w:rPr><w:rFonts ' + KO + '/><w:b/><w:color w:val="000000"/>'
         '<w:sz w:val="30"/><w:szCs w:val="30"/></w:rPr>')
 
+# 목차 항목: 줄간격을 좁힌다. 기본값(줄간격 1.4 + 뒤 4pt)이면 12쪽 문서의 목차가 두
+# 쪽으로 넘쳐 한 쪽이 거의 비어 버린다 — 2026-09-20 제출본 점검에서 나온 것이다.
+for lvl in (1, 2, 3):
+    if 'w:styleId="TOC%d"' % lvl not in s:
+        continue          # 참조 docx 에 없으면 워드가 기본 목차 스타일을 쓴다
+    restyle("TOC%d" % lvl,
+            '<w:pPr><w:tabs><w:tab w:val="right" w:leader="dot" w:pos="9350"/></w:tabs>'
+            '<w:spacing w:before="0" w:after="0" w:line="264" w:lineRule="auto"/>'
+            '<w:ind w:left="%d"/></w:pPr>' % ((lvl - 1) * 220), "")
+
 # 그림·표 설명: 작게, 가운데, 회색
 for sid in ("Caption", "ImageCaption", "TableCaption"):
     restyle(sid,
@@ -128,6 +138,10 @@ restyle("BlockText",
         '<w:ind w:left="240"/><w:spacing w:before="120" w:after="120"/></w:pPr>',
         '<w:rPr><w:rFonts ' + KO + '/><w:color w:val="374151"/>'
         '<w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr>')
+
+# 링크: 검정 · 밑줄 없음. 제출본은 종이로도 읽고, 상대 경로 링크는 PDF 에서 열리지
+# 않는다 — 파란 밑줄만 남아 장식이 된다.
+restyle("Hyperlink", "", '<w:rPr><w:color w:val="1F2937"/><w:u w:val="none"/></w:rPr>')
 
 # 고정폭: 코드·파일경로
 s = re.sub(r'(<w:style w:type="character" w:styleId="VerbatimChar">.*?)<w:rPr>.*?</w:rPr>',

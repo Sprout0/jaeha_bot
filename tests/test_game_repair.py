@@ -63,3 +63,11 @@ def test_쉼_찾기는_가까운_무음_안을_고른다():
     audio = np.concatenate([talk, np.zeros(int(0.2 * sr), np.float32), talk])
     cut = quiet_cut(audio, near=int(1.3 * sr), sr=sr)
     assert sr <= cut <= int(1.2 * sr)
+
+
+def test_글자가_덜_와서_끝에_걸린_이름은_다음_글자까지_기다린다():
+    # 09-22 실서버: "좋아, 동물 소" 까지 온 순간 '소'(=소리의 앞 글자)를 틀린 이름으로 봤다.
+    beat = dict(BEAT, allow=["양"], names=["양", "소"])
+    assert check_stream("좋아, 동물 소", beat) is None
+    assert check_stream("좋아, 동물 소리", beat) is None
+    assert check_stream("소는", beat) is not None

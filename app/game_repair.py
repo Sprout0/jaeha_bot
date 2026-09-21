@@ -35,9 +35,14 @@ def first_sentence_end(text: str) -> int:
     return m.start() + 1 if m else -1
 
 
-def _wrong_name(said: str, beat: dict) -> int:
+def _wrong_name(said: str, beat: dict, *, partial: bool = False) -> int:
+    """허용 밖 이름의 첫 위치. partial=True(글자가 아직 오는 중)면 **끝에 걸린 이름은 미룬다** —
+    09-22 실서버에서 "좋아, 동물 소" 의 '소'(= 소리의 앞 글자)를 틀린 이름으로 봤다."""
     allow = set(beat.get("allow") or [])
-    hits = [p for n in beat.get("names") or [] if n not in allow and (p := find_name(said, n)) >= 0]
+    end = len(said.rstrip())
+    hits = [p for n in beat.get("names") or []
+            if n not in allow and (p := find_name(said, n)) >= 0
+            and not (partial and p + len(n) >= end)]
     return min(hits) if hits else -1
 
 
@@ -48,7 +53,7 @@ def _lines(beat: dict, in_first: bool) -> list[str]:
 
 def check_stream(said: str, beat: dict) -> Repair | None:
     """글자가 들어오는 도중 — 첫 문장 안의 틀린 이름만 본다(여유가 0.14s 뿐이라 기다릴 수 없다)."""
-    pos = _wrong_name(said, beat)
+    pos = _wrong_name(said, beat, partial=True)
     if pos < 0:
         return None
     end = first_sentence_end(said)

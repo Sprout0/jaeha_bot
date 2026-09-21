@@ -62,9 +62,11 @@ DOCS = [
     (os.path.join("patent", "발명의내용설명서-초안.md"),
      "04_별첨2_발명의내용설명서_초안.docx", False),
     ("api-전환안.md", "05_별첨3_전면API구성검토.docx", False),
-    # 별첨이 아니라 근거 자료 — 결과보고서 5.1 의 선행조사 과정이 여기에 있다.
+    # 별첨이 아니다. 재하봇 밖에서도 쓸 수 있는 청구항 하나의 정리본과 그 근거 전문.
+    (os.path.join("patent", "호출어검증-핵심청구항.md"),
+     "06_핵심청구항_호출어검증시점.docx", False),
     (os.path.join("patent", "wake-two-stage-verification.md"),
-     "06_근거_호출어2단계검증_선행기술대비.docx", True),
+     "07_근거_호출어2단계검증_선행기술대비.docx", True),
 ]
 
 

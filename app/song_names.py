@@ -38,9 +38,16 @@ _NOUNS = ("노래", "음악", "동요", "송")
 _HANGUL = re.compile(r"[가-힣]")
 
 
+COMMANDS = ("잘 자", "바이바이", "그만할래", "쉬고 있어", "동물 소리 놀이", "따라 말하기 놀이",
+            "노래 틀어줘")
+
+
 def transcribe_prompt(names=NAMES) -> str:
-    """받아쓰기 힌트. 목록만 준다 — 문장을 주면 그 문장을 받아 적는 일이 있다."""
-    return "하이 티드, " + ", ".join(names)
+    """받아쓰기 힌트. 목록만 준다 — 문장을 주면 그 문장을 받아 적는 일이 있다.
+
+    2026-09-22: 짧은 명령 낱말도 넣는다('잘 자'→'탈자' 합성음 사례).
+    """
+    return "하이 티드, " + ", ".join(COMMANDS) + ", " + ", ".join(names)
 
 
 def _best(word: str, names) -> tuple[str, float]:

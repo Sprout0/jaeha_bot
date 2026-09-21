@@ -214,8 +214,11 @@ def main(argv=None) -> None:
     log.info("안전 가드 — 위험 신호 턴 붙잡기 %s(한도 %.1fs) / 다시 붙기 %d번",
              "켬" if gcfg.hold_on_risk else "끔", gcfg.hold_cap_s, gcfg.reconnect_tries)
 
+    from .realtime_protocol import command_tools
+    tools = command_tools(music_on)            # 짧은 명령을 모델이 소리로 알아듣는 도구(2026-09-22)
+
     def make_session():
-        return RealtimeSession(cfg, api_key)
+        return RealtimeSession(cfg, api_key, tools=tools)
 
     common = dict(speaker=speaker, cache=cache, cfg=cfg, music=music,
                   gate=ReplyGate(gcfg), guardian=GuardianLog(BASE_DIR / "logs"),

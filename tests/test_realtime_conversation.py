@@ -105,7 +105,7 @@ def test_자유대화는_답을_요청하고_이력에_남긴다():
         return s, history, await c.run(greet=False)
 
     s, history, reason = asyncio.run(go())
-    assert s.requests() == [{"type": "response.create"}]
+    assert s.requests() == [{"type": "response.create", "response": {"tool_choice": "auto"}}]
     assert history == [("안녕", "안녕!")] and reason == "idle" and s.closed
 
 
@@ -436,7 +436,7 @@ def test_끊기면_말없이_다시_붙고_답하던_말을_다시_묻는다():
     assert s2.opened[1][0] == ("전", "후")                      # 기록을 다시 넣었다
     items = [m for m in s2.sent if m["type"] == "conversation.item.create"]
     assert items[0]["item"]["content"][0]["text"] == "공룡 좋아해?"
-    assert s2.requests() == [{"type": "response.create"}]
+    assert s2.requests() == [{"type": "response.create", "response": {"tool_choice": "auto"}}]
     assert history[-1] == ("공룡 좋아해?", "응 좋아!")
     assert PHRASES["lost"] not in c.cache.asked
 
@@ -532,3 +532,54 @@ def test_놀이가_제대로면_아무것도_안_한다():
 
     sp, c, beat = asyncio.run(go())
     assert not hasattr(sp, "truncated") and beat["fix_next"] not in c.cache.asked
+
+
+def _fc(name, args="{}"):
+    return {"type": "response.done", "response": {"output": [
+        {"type": "function_call", "name": name, "arguments": args, "call_id": "c9"}]}}
+
+
+def test_모델이_잠들기를_부르면_잔다():
+    async def go():
+        s, cache = FakeSession(), FakeCache()
+        c = _conv(s, cache=cache)
+        asyncio.create_task(_feed(s, [_transcript("탈자"), _fc("go_to_sleep")]))
+        return await c.run(greet=False), s, cache
+
+    reason, s, cache = asyncio.run(go())
+    assert reason == "sleep" and PHRASES["sleep"] in cache.asked
+    assert any(m.get("item", {}).get("type") == "function_call_output" for m in s.sent)
+
+
+def test_모델이_놀이를_부르면_놀이를_시작한다():
+    async def go():
+        s = FakeSession()
+        c = _conv(s, sleep_timeout=0.3)
+        asyncio.create_task(_feed(s, [_transcript("움월 소리놀이 하자"),
+                                      _fc("start_game", "{\"kind\": \"animal\"}")]))
+        await c.run(greet=False)
+        return s
+
+    reqs = asyncio.run(go()).requests()
+    assert len(reqs) == 2 and "상황:" in reqs[1]["response"]["instructions"]
+
+
+def test_모델이_노래를_부르면_노래_경로():
+    played = []
+
+    class Music:
+        def handle(self, text):
+            if "틀어줘" in text:
+                return MusicReply(f"{text.split(' 틀어줘')[0]} 틀어 줄게!",
+                                  action=lambda: played.append(text) or True, standby=True)
+            return None
+
+    async def go():
+        s = FakeSession()
+        c = _conv(s, music=Music())
+        asyncio.create_task(_feed(s, [_transcript("비니닝"),
+                                      _fc("play_song", "{\"title\": \"티니핑\"}"),
+                                      _audio_delta(), {"type": "response.done", "response": {}}]))
+        return await c.run(greet=False)
+
+    assert asyncio.run(go()) == "music" and played == ["티니핑 틀어줘"]

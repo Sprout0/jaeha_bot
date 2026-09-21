@@ -6,6 +6,7 @@ input_audio_format/turn_detection 은 거부된다.
 from __future__ import annotations
 
 import base64
+import json
 from dataclasses import dataclass, fields
 
 URL = "wss://api.openai.com/v1/realtime?model={model}"
@@ -48,10 +49,19 @@ class RealtimeConfig:
         return cls(**{k: v for k, v in (d or {}).items() if k in known})
 
 
-def session_update(cfg: RealtimeConfig, instructions: str) -> dict:
+def session_update(cfg: RealtimeConfig, instructions: str, tools: list | None = None) -> dict:
     transcription = {"model": cfg.transcribe_model, "language": "ko"}
     if cfg.transcribe_prompt:
         transcription["prompt"] = cfg.transcribe_prompt
+    msg = _session_update(cfg, instructions, transcription)
+    if tools:
+        # 2026-09-22 짧은 명령 — 요청마다 tool_choice 로 쓸지 정한다(chat 턴만 auto).
+        msg["session"]["tools"] = list(tools)
+        msg["session"]["tool_choice"] = "auto"
+    return msg
+
+
+def _session_update(cfg: RealtimeConfig, instructions: str, transcription: dict) -> dict:
     return {"type": "session.update", "session": {
         "type": "realtime",
         "instructions": instructions,
@@ -100,16 +110,59 @@ def append_audio(pcm: bytes) -> dict:
     return {"type": "input_audio_buffer.append", "audio": base64.b64encode(pcm).decode()}
 
 
-def respond(instructions: str | None = None) -> dict:
-    if instructions is None:
-        return {"type": "response.create"}
-    return {"type": "response.create", "response": {"instructions": instructions}}
+def respond(instructions: str | None = None, *, tools: bool = False) -> dict:
+    """답 요청. tools=True 는 chat 턴 — 모델이 명령 도구를 부를 수 있다(2026-09-22)."""
+    r: dict = {"tool_choice": "auto" if tools else "none"}
+    if instructions is not None:
+        r["instructions"] = instructions
+    return {"type": "response.create", "response": r}
+
+
+def command_tools(music_on: bool) -> list[dict]:
+    """글자로 못 알아본 명령을 모델이 소리로 듣고 부르는 도구(2026-09-22)."""
+    tools = [
+        {"type": "function", "name": "go_to_sleep",
+         "description": "아이가 대화를 끝내고 싶어 할 때만 부른다(잘 자, 바이바이, 그만할래, 쉬고 있어). "
+                        "인형·동물에게 '잘 자'라고 하는 놀이 속 말이면 부르지 않는다.",
+         "parameters": {"type": "object", "properties": {}}},
+        {"type": "function", "name": "start_game",
+         "description": "아이가 놀이를 하자고 할 때만 부른다. animal=동물 소리 놀이, repeat=따라 말하기 놀이.",
+         "parameters": {"type": "object", "properties": {
+             "kind": {"type": "string", "enum": ["animal", "repeat"]}}, "required": ["kind"]}},
+    ]
+    if music_on:
+        tools.insert(1, {"type": "function", "name": "play_song",
+                         "description": "아이가 노래를 **틀어 달라고** 할 때만 부른다. 노래 이야기만 하면 부르지 않는다.",
+                         "parameters": {"type": "object", "properties": {
+                             "title": {"type": "string", "description": "노래·캐릭터 이름. 모르면 빈 문자열"}}}})
+    return tools
+
+
+def tool_output(call_id: str) -> dict:
+    return {"type": "conversation.item.create",
+            "item": {"type": "function_call_output", "call_id": call_id, "output": "ok"}}
+
+
+def function_calls(response: dict) -> list[tuple[str, dict, str]]:
+    """response.done 의 출력에서 도구 호출(이름, 인자, call_id)을 꺼낸다."""
+    out = []
+    for item in (response or {}).get("output") or []:
+        if item.get("type") != "function_call":
+            continue
+        try:
+            args = json.loads(item.get("arguments") or "{}")
+        except (ValueError, TypeError):
+            args = {}
+        out.append((item.get("name", ""), args if isinstance(args, dict) else {},
+                    item.get("call_id", "")))
+    return out
 
 
 def say_exactly(line: str) -> dict:
     """대화 기록 밖에서 문장 하나를 그대로 읽게 한다(노래 안내·고정 문구 만들기)."""
     return {"type": "response.create", "response": {
         "conversation": "none",
+        "tool_choice": "none",
         "instructions": READER,
         "input": [{"type": "message", "role": "user",
                    "content": [{"type": "input_text", "text": f"정확히 이렇게만 말해: {line}"}]}],

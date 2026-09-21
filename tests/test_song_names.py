@@ -26,3 +26,9 @@ def test_확실하지_않으면_그대로(q):
 def test_받아쓰기_힌트에_호출어와_이름이_들어간다():
     p = transcribe_prompt()
     assert p.startswith("하이 티드") and "티니핑" in p and "아기상어" in p
+
+
+def test_받아쓰기_힌트에_명령_낱말도_있다():
+    p = transcribe_prompt()
+    for w in ("잘 자", "바이바이", "동물 소리 놀이", "따라 말하기 놀이", "노래 틀어줘"):
+        assert w in p

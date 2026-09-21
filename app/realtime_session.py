@@ -24,7 +24,8 @@ async def _ws_connect(url: str, headers: dict):
 
 
 class RealtimeSession:
-    def __init__(self, cfg: RealtimeConfig, api_key: str, connect=None) -> None:
+    def __init__(self, cfg: RealtimeConfig, api_key: str, connect=None, tools=None) -> None:
+        self.tools = tools
         self.cfg = cfg
         self._key = api_key
         self._connect = connect or _ws_connect
@@ -36,7 +37,7 @@ class RealtimeSession:
                                            {"Authorization": f"Bearer {self._key}"})
         except Exception as e:
             raise ConnectionLost(f"연결 실패: {type(e).__name__}: {e}") from e
-        await self.send(session_update(self.cfg, instructions))
+        await self.send(session_update(self.cfg, instructions, self.tools))
         for item in history_items(history, self.cfg.history_turns):
             await self.send(item)
 

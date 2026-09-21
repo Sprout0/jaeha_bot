@@ -42,7 +42,7 @@ def test_오디오_추가는_base64():
 
 
 def test_놀이_답은_그_답에만_지시를_붙인다():
-    assert respond() == {"type": "response.create"}
+    assert "instructions" not in respond()["response"]
     assert respond("상황")["response"]["instructions"] == "상황"
 
 
@@ -89,3 +89,32 @@ def test_아이_말을_글자_메시지로_넣는다():
     m = user_text("칼 어딨어?")
     assert m["type"] == "conversation.item.create" and m["item"]["role"] == "user"
     assert m["item"]["content"][0] == {"type": "input_text", "text": "칼 어딨어?"}
+
+
+def test_명령_도구는_노래가_꺼지면_play_song_을_뺀다():
+    from app.realtime_protocol import command_tools
+    names = lambda ts: {t["name"] for t in ts}
+    assert names(command_tools(True)) == {"go_to_sleep", "play_song", "start_game"}
+    assert names(command_tools(False)) == {"go_to_sleep", "start_game"}
+
+
+def test_도구는_세션에_싣고_요청마다_쓸지_정한다():
+    from app.realtime_protocol import command_tools
+    s = session_update(RealtimeConfig(), "지시", tools=command_tools(False))["session"]
+    assert s["tools"] and s["tool_choice"] == "auto"
+    assert respond(tools=True) == {"type": "response.create", "response": {"tool_choice": "auto"}}
+    assert respond()["response"]["tool_choice"] == "none"
+    assert respond("지시")["response"]["tool_choice"] == "none"
+    assert say_exactly("안녕")["response"]["tool_choice"] == "none"
+
+
+def test_응답에서_도구_호출을_꺼낸다():
+    from app.realtime_protocol import function_calls, tool_output
+    resp = {"output": [{"type": "function_call", "name": "play_song",
+                        "arguments": "{\"title\": \"상어가족\"}", "call_id": "c1"},
+                       {"type": "message", "content": []}]}
+    assert function_calls(resp) == [("play_song", {"title": "상어가족"}, "c1")]
+    assert function_calls({"output": [{"type": "function_call", "name": "x", "arguments": "{깨짐",
+                                       "call_id": "c2"}]}) == [("x", {}, "c2")]
+    o = tool_output("c1")
+    assert o["item"] == {"type": "function_call_output", "call_id": "c1", "output": "ok"}

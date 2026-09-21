@@ -18,7 +18,7 @@ from .game_repair import check_done, check_stream, quiet_cut
 from .realtime_audio import SR as _SR
 from .realtime_audio import MicGate, PcmAccumulator, to_pcm16
 from .realtime_protocol import (append_audio, cached_tokens, cancel, cost_usd, event_kind,
-                                respond, say_exactly, user_text)
+                                function_calls, respond, say_exactly, tool_output, user_text)
 from .realtime_session import ConnectionLost
 from .realtime_turn import PHRASES, Route, missing_required, route
 from .reply_gate import PROPOSE, ReplyGate, TurnGuard
@@ -309,13 +309,17 @@ class Conversation:
             self._say_cached("sleep")
             self._finish("sleep")
             return
+        await self._request(r, text, now)
+
+    async def _request(self, r: Route, text: str, now: float) -> None:
+        """길이 정해진 턴을 서버에 요청한다. chat 만 명령 도구를 연다(2026-09-22)."""
         verbatim = r.kind == "music" or (r.kind.startswith("game") and not r.instructions)
         if verbatim:
             msg = say_exactly(r.say)
         elif r.kind.startswith("game"):
             msg = respond(r.instructions)
         else:
-            msg = respond()
+            msg = respond(tools=True)
         t = self.clock()
         self._pending = _Pending(r, text, self._stopped_at, self._speech_end_at, now, t, msg=msg,
                                  guard=self.gate.begin(text, verbatim=verbatim, now=t))
@@ -324,6 +328,32 @@ class Conversation:
         if r.beat is not None:
             self.speaker.mark()                     # 놀이 턴 — 자를 곳을 셀 기준점
         await self._send(msg)
+
+    # ── 명령 도구 ────────────────────────────────────────────────────────
+    async def _on_tool(self, p: _Pending, name: str, args: dict, call_id: str) -> None:
+        """모델이 소리를 듣고 명령이라고 판단했다 — 기존 경로를 탄다(2026-09-22)."""
+        await self._send(tool_output(call_id))
+        log.info("[도구] %s %s ← %s", name, args, p.child)
+        if self.metrics is not None:
+            self.metrics.record_realtime_turn(
+                kind="tool", perceived_s=None, transcribe_s=None, respond_first_s=None,
+                filler=p.filler, reply="", child_text=p.child, cost_usd=None, cached_tokens=0,
+                safety=[], game_missing=[], tool=name)
+        if name == "go_to_sleep":
+            self._say_cached("sleep")
+            self._finish("sleep")
+            return
+        title = (args.get("title") or "").strip()
+        text = {"play_song": f"{title} 틀어줘" if title else "노래 틀어줘",
+                "start_game": ("동물 소리 놀이 하자" if args.get("kind") != "repeat"
+                               else "따라 말하기 놀이 하자")}.get(name)
+        r = route(text, music=self.music, games=self.games,
+                  sleep_words=self.sleep_words) if text else None
+        if r is None or r.kind in ("chat", "empty"):
+            log.warning("[도구] %s 를 처리할 경로가 없다 → 되묻는다", name)
+            self._say_cached("recovery")
+            return
+        await self._request(r, p.child, self.clock())
 
     # ── 놀이 대본 이탈 바로잡기 ──────────────────────────────────────────
     async def _repair(self, p: _Pending, rep, *, final: bool) -> None:
@@ -393,6 +423,10 @@ class Conversation:
     async def _on_done(self, p: _Pending, response: dict) -> None:
         self._pending = None
         self._last_active = self.clock()
+        calls = function_calls(response) if p.route.kind == "chat" else []
+        if calls:
+            await self._on_tool(p, *calls[0])
+            return
         reply, kind, now = p.said.strip(), p.route.kind, self.clock()
         corrected = False
         if p.blocked:

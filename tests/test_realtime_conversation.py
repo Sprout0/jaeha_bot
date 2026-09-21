@@ -45,6 +45,9 @@ class FakeSpeaker:
     def push(self, samples):
         self.pushed.append(np.asarray(samples))
 
+    def clear(self):
+        self.cleared = getattr(self, "cleared", 0) + 1
+
 
 class FakeCache:
     def __init__(self):
@@ -279,3 +282,123 @@ def test_체감은_실제_말끝부터_잰다():
     assert abs(kw["perceived_s"] - 2.5) < 1e-9
     assert abs(kw["vad_tail_s"] - 1.4) < 1e-9          # 103.4 - 102.0
     assert abs(kw["transcribe_s"] - 0.6) < 1e-9        # 104.0 - 103.4
+
+
+class FakeGuardian:
+    def __init__(self):
+        self.records = []
+
+    def record(self, kind, **fields):
+        self.records.append((kind, fields))
+
+
+def _text(t):
+    return {"type": "response.output_audio_transcript.delta", "delta": t}
+
+
+def _done():
+    return {"type": "response.done", "response": {"usage": {}}}
+
+
+def _guard_conv(s, speaker, guardian, history=None, **kw):
+    return Conversation(session=s, mic=asyncio.Queue(), speaker=speaker, cache=FakeCache(),
+                        cfg=_cfg(), music=None, games=GameManager(render=None), sleep_words=None,
+                        instructions="지시", history=history if history is not None else [],
+                        sleep_timeout=0.4, filler_phrases=[], tick_s=0.01, guardian=guardian, **kw)
+
+
+def test_위험_신호_턴은_글자가_끝나기_전엔_소리를_안_낸다():
+    async def go():
+        s, sp, g = FakeSession(), FakeSpeaker(), FakeGuardian()
+        c = _guard_conv(s, sp, g)
+        await c._on_transcript("칼 어딨어?", 0.0)
+        await c._on_event(_audio_delta())
+        before = len(sp.pushed)
+        await c._on_event(_text("칼은 위험해! 엄마한테 말하자."))
+        await c._on_event(_done())
+        return before, sp, g
+
+    before, sp, g = asyncio.run(go())
+    assert before == 0 and len(sp.pushed) == 1 and g.records == []
+
+
+def test_위험_신호_턴이_걸리면_소리는_버리고_안전_문장과_부모_기록():
+    async def go():
+        s, sp, g, history = FakeSession(), FakeSpeaker(), FakeGuardian(), []
+        c = _guard_conv(s, sp, g, history=history)
+        await c._on_transcript("칼 어딨어?", 0.0)
+        await c._on_event(_audio_delta())
+        await c._on_event(_text("칼은 부엌에 있어! 같이 찾아볼까?"))
+        await c._on_event(_done())
+        return c, sp, g, history
+
+    c, sp, g, history = asyncio.run(go())
+    assert PHRASES["safe"] in c.cache.asked and len(sp.pushed) == 1   # 안전 문장 하나만
+    assert g.records[0][0] == "safety_block" and g.records[0][1]["leaked"] is False
+    assert history == [("칼 어딨어?", PHRASES["safe"])]
+
+
+def test_흘려보내는_턴이_도중에_걸리면_취소하고_스피커를_비운다():
+    async def go():
+        s, sp, g = FakeSession(), FakeSpeaker(), FakeGuardian()
+        c = _guard_conv(s, sp, g)
+        await c._on_transcript("뭐 하고 놀까?", 0.0)
+        await c._on_event(_audio_delta())
+        await c._on_event(_text("우리 칼 같이 찾아볼까"))
+        await c._on_event(_audio_delta())                  # 막은 뒤 오는 조각은 버린다
+        await c._on_event(_done())
+        return s, c, sp, g
+
+    s, c, sp, g = asyncio.run(go())
+    assert {"type": "response.cancel"} in s.sent and sp.cleared == 1
+    assert PHRASES["safe"] in c.cache.asked and len(sp.pushed) == 2      # 새어 나간 1 + 안전 문장
+    assert g.records[0][1]["leaked"] is True
+
+
+def test_못_하는_것이면_답_뒤에_정정한다():
+    async def go():
+        s, sp, g, history = FakeSession(), FakeSpeaker(), FakeGuardian(), []
+        c = _guard_conv(s, sp, g, history=history)
+        await c._on_transcript("뭐 하고 놀까?", 0.0)
+        await c._on_event(_audio_delta())
+        await c._on_event(_text("좋아! 색칠 놀이 하자!"))
+        await c._on_event(_done())
+        return c, g, history
+
+    c, g, history = asyncio.run(go())
+    assert PHRASES["cant"] in c.cache.asked and g.records[0][0] == "fabrication"
+    assert history[0][1].endswith(PHRASES["cant"])
+
+
+def test_붙잡기_한도가_지나면_시계가_내보낸다():
+    async def go():
+        s, sp, g = FakeSession(), FakeSpeaker(), FakeGuardian()
+        from app.reply_gate import GuardConfig, ReplyGate
+        c = _guard_conv(s, sp, g, gate=ReplyGate(GuardConfig(hold_cap_s=0.05)))
+        asyncio.create_task(_feed(s, [_transcript("칼 어딨어?"), _audio_delta(),
+                                      _text("칼은")], gap=0.01))
+        asyncio.create_task(_feed(s, [_done()], gap=0.25))
+        await c.run(greet=False)
+        return sp
+
+    assert len(asyncio.run(go()).pushed) >= 1
+
+
+def test_계측에_붙잡기와_막기가_남는다():
+    class Rec:
+        kw = None
+
+        def record_realtime_turn(self, **kw):
+            Rec.kw = kw
+
+    async def go():
+        s, sp, g = FakeSession(), FakeSpeaker(), FakeGuardian()
+        c = _guard_conv(s, sp, g)
+        c.metrics = Rec()
+        await c._on_transcript("칼 어딨어?", 0.0)
+        await c._on_event(_audio_delta())
+        await c._on_event(_text("칼은 부엌에 있어."))
+        await c._on_event(_done())
+
+    asyncio.run(go())
+    assert Rec.kw["held"] is True and Rec.kw["blocked"] is True and Rec.kw["reconnects"] == 0

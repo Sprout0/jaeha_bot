@@ -318,7 +318,9 @@ class MetricsLogger:
                              filler: bool, reply: str, child_text: str,
                              cost_usd: float | None, cached_tokens: int,
                              safety: list[str], game_missing: list[str],
-                             vad_tail_s: float | None = None) -> None:
+                             vad_tail_s: float | None = None, held: bool = False,
+                             hold_s: float | None = None, blocked: bool = False,
+                             corrected: bool = False, reconnects: int = 0) -> None:
         """전면 API(Realtime) 한 턴. 로컬 필드와 이름이 달라 samples 에는 안 넣는다.
 
         perceived_s     : **실제 말끝** → 첫 답 소리. 로컬 resp_felt_s 와 비교(둘 다 무음 대기 포함).
@@ -343,12 +345,16 @@ class MetricsLogger:
                "cost_usd": None if cost_usd is None else round(cost_usd, 6),
                "cached_tokens": int(cached_tokens), "safety": list(safety),
                "game_missing": list(game_missing), "reply_len": len(reply or ""),
+               # 2026-09-21 안전 가드: 붙잡았나·얼마나·막았나·정정했나·다시 붙은 횟수
+               "held": bool(held), "hold_s": r(hold_s), "blocked": bool(blocked),
+               "corrected": bool(corrected), "reconnects": int(reconnects),
                "child_text": child_text, "reply": reply,
                **_sys_stats_now(), **self._sampler.pop()}
         self._write(rec)
-        log.info("[계측] rt턴%d %s 체감 %s (꼬리 %s + 받아적기 %s + 요청→첫소리 %s)%s | $%s | RSS %sMB",
+        log.info("[계측] rt턴%d %s 체감 %s (꼬리 %s + 받아적기 %s + 요청→첫소리 %s)%s%s | $%s | RSS %sMB",
                  self.turn, kind, rec["perceived_s"], rec["vad_tail_s"], rec["transcribe_s"],
                  rec["respond_first_s"], " +맞장구" if filler else "",
+                 (" 막음" if blocked else "") + (f" 붙잡음 {rec['hold_s']}s" if held else ""),
                  rec["cost_usd"], rec.get("rss_mb"))
 
     def summary(self) -> None:

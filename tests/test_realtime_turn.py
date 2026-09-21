@@ -112,3 +112,9 @@ def test_놀이_중이라도_대화_그만은_대기로():
 @pytest.mark.parametrize("text", ["그만 울어", "쉬는 시간이 뭐야?", "가위가 어딨지?", "그만큼 커?"])
 def test_끝내자는_말이_아니면_대화(text):
     assert route(text, music=_Idle(), games=_NoGame(), sleep_words=None).kind == "chat"
+
+
+def test_안전_문장과_정정_문장이_고정_문구에_있다():
+    from app.reply_gate import GuardConfig
+    assert PHRASES["safe"] and PHRASES["cant"]
+    assert PHRASES["safe"] != GuardConfig().cant_line

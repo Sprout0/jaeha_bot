@@ -82,3 +82,10 @@ def test_받아쓰기_힌트가_있으면_세션에_싣고_없으면_안_싣는�
     assert s["audio"]["input"]["transcription"]["prompt"] == "티니핑, 뽀로로"
     s = session_update(RealtimeConfig(), "지시")["session"]
     assert "prompt" not in s["audio"]["input"]["transcription"]
+
+
+def test_아이_말을_글자_메시지로_넣는다():
+    from app.realtime_protocol import user_text
+    m = user_text("칼 어딨어?")
+    assert m["type"] == "conversation.item.create" and m["item"]["role"] == "user"
+    assert m["item"]["content"][0] == {"type": "input_text", "text": "칼 어딨어?"}

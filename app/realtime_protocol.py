@@ -91,6 +91,11 @@ def history_items(history: list[tuple[str, str]], max_turns: int) -> list[dict]:
     return out
 
 
+def user_text(text: str) -> dict:
+    """아이 말을 글자로 대화에 넣는다 — 끊겼다 다시 붙었을 때 답하던 말을 다시 묻는다."""
+    return _message("user", text)
+
+
 def append_audio(pcm: bytes) -> dict:
     return {"type": "input_audio_buffer.append", "audio": base64.b64encode(pcm).decode()}
 

@@ -25,6 +25,13 @@ PHRASES = {
     "lost": "어? 잠깐 쉬었다 올게. 다시 불러 줘!",
 }
 
+# 🔴 2026-09-21 안전 막기·정정(spec 2026-09-21-realtime-guard). 문장은 설정에서 바꾼다.
+from .reply_gate import GuardConfig as _GuardConfig  # noqa: E402
+
+_GUARD = _GuardConfig.from_dict((settings.models.get("realtime") or {}).get("guard"))
+PHRASES["safe"] = _GUARD.safe_line
+PHRASES["cant"] = _GUARD.cant_line
+
 
 @dataclass
 class Route:

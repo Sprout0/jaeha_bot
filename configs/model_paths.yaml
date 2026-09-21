@@ -738,3 +738,10 @@ realtime:
   response_timeout_s: 8
   wake_listen_s: 8
   voice_cache_dir: ~/.cache/jaeha_voice
+  # 🔴 2026-09-21 안전 막기·정정·끊김 복구(spec 2026-09-21-realtime-guard-design.md)
+  guard:
+    hold_on_risk: true      # 아이 말에 위험 신호가 있으면 답 소리를 붙잡고 글자를 다 본 뒤 낸다
+    hold_cap_s: 3.0         # 붙잡기 한도 — 넘으면 거기까지 보고 흘려보낸다
+    reconnect_tries: 3      # 끊기면 말없이 다시 붙기(0.5 → 1 → 2초)
+    safe_line: "그건 위험해! 엄마 아빠한테 같이 가자."
+    cant_line: "아, 그건 아직 못 해. 대신 동물 소리 놀이 할까?"

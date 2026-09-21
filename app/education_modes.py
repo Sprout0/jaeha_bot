@@ -387,7 +387,7 @@ class AnimalSoundGame(Game):
         ins = (f"아이가 못 맞혔어. 지적하지 말고 '{_j(animal)} {sound}!' 하고 들려준 뒤 "
                f"'같이 해보자, {sound}!' 하고 권해. 반말 두 문장.")
         return _beat(fb, ins, [sound], fix_react=f"{_j(animal)} {sound}!",
-                     fix_next=f"같이 해보자, {sound}!", next_need=["같이"], allow=[animal])
+                     fix_next=f"같이 해보자, {sound}!", next_need=["같이", sound], allow=[animal])
 
 
 # ── 따라 말하기 놀이(배치 3~5개) ───────────────────────────────────────────────
@@ -457,14 +457,24 @@ class RepeatWordGame(Game):
         ins = (f"지적하지 말고 '{word}!' 를 다시 들려주고 "
                f"'같이 해보자, {word}!' 하고 권해. 반말 두 문장.")
         return _beat(fb, ins, [word], fix_next=f"같이 해보자, {word}!",
-                     next_need=["같이"], allow=[word])
+                     next_need=["같이", word], allow=[word])
 
 
 # ── 라우터: 대화 루프에 끼워 넣는 진입점 ───────────────────────────────────────
+# 카드 밖이지만 모델이 지어내기 쉬운 동물 — 동물 놀이 턴에 나오면 대본 이탈이다.
+# 🔴 09-22 실서버: 되묻기 턴에 "호랑이는 어흥!" 이 나왔는데 카드에 없어 못 잡았다.
+_OTHER_ANIMALS = ("호랑이", "사자", "곰", "토끼", "말", "닭", "원숭이", "코끼리", "뱀", "새",
+                  "부엉이", "늑대", "여우", "염소", "얼룩말", "기린", "거북이", "물고기",
+                  "상어", "고래", "쥐", "다람쥐", "공룡", "펭귄", "사슴")
+
+
 def _with_names(beat: dict | None, game: "Game") -> dict | None:
     """이 놀이의 이름 전체 — 대본 이탈(다른 동물·낱말)을 알아보는 데 쓴다(2026-09-22)."""
     if beat is not None:
-        beat["names"] = [s for s, _ in type(game).ITEMS]
+        names = [s for s, _ in type(game).ITEMS]
+        if isinstance(game, AnimalSoundGame):
+            names += [a for a in _OTHER_ANIMALS if a not in names]
+        beat["names"] = names
     return beat
 
 

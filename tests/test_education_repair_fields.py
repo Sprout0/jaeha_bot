@@ -37,3 +37,17 @@ def test_조각_문장은_카드에서_전부_나온다():
     assert "따라 해봐, 사과!" in ps and "더 할래?" in ps
     assert all("{" not in p for p in ps) and len(ps) == len(set(ps))
     assert len(ps) < 80
+
+
+def test_동물_놀이는_카드_밖_흔한_동물도_이름_목록에_있다():
+    # 09-22 실서버: 모델이 "호랑이는 어흥!" 을 지어냈는데 카드에 없어 못 잡았다.
+    from app.game_repair import check_stream
+    b = _play("동물 소리 놀이 하자", [])[0]
+    assert "호랑이" in b["names"] and "사자" in b["names"]
+    assert check_stream("호랑이는 어흥! ", b) is not None
+
+
+def test_되묻기는_정답_소리도_확인한다():
+    beats = _play("동물 소리 놀이 하자", ["몰라"])
+    retry = beats[1]
+    assert retry["fix_next"].startswith("같이 해보자") and len(retry["next_need"]) == 2

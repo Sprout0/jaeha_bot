@@ -52,7 +52,12 @@ def analyze(stops: list[float], t_end: float) -> dict:
 
 
 def summarize(rows: list[dict]) -> list[str]:
-    out = ["| 방식 | n | 빨라짐 중앙 | p90 | 잘림 |", "|---|---|---|---|---|"]
+    lags = [r["lag_s"] for r in rows if r.get("lag_s") is not None]
+    out = []
+    if lags:
+        out.append(f"(무음 구간 최대 밀림 중앙 {statistics.median(lags):.3f}s, 최대 {max(lags):.3f}s"
+                   " — 0.05s 넘게 크면 '빨라짐'을 믿지 말 것)")
+    out += ["| 방식 | n | 빨라짐 중앙 | p90 | 잘림 |", "|---|---|---|---|---|"]
     for name in VARIANTS:
         rs = [r for r in rows if r.get("variant") == name]
         if not rs:
@@ -94,24 +99,43 @@ async def _run_variant(name: str, items: list[dict], model: str, sink: Path | No
     rows = []
     silence = np.zeros(CHUNK, dtype="<i2").tobytes()
 
+    # 🔴 2026-09-22 벽시계로 맞춰 보낸다. 조각마다 sleep(0.04) 로 보내면 동시 6개에서
+    #    실시간보다 ~4배 느려졌고(26분에 918 중 198), 그러면 서버가 무음 1.2s 를 받는 데
+    #    벽시계로 더 걸려 '빨라짐'이 부풀었다(첫 줄 1.89s vs 10개 시험 1.61s).
+    #    기준점에서 보낸 소리만큼만 기다리고, 말 끝 뒤 무음은 **말 끝을 새 기준점**으로
+    #    보낸다 — 앞에서 밀린 걸 무음에서 몰아 보내면 거꾸로 '빨라짐'이 작아진다.
+    pace = {"base": 0.0, "sent": 0.0, "lag": 0.0}
+
+    def restart() -> None:
+        pace["base"], pace["sent"], pace["lag"] = time.monotonic(), 0.0, 0.0
+
     async def send(pcm: bytes) -> None:
         await ws.send(json.dumps({"type": "input_audio_buffer.append",
                                   "audio": base64.b64encode(pcm).decode()}))
-        await asyncio.sleep(len(pcm) / 2 / SR)
+        pace["sent"] += len(pcm) / 2 / SR
+        wait = pace["base"] + pace["sent"] - time.monotonic()
+        if wait > 0:
+            await asyncio.sleep(wait)
+        else:
+            pace["lag"] = max(pace["lag"], -wait)
 
     try:
         for i, it in enumerate(items, 1):
+            pcm = load_pcm(Path(it["path"]), "speech")      # 보내기 전에 읽는다(읽는 시간이 섞이지 않게)
+            restart()
             for _ in range(int(LEAD_S * SR / CHUNK)):
                 await send(silence)
             stops.clear()
-            pcm = load_pcm(Path(it["path"]), "speech")
             for k in range(0, len(pcm), CHUNK * 2):
                 await send(pcm[k:k + CHUNK * 2])
             t_end = time.monotonic()
+            restart()
             for _ in range(int(TAIL_S * SR / CHUNK)):
                 await send(silence)
+            tail_lag = pace["lag"]
             r = {"variant": name, "file": it["file"], "age": it.get("age"),
-                 "sec": round(len(pcm) / 2 / SR, 2), **analyze(list(stops), t_end)}
+                 "sec": round(len(pcm) / 2 / SR, 2), "lag_s": round(tail_lag, 3),
+                 **analyze(list(stops), t_end)}
             rows.append(r)
             if sink:
                 with sink.open("a", encoding="utf-8") as f:

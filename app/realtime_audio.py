@@ -113,21 +113,29 @@ class StreamSpeaker:
         self.resampled = self.rate != src_rate
         self._q: deque = deque()
         self._left = np.zeros(0, dtype=np.float32)
+        # 2026-09-22 놀이 바로잡기: 이 턴 소리를 세고 뒤를 버린다(재생 콜백은 다른 스레드).
+        import threading
+        self._lock = threading.Lock()
+        self._marked = 0          # mark 이후 밀어 넣은 **장치** 샘플
+        self._played = 0          # mark 이후 재생한 장치 샘플(앞 턴 잔여 포함)
+        self._pre = 0             # mark 순간 대기열에 남아 있던 앞 소리(맞장구 등)
         self._stream = sd.OutputStream(samplerate=self.rate, channels=1,
                                        dtype="float32", callback=self._cb)
         self._stream.start()
 
     def _cb(self, out, frames, time_info, status) -> None:
         need, got = frames, []
-        while need > 0:
-            if self._left.size == 0:
-                if not self._q:
-                    break
-                self._left = self._q.popleft()
-            take = min(need, self._left.size)
-            got.append(self._left[:take])
-            self._left = self._left[take:]
-            need -= take
+        with self._lock:
+            while need > 0:
+                if self._left.size == 0:
+                    if not self._q:
+                        break
+                    self._left = self._q.popleft()
+                take = min(need, self._left.size)
+                got.append(self._left[:take])
+                self._left = self._left[take:]
+                need -= take
+            self._played += frames - need
         block = np.concatenate(got) if got else np.zeros(0, dtype=np.float32)
         if block.size < frames:                       # 남으면 무음으로 채운다
             block = np.concatenate([block, np.zeros(frames - block.size, dtype=np.float32)])
@@ -137,15 +145,52 @@ class StreamSpeaker:
         samples = np.asarray(samples, dtype=np.float32).reshape(-1)
         if self.resampled:
             samples = _resample(samples, self.src_rate, self.rate)
-        self._q.append(samples)
+        with self._lock:
+            self._q.append(samples)
+            self._marked += samples.size
 
     @property
     def busy(self) -> bool:
         return bool(self._q) or self._left.size > 0
 
     def clear(self) -> None:
-        self._q.clear()
-        self._left = np.zeros(0, dtype=np.float32)
+        with self._lock:
+            self._q.clear()
+            self._left = np.zeros(0, dtype=np.float32)
+
+    def _to_dev(self, n: int) -> int:
+        return int(round(n * self.rate / self.src_rate))
+
+    def mark(self) -> None:
+        """이 턴 소리의 시작점 — 이후 played()/truncate() 의 기준(2026-09-22 놀이 바로잡기)."""
+        with self._lock:
+            self._pre = self._left.size + sum(q.size for q in self._q)
+            self._marked = self._played = 0
+
+    def _turn_played(self) -> int:
+        return max(0, self._played - self._pre)
+
+    def played(self) -> int:
+        """mark 이후 **이 턴 소리**를 실제로 재생한 양(원본 레이트 샘플). 앞 잔여는 빼고 센다."""
+        with self._lock:
+            return int(round(self._turn_played() * self.src_rate / self.rate))
+
+    def truncate(self, keep: int) -> None:
+        """mark 이후 밀어 넣은 소리 중 keep(원본 샘플) 뒤를 버린다. 이미 나간 건 못 되돌린다."""
+        with self._lock:
+            floor = max(self._to_dev(keep), self._turn_played())
+            drop = self._marked - floor
+            while drop > 0 and self._q:
+                last = self._q[-1]
+                if last.size <= drop:
+                    drop -= last.size
+                    self._q.pop()
+                else:
+                    self._q[-1] = last[:last.size - drop]
+                    drop = 0
+            if drop > 0 and self._left.size:
+                self._left = self._left[:max(0, self._left.size - drop)]
+            self._marked = min(self._marked, floor)
 
     def close(self) -> None:
         self._stream.stop()

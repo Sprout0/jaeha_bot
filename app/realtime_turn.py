@@ -56,6 +56,16 @@ _END_SOFT = re.compile(r"^(이제\s?|나\s?)?(그만|그만해|그만할래|그�
 _PUNCT = re.compile(r"[.,!?~…·\"'\s]+")
 
 
+# 🔴 2026-09-22 실서버: "고양이한테 잘 자 해줘"·"인형이 잘 자래" 가 잠들기가 됐다. 남에게 하는
+#    '잘 자'는 글자 규칙으로 재우지 않고 모델에게 넘긴다(모델은 go_to_sleep 도구로 판단한다).
+_SLEEP_TO_OTHER = re.compile(r"(한테|에게|께|이|가)\s*잘\s?자|잘\s?자\s?(해|하고|라고|래)")
+
+
+def _sleep_to_other(text: str) -> bool:
+    t = (text or "").strip()
+    return bool(_SLEEP_TO_OTHER.search(t)) and not re.match(r"^(티드\s*)?잘\s?자", t)
+
+
 def wants_to_end(text: str, *, idle: bool) -> bool:
     """대화를 끝내고 대기로 가자는 말인지. idle=놀이·노래가 이 말을 안 받았다."""
     t = (text or "").strip()
@@ -76,7 +86,8 @@ def route(text: str, *, music, games, sleep_words: list[str] | None) -> Route:
     text = (text or "").strip()
     if not text:
         return Route("empty")
-    if is_sleep_command(text, sleep_words) or wants_to_end(text, idle=False):
+    if (is_sleep_command(text, sleep_words) and not _sleep_to_other(text)) \
+            or wants_to_end(text, idle=False):
         return Route("sleep")
     mr = music.handle(text) if music is not None else None
     if mr is not None:

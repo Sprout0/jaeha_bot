@@ -118,3 +118,14 @@ def test_안전_문장과_정정_문장이_고정_문구에_있다():
     from app.reply_gate import GuardConfig
     assert PHRASES["safe"] and PHRASES["cant"]
     assert PHRASES["safe"] != GuardConfig().cant_line
+
+
+@pytest.mark.parametrize("text", ["고양이한테 잘 자 해줘", "인형이 잘 자래", "곰돌이에게 잘 자라고 해"])
+def test_남에게_하는_잘_자는_잠들기가_아니다(text):
+    # 09-22 실서버: 인형·동물에게 하는 '잘 자' 가 글자 규칙으로 잠들기가 됐다.
+    assert route(text, music=_Idle(), games=_NoGame(), sleep_words=None).kind == "chat"
+
+
+@pytest.mark.parametrize("text", ["잘 자", "티드 잘 자", "잘자 티드야"])
+def test_나에게_하는_잘_자는_여전히_잠들기(text):
+    assert route(text, music=_Idle(), games=_NoGame(), sleep_words=None).kind == "sleep"

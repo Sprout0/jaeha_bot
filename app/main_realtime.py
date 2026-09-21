@@ -49,11 +49,21 @@ def _add_file_log() -> None:
     logging.getLogger().addHandler(h)
 
 
-def build_instructions(music_on: bool) -> str:
+# 2026-09-22 짧은 명령을 모델이 소리로 알아듣는 도구(realtime_protocol.command_tools)의 규칙.
+TOOL_RULES = (
+    "  - 아이가 대화를 끝내거나 자러 가고 싶다는 뜻이면(잘래, 자러 갈래, 이제 안녕, 그만할래)\n"
+    "    말로 답하지 말고 go_to_sleep 도구를 부른다. 인형·동물에게 하는 '잘 자' 같은 놀이 속 말은 아니다.\n"
+    "  - 아이가 놀이를 하자고 하면 start_game 도구를 부른다(animal=동물 소리 놀이, repeat=따라 말하기).\n"
+)
+
+
+def build_instructions(music_on: bool, tools: bool = False) -> str:
     system = settings.prompts["system"]
     if music_on:
-        from .music import adjust_prompt
-        system = adjust_prompt(system)
+        from .music import TOOL_SONG_RULE, adjust_prompt
+        system = adjust_prompt(system, TOOL_SONG_RULE) if tools else adjust_prompt(system)
+    if tools:
+        system = system.rstrip("\n") + "\n" + TOOL_RULES
     return system
 
 
@@ -225,7 +235,7 @@ def main(argv=None) -> None:
                   make_session=make_session,
                   reconnect_delays=reconnect_delays(gcfg.reconnect_tries),
                   games=GameManager(render=None), sleep_words=wcfg.get("sleep_words"),
-                  instructions=build_instructions(music_on), history=[], metrics=metrics,
+                  instructions=build_instructions(music_on, tools=True), history=[], metrics=metrics,
                   sleep_timeout=float(wcfg.get("sleep_timeout", 30)),
                   filler_phrases=filler_phrases)
 

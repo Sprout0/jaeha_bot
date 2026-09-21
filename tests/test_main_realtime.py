@@ -46,3 +46,13 @@ def test_로컬_STT_TTS_를_싣지_않는다():
 def test_다시_붙기_간격은_두_배씩():
     from app.main_realtime import reconnect_delays
     assert reconnect_delays(3) == (0.5, 1.0, 2.0) and reconnect_delays(0) == ()
+
+
+def test_도구가_켜지면_프롬프트가_도구를_부르라고_한다():
+    # 09-22 실서버: 도구가 있어도 모델이 "'아기 상어' 틀어줘, 그렇게 말해 봐!" 라고 가르쳤다 —
+    # 노래 규칙이 그렇게 시키고 있었다.
+    from app.main_realtime import build_instructions
+    s = build_instructions(True, tools=True)
+    assert "play_song" in s and "go_to_sleep" in s and "start_game" in s
+    assert "처럼 말해 줘" not in s
+    assert "play_song" not in build_instructions(True)

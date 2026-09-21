@@ -250,7 +250,16 @@ NEW_SONG_RULE = (
 )
 
 
-def adjust_prompt(system: str) -> str:
+# 🔴 2026-09-22 전면 API 에 명령 도구가 생겼다. 위 규칙("○○ 틀어줘, 처럼 말해 줘!")을 그대로 두면
+#    모델이 도구를 부르지 않고 아이에게 명령어를 가르친다(실서버: "'아기 상어' 틀어줘, 그렇게 말해 봐!").
+TOOL_SONG_RULE = (
+    '- 노래는 네가 직접 부르지는 못한다. 아이가 노래를 틀어 달라거나 듣고 싶다고 하면\n'
+    '  말로 답하지 말고 play_song 도구를 부른다(곡을 모르면 title 은 빈 문자열).\n'
+    '  노래 이야기만 할 때는 부르지 않는다. 네가 먼저 "틀어줄게"라고 약속하지는 않는다.\n'
+)
+
+
+def adjust_prompt(system: str, rule: str = NEW_SONG_RULE) -> str:
     """'노래는 못 튼다' 규칙을 바꾼다. 켜 놓고 그대로 두면 봇이 "못 틀어"라고 거짓말한다."""
     lines = system.splitlines(keepends=True)
     for i, line in enumerate(lines):
@@ -259,7 +268,7 @@ def adjust_prompt(system: str) -> str:
             while j < len(lines) and lines[j].startswith("  ") and not lines[j].lstrip().startswith("- "):
                 j += 1
             indent = line[:len(line) - len(line.lstrip())]
-            rule = "".join(indent + ln for ln in NEW_SONG_RULE.splitlines(keepends=True))
+            rule = "".join(indent + ln for ln in rule.splitlines(keepends=True))
             return "".join(lines[:i]) + rule + "".join(lines[j:])
     log.warning("프롬프트에 '- 노래는' 규칙이 없다 — 새 규칙을 끝에 붙인다")
-    return system.rstrip("\n") + "\n" + NEW_SONG_RULE
+    return system.rstrip("\n") + "\n" + rule

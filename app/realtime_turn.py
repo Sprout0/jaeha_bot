@@ -40,6 +40,7 @@ class Route:
     instructions: str | None = None            # 놀이 턴의 지시(그 답에만 붙는다)
     require: list[str] = field(default_factory=list)
     music: object = None                       # MusicReply
+    beat: dict | None = None                   # 놀이 턴의 비트(대본 이탈 바로잡기, 2026-09-22)
 
 
 # 🔴 2026-09-19 실기: "됐어 좀 쉬고 있어" 가 자유대화로 가서 봇이 계속 말을 걸었다.
@@ -67,8 +68,8 @@ def _game(kind: str, beat: dict) -> Route:
     if beat.get("instruction"):
         return Route(kind, say=beat["fallback"],
                      instructions=f"{_RENDER_SYSTEM}\n\n상황: {beat['instruction']}",
-                     require=list(beat.get("require", [])))
-    return Route(kind, say=beat["fallback"])
+                     require=list(beat.get("require", [])), beat=beat)
+    return Route(kind, say=beat["fallback"], beat=beat)
 
 
 def route(text: str, *, music, games, sleep_words: list[str] | None) -> Route:

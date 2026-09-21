@@ -30,3 +30,16 @@ def test_막기_붙잡기_다시붙기를_남긴다(tmp_path):
     rec = json.loads(m.path.read_text(encoding="utf-8").strip().splitlines()[-1])
     assert rec["held"] is True and rec["hold_s"] == 0.8 and rec["blocked"] is True
     assert rec["corrected"] is False and rec["reconnects"] == 1
+
+
+def test_놀이_바로잡기를_남긴다(tmp_path):
+    m = MetricsLogger(enabled=True, tag="t", log_dir=str(tmp_path))
+    try:
+        m.record_realtime_turn(kind="game", perceived_s=1.0, transcribe_s=0.5, respond_first_s=0.5,
+                               filler=False, reply="r", child_text="c", cost_usd=0.001,
+                               cached_tokens=0, safety=[], game_missing=[],
+                               game_fixed="wrong_name", game_leaked=True)
+    finally:
+        m._sampler.stop()
+    rec = json.loads(m.path.read_text(encoding="utf-8").strip().splitlines()[-1])
+    assert rec["game_fixed"] == "wrong_name" and rec["game_leaked"] is True

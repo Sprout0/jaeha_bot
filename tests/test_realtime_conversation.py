@@ -48,6 +48,15 @@ class FakeSpeaker:
     def clear(self):
         self.cleared = getattr(self, "cleared", 0) + 1
 
+    def mark(self):
+        self.marks = getattr(self, "marks", 0) + 1
+
+    def played(self):
+        return getattr(self, "played_n", 0)
+
+    def truncate(self, keep):
+        self.truncated = keep
+
 
 class FakeCache:
     def __init__(self):
@@ -465,3 +474,61 @@ def test_연결_함수가_없으면_옛_동작():
         return await c.run(greet=False)
 
     assert asyncio.run(go()) == "lost"
+
+
+def _game_conv(s, sp, history=None):
+    return _guard_conv(s, sp, FakeGuardian(), history=history)
+
+
+def _start_game(c):
+    return c._on_transcript("동물 소리 놀이 하자", 0.0)
+
+
+def test_놀이_첫_문장에_틀린_이름이면_바로_자르고_조각을_잇는다():
+    async def go():
+        s, sp, history = FakeSession(), FakeSpeaker(), []
+        c = _game_conv(s, sp, history)
+        await _start_game(c)
+        beat = c._pending.route.beat
+        wrong = next(n for n in beat["names"] if n not in beat["allow"])
+        await c._on_event(_audio_delta())
+        await c._on_event(_text(f"{wrong}는 "))
+        await c._on_event(_done())
+        return s, sp, c, beat, history
+
+    s, sp, c, beat, history = asyncio.run(go())
+    assert {"type": "response.cancel"} in s.sent and hasattr(sp, "truncated")
+    assert beat["fix_react"] in c.cache.asked and beat["fix_next"] in c.cache.asked
+    assert history[-1][1].endswith(beat["fix_next"])
+
+
+def test_놀이_질문이_빠지면_끝에서_질문만_잇는다():
+    async def go():
+        s, sp = FakeSession(), FakeSpeaker()
+        c = _game_conv(s, sp)
+        await _start_game(c)
+        beat = c._pending.route.beat
+        await c._on_event(_audio_delta())
+        await c._on_event(_text("좋아, 동물 소리 놀이 하자! 이제 따라 해볼까?"))
+        await c._on_event(_done())
+        return s, sp, c, beat
+
+    s, sp, c, beat = asyncio.run(go())
+    assert {"type": "response.cancel"} not in s.sent
+    assert beat["fix_next"] in c.cache.asked and beat["fix_react"] not in c.cache.asked
+    assert hasattr(sp, "truncated")
+
+
+def test_놀이가_제대로면_아무것도_안_한다():
+    async def go():
+        s, sp = FakeSession(), FakeSpeaker()
+        c = _game_conv(s, sp)
+        await _start_game(c)
+        beat = c._pending.route.beat
+        await c._on_event(_audio_delta())
+        await c._on_event(_text(f"좋아, 동물 소리 놀이 하자! {beat['fix_next']}"))
+        await c._on_event(_done())
+        return sp, c, beat
+
+    sp, c, beat = asyncio.run(go())
+    assert not hasattr(sp, "truncated") and beat["fix_next"] not in c.cache.asked

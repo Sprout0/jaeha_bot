@@ -194,7 +194,8 @@ def main(argv=None) -> None:
     filler_phrases = list(fcfg.get("phrases", [])) if fcfg.get("enabled", True) else []
 
     cache = VoiceCache(cfg.voice_cache_dir, cfg.voice, cfg.model, cfg.speed)
-    made = cache.ensure(list(PHRASES.values()) + filler_phrases,
+    from .education_modes import all_fix_phrases       # 놀이 조각 문장(2026-09-22, 약 70개)
+    made = cache.ensure(list(PHRASES.values()) + filler_phrases + all_fix_phrases(),
                         lambda p: asyncio.run(synthesize(cfg, api_key, p)))
     log.info("고정 문구 캐시 준비(새로 만듦 %d)", made)
 

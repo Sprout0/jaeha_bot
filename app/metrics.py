@@ -320,7 +320,8 @@ class MetricsLogger:
                              safety: list[str], game_missing: list[str],
                              vad_tail_s: float | None = None, held: bool = False,
                              hold_s: float | None = None, blocked: bool = False,
-                             corrected: bool = False, reconnects: int = 0) -> None:
+                             corrected: bool = False, reconnects: int = 0,
+                             game_fixed: str | None = None, game_leaked: bool = False) -> None:
         """전면 API(Realtime) 한 턴. 로컬 필드와 이름이 달라 samples 에는 안 넣는다.
 
         perceived_s     : **실제 말끝** → 첫 답 소리. 로컬 resp_felt_s 와 비교(둘 다 무음 대기 포함).
@@ -348,6 +349,8 @@ class MetricsLogger:
                # 2026-09-21 안전 가드: 붙잡았나·얼마나·막았나·정정했나·다시 붙은 횟수
                "held": bool(held), "hold_s": r(hold_s), "blocked": bool(blocked),
                "corrected": bool(corrected), "reconnects": int(reconnects),
+               # 2026-09-22 놀이 대본 이탈 바로잡기: 이유(wrong_name/missing_next)·늦어서 샜나
+               "game_fixed": game_fixed, "game_leaked": bool(game_leaked),
                "child_text": child_text, "reply": reply,
                **_sys_stats_now(), **self._sampler.pop()}
         self._write(rec)

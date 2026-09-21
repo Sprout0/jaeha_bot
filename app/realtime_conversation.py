@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from .game_repair import check_done, check_stream, quiet_cut
+from .realtime_audio import SR as _SR
 from .realtime_audio import MicGate, PcmAccumulator, to_pcm16
 from .realtime_protocol import (append_audio, cached_tokens, cancel, cost_usd, event_kind,
                                 respond, say_exactly, user_text)
@@ -46,6 +48,11 @@ class _Pending:
     blocked_at: float | None = None
     block_flags: list = field(default_factory=list)
     reconnects: int = 0
+    # 2026-09-22 놀이 대본 이탈 바로잡기(spec 2026-09-22-realtime-turn-fixes)
+    audio: list = field(default_factory=list)        # 이 턴에 받은 소리(쉼 찾기용 복사)
+    fixed: str | None = None                         # wrong_name | missing_next
+    fix_leaked: bool = False
+    fix_said: str = ""                               # 실제로 나간 말(자른 앞 + 조각)
 
 
 class Conversation:
@@ -262,9 +269,10 @@ class Conversation:
         elif k == "transcript":
             await self._on_transcript((ev.get("transcript") or "").strip(), now)
         elif k == "audio" and p is not None:
-            if p.blocked:
-                return                                  # 막은 뒤 오는 조각은 버린다
+            if p.blocked or p.fixed:
+                return                                  # 막거나 바로잡은 뒤 오는 조각은 버린다
             samples = p.acc.feed(base64.b64decode(ev.get("delta", "")))
+            p.audio.append(samples)
             if p.first_delta_at is None:
                 p.first_delta_at = now
             if p.guard is not None and p.guard.mode == "hold":
@@ -274,10 +282,14 @@ class Conversation:
                     p.first_audio_at = now
                 self.speaker.push(samples)
         elif k == "text" and p is not None:
-            if p.blocked:
+            if p.blocked or p.fixed:
                 return
             p.said += ev.get("delta", "")
             await self._poll_guard(p, now)
+            if p.route.beat is not None and not p.blocked and not p.fixed:
+                rep = check_stream(p.said, p.route.beat)
+                if rep is not None:
+                    await self._repair(p, rep, final=False)
         elif k == "done" and p is not None:
             await self._on_done(p, ev.get("response", {}) or {})
         elif k == "error":
@@ -309,7 +321,41 @@ class Conversation:
                                  guard=self.gate.begin(text, verbatim=verbatim, now=t))
         if self._pending.guard.held:
             log.info("[안전] 위험 신호 — 답 소리를 붙잡는다: %s", text)
+        if r.beat is not None:
+            self.speaker.mark()                     # 놀이 턴 — 자를 곳을 셀 기준점
         await self._send(msg)
+
+    # ── 놀이 대본 이탈 바로잡기 ──────────────────────────────────────────
+    async def _repair(self, p: _Pending, rep, *, final: bool) -> None:
+        """rep.cut_char 앞에서 자르고 미리 녹음한 조각 문장을 잇는다(지연 0, 2026-09-22).
+
+        도중(final=False): 첫 문장 안의 틀린 이름 — 글자가 소리보다 최소 0.14s 먼저 온다.
+          아직 안 나간 건 전부 버린다(틀린 이름은 아직 안 들렸다).
+        끝(final=True): 소리 길이를 정확히 알므로 두 문장 사이 쉼에서 자른다.
+        """
+        audio = np.concatenate(p.audio) if p.audio else np.zeros(0, np.float32)
+        text = p.said
+        played = self.speaker.played()
+        if final and text:
+            near = int(audio.size * rep.cut_char / len(text))
+            cut = quiet_cut(audio, near, _SR, before_s=0.5, after_s=0.5)
+        else:
+            cut = played
+        p.fix_leaked = cut < played
+        self.speaker.truncate(max(cut, played))
+        if not final:
+            await self._send(cancel())
+            p.blocked_at = self.clock()
+        for line in rep.lines:
+            a = self.cache.get(line)
+            if a is None:
+                log.warning("[놀이] 조각 문장 캐시가 없다: %s", line)
+                continue
+            self.speaker.push(a)
+        p.fixed = rep.reason
+        p.fix_said = (text[:rep.cut_char].rstrip() + " " + " ".join(rep.lines)).strip()
+        log.warning("[놀이] 대본 이탈(%s) — %d자에서 자르고 잇는다: %s ← %s",
+                    rep.reason, rep.cut_char, " ".join(rep.lines), text)
 
     # ── 안전 가드 ────────────────────────────────────────────────────────
     async def _poll_guard(self, p: _Pending, now: float) -> None:
@@ -361,7 +407,11 @@ class Conversation:
             elif flags:
                 log.warning("[안전] %s ← %s (다 나간 뒤라 기록만)", flags, reply)
                 self._guardian_record("safety_late", child=p.child, reply=reply, flags=flags)
-            if v is not None and v.fabricated and not p.blocked:
+            if p.route.beat is not None and not p.blocked and not p.fixed:
+                rep = check_done(reply, p.route.beat)
+                if rep is not None:
+                    await self._repair(p, rep, final=True)
+            if v is not None and v.fabricated and not p.blocked and not p.fixed:
                 self._say_cached("cant")
                 corrected = True
                 self._guardian_record("fabrication", child=p.child, reply=reply,
@@ -385,10 +435,11 @@ class Conversation:
                 cost_usd=cost_usd(self.cfg.model, usage), cached_tokens=cached_tokens(usage),
                 safety=flags, game_missing=missing,
                 held=bool(p.guard and p.guard.held), hold_s=p.hold_s, blocked=p.blocked,
-                corrected=corrected, reconnects=p.reconnects)
+                corrected=corrected, reconnects=p.reconnects,
+                game_fixed=p.fixed, game_leaked=p.fix_leaked)
         if kind in ("chat", "game", "game_start") and (reply or p.blocked):
             said = PHRASES["safe"] if p.blocked else (
-                f"{reply} {PHRASES['cant']}" if corrected else reply)
+                p.fix_said if p.fixed else (f"{reply} {PHRASES['cant']}" if corrected else reply))
             self.history.append((p.child, said))
             if len(self.history) > self.cfg.history_turns:
                 del self.history[:len(self.history) - self.cfg.history_turns]
@@ -410,7 +461,8 @@ class Conversation:
         while True:
             await asyncio.sleep(self.tick_s)
             now, p = self.clock(), self._pending
-            if p is not None and p.blocked and now - (p.blocked_at or now) >= 2.0:
+            if p is not None and (p.blocked or p.fixed) and p.blocked_at is not None \
+                    and now - p.blocked_at >= 2.0:
                 await self._on_done(p, {})      # 취소 뒤 done 이 안 와도 턴을 닫는다
                 continue
             if p is not None and not p.blocked and p.guard is not None and p.guard.mode == "hold":

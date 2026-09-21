@@ -39,7 +39,7 @@
 | `app/metrics.py` | `record_realtime_turn` 에 `held`, `hold_s`, `blocked`, `corrected`, `reconnects` |
 | `configs/model_paths.yaml` | `realtime.guard` 블록 |
 
-가져다 쓰는 것(수정 없음): `app/safety.py`(`check_reply`, `danger_words`), `app/claims.py`(`find_fabrications`), `configs/safety_rules.yaml`.
+가져다 쓰는 것: `app/safety.py`(`check_reply` + 새 `question_risk` — 아이 말의 위험 신호), `app/claims.py`(`find_fabrications`), `configs/safety_rules.yaml`(+ `child_ingest`: 아이 말 쪽 먹기 단서).
 
 ## 4. 위험 신호 — 언제 붙잡는가
 
@@ -96,7 +96,7 @@
  "reply": "칼은 부엌에 있어! 같이 찾아볼까?", "flags": ["위험행동제안"], "held": true, "leaked": false}
 ```
 
-- `kind`: `safety_block` | `fabrication` | `connection_lost`
+- `kind`: `safety_block`(막음) | `safety_late`(흘려보낸 턴이 끝에서 걸림 — 이미 나가 기록만) | `fabrication` | `connection_lost`
 - **소리는 남기지 않는다.** 글자만.
 - `GuardianLog(dir, notifier=None)` 에 `record(kind, **fields)` 를 둔다. 파일에 쓴 뒤 `notifier.notify(event)` 를 부른다.
   - 기본 notifier 는 아무것도 안 한다.

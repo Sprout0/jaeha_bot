@@ -158,9 +158,17 @@ def match_trigger(text: str) -> str | None:
 
 
 # ── Beat: 상태머신이 만드는 '무엇을 말할지'(구조화된 의도) ──────────────────────
-def _beat(fallback: str, instruction: str | None = None, require=()) -> dict:
-    """fallback=템플릿(안전망), instruction=LLM 렌더 지시, require=LLM 출력에 꼭 있어야 할 토큰."""
-    return {"fallback": fallback, "instruction": instruction, "require": list(require)}
+def _beat(fallback: str, instruction: str | None = None, require=(), *, fix_react: str = "",
+          fix_next: str = "", next_need=(), allow=()) -> dict:
+    """fallback=템플릿(안전망), instruction=LLM 렌더 지시, require=LLM 출력에 꼭 있어야 할 토큰.
+
+    fix_react/fix_next/next_need/allow (2026-09-22, 전면 API): 모델이 대본을 벗어나면
+    봇이 그 자리에서 잘라 이어 붙일 **정해진 문장**(미리 녹음)과, 이 턴에 나와도 되는
+    놀이 이름. 로컬 경로(_voice)는 쓰지 않는다.
+    """
+    return {"fallback": fallback, "instruction": instruction, "require": list(require),
+            "fix_react": fix_react, "fix_next": fix_next, "next_need": list(next_need),
+            "allow": list(allow)}
 
 
 # ── 공통 게임 뼈대(상태머신) ───────────────────────────────────────────────────
@@ -271,7 +279,8 @@ class Game:
 
     def _bye_beat(self) -> dict:
         return _beat("재밌었어! 또 놀자!",
-                     "아이랑 놀이를 즐겁게 마무리하는 인사를 밝은 반말 한 문장으로 해.", [])
+                     "아이랑 놀이를 즐겁게 마무리하는 인사를 밝은 반말 한 문장으로 해.", [],
+                     fix_react="재밌었어!", fix_next="또 놀자!")
 
     # 하위 클래스가 구현
     def _intro_beat(self, subj, tgt) -> dict: raise NotImplementedError
@@ -313,13 +322,14 @@ class AnimalSoundGame(Game):
                      f"첫 문장은 '좋아, 동물 소리 놀이 하자!' 처럼 신나게 받는 말. "
                      f"'안녕' 같은 첫인사는 쓰지 마 — 이미 한참 얘기하던 중이야. "
                      f"둘째 문장은 '{q}'.",
-                     req)
+                     req, fix_react="좋아, 동물 소리 놀이 하자!", fix_next=q, next_need=req,
+                     allow=[animal])
 
     def _ask_beat(self, animal, sound):
         q, req = self._prompt(animal, sound)
         return _beat(f"좋아! {q}",
                      f"놀이를 이어서 '{q}' 하고 밝게 물어봐. 반말 한 문장.",
-                     req)
+                     req, fix_react="좋아!", fix_next=q, next_need=req, allow=[animal])
 
     # 🔴 지시문은 **딱 두 문장**만 요구한다. agent._postprocess 가 렌더 결과를
     #    max_sentences(=2) 로 자르기 때문이다. 세 마디("멍멍!" / 확장 / 다음 질문)를
@@ -351,7 +361,8 @@ class AnimalSoundGame(Game):
                    f"첫 문장은 {_j(animal)} '{sound}' 하고 운다고 밝게 알려주기, "
                    f"둘째 문장은 '{nq}'.")
             req = [sound, animal] + nreq
-        return _beat(fb, ins, req)
+        return _beat(fb, ins, req, fix_react=f"{_j(animal)} {sound} 하고 울어!",
+                     fix_next=nq, next_need=nreq, allow=[animal, nanimal])
 
     # 🔴 체크포인트에는 '다음 질문'이 없다. 그래서 확장 문장이 이 턴의 **유일한**
     #    확장 기회인데, 지시문이 "'{sound}' 를 넣어 칭찬" 으로만 줄어 있었다.
@@ -368,13 +379,15 @@ class AnimalSoundGame(Game):
                      f"처럼 한두 낱말만 붙여 늘린 한 문장으로 밝게 칭찬한다"
                      f"(따라 하는 말을 따로 한 문장으로 끊지 않는다). "
                      f"둘째 문장은 '더 할래?'.",
-                     [sound, animal, "더"])
+                     [sound, animal, "더"], fix_react=f"{_j(animal)} {sound} 하고 울어!",
+                     fix_next="더 할래?", next_need=["더"], allow=[animal])
 
     def _retry_beat(self, animal, sound):
         fb = f"{_j(animal)} {sound}! 같이 해보자, {sound}!"
         ins = (f"아이가 못 맞혔어. 지적하지 말고 '{_j(animal)} {sound}!' 하고 들려준 뒤 "
                f"'같이 해보자, {sound}!' 하고 권해. 반말 두 문장.")
-        return _beat(fb, ins, [sound])
+        return _beat(fb, ins, [sound], fix_react=f"{_j(animal)} {sound}!",
+                     fix_next=f"같이 해보자, {sound}!", next_need=["같이"], allow=[animal])
 
 
 # ── 따라 말하기 놀이(배치 3~5개) ───────────────────────────────────────────────
@@ -390,11 +403,14 @@ class RepeatWordGame(Game):
             f"첫 문장은 '좋아, 따라 말하기 놀이 하자!' 처럼 신나게 받는 말. "
             f"'안녕' 같은 첫인사는 쓰지 마 — 이미 한참 얘기하던 중이야. "
             f"둘째 문장은 '따라 해봐, {word}!'.",
-            [word])
+            [word], fix_react="따라 말하기 놀이 하자!", fix_next=f"따라 해봐, {word}!",
+            next_need=[word], allow=[word])
 
     def _ask_beat(self, word, _tgt):
         return _beat(f"좋아! 따라 해봐, {word}!",
-                     f"'따라 해봐, {word}!' 하고 밝게 말해. 반말 한 문장.", [word])
+                     f"'따라 해봐, {word}!' 하고 밝게 말해. 반말 한 문장.", [word],
+                     fix_react="좋아!", fix_next=f"따라 해봐, {word}!", next_need=[word],
+                     allow=[word])
 
     # 동물 놀이와 같은 이유로 지시문은 딱 두 문장만 요구한다(위 주석 참고).
     # 🔴 이 beat 에는 확장 지시가 아예 없었다("밝게 칭찬하고" 뿐) — 체크포인트만
@@ -419,7 +435,8 @@ class RepeatWordGame(Game):
                    f"(들려주는 말을 따로 한 문장으로 끊지 않는다). "
                    f"둘째 문장은 '이번엔 {nword}!'.")
             req = [word, "잘", nword]
-        return _beat(fb, ins, req)
+        return _beat(fb, ins, req, fix_react=f"{word}, 잘했어!", fix_next=f"따라 해봐, {nword}!",
+                     next_need=[nword], allow=[word, nword])
 
     # 동물 놀이 체크포인트와 같은 이유로 확장 절을 되돌린다(위 주석 참고).
     # require 에 '잘' 을 넣어 맨 흉내("바나나! 더 할래?")로는 통과하지 못하게 한다 —
@@ -432,16 +449,25 @@ class RepeatWordGame(Game):
                      f"처럼 한두 낱말만 붙여 늘린 한 문장으로 밝게 칭찬한다"
                      f"(따라 하는 말을 따로 한 문장으로 끊지 않는다). "
                      f"둘째 문장은 '더 할래?'.",
-                     [word, "잘", "더"])
+                     [word, "잘", "더"], fix_react=f"{word}, 잘했어!", fix_next="더 할래?",
+                     next_need=["더"], allow=[word])
 
     def _retry_beat(self, word, _tgt):
         fb = f"{word}! 같이 해보자, {word}!"
         ins = (f"지적하지 말고 '{word}!' 를 다시 들려주고 "
                f"'같이 해보자, {word}!' 하고 권해. 반말 두 문장.")
-        return _beat(fb, ins, [word])
+        return _beat(fb, ins, [word], fix_next=f"같이 해보자, {word}!",
+                     next_need=["같이"], allow=[word])
 
 
 # ── 라우터: 대화 루프에 끼워 넣는 진입점 ───────────────────────────────────────
+def _with_names(beat: dict | None, game: "Game") -> dict | None:
+    """이 놀이의 이름 전체 — 대본 이탈(다른 동물·낱말)을 알아보는 데 쓴다(2026-09-22)."""
+    if beat is not None:
+        beat["names"] = [s for s, _ in type(game).ITEMS]
+    return beat
+
+
 class GameManager:
     """대화 루프와 놀이 상태머신을 잇는다.
 
@@ -478,7 +504,7 @@ class GameManager:
         if not kind:
             return None
         self.active = AnimalSoundGame() if kind == "animal" else RepeatWordGame()
-        return self.active.start()
+        return _with_names(self.active.start(), self.active)
 
     def maybe_start(self, text: str) -> str | None:
         """시작 트리거면 놀이를 시작하고 첫 멘트를 돌려준다. 아니면 None."""
@@ -488,14 +514,33 @@ class GameManager:
         """진행 중 놀이가 있으면 한 턴 처리해 **지시(beat)** 를 돌려준다. 없으면 None."""
         if self.active is None:
             return None
-        beat = self.active.step(text)
-        if self.active.done:
+        game = self.active
+        beat = game.step(text)
+        if game.done:
             self.active = None
-        return beat
+        return _with_names(beat, game)
 
     def handle(self, text: str) -> str | None:
         """진행 중 놀이가 있으면 한 턴 처리. 없으면 None(→ 평소 대화로)."""
         return self._voice(self.handle_beat(text))
+
+
+def all_fix_phrases() -> list[str]:
+    """놀이 조각 문장 전부 — 전면 API 봇이 기동 때 미리 녹음한다(2026-09-22).
+
+    ⚠️ 문장당 합성 약 4초 — 가짓수가 곧 첫 기동 시간이다. 뜻이 같은 문장은 하나로 둔다
+       ('그럼 고양이는…'/'고양이는…', '이번엔 사과!'/'따라 해봐, 사과!' → 뒤쪽 하나).
+    """
+    out: list[str] = ["재밌었어!", "또 놀자!", "좋아, 동물 소리 놀이 하자!", "좋아!",
+                      "따라 말하기 놀이 하자!", "더 할래?"]
+    a = AnimalSoundGame.__new__(AnimalSoundGame)
+    for animal, sound in AnimalSoundGame.ITEMS:
+        q, _ = a._prompt(animal, sound)
+        out += [q, f"{_j(animal)} {sound} 하고 울어!", f"{_j(animal)} {sound}!",
+                f"같이 해보자, {sound}!"]
+    for word, _ in RepeatWordGame.ITEMS:
+        out += [f"따라 해봐, {word}!", f"{word}, 잘했어!", f"같이 해보자, {word}!"]
+    return list(dict.fromkeys(out))
 
 
 def _repl() -> None:

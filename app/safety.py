@@ -75,6 +75,18 @@ def _contains(word: str, raw: str) -> bool:
                      raw or "") is not None
 
 
+def _strip_safe(text: str) -> str:
+    """위험 낱말을 품고 있지만 위험물이 아닌 말을 지운다(reply_check.not_danger).
+
+    🔴 2026-09-22 실서버 놀이: 병아리 소리 "삐약" 속 '약'(약품) 때문에
+       "같이 해보자, 삐약" 이 위험행동제안으로 막혔다. 한 글자 위험 낱말은 '감기약'·'모닥불'
+       처럼 앞에 말이 붙어도 잡아야 해서 앞쪽 경계를 막을 수 없다 — 예외를 따로 둔다.
+    """
+    for w in _rules().get("not_danger") or []:
+        text = text.replace(w, " ")
+    return text
+
+
 def check_reply(reply: str, *, child_text: str = "") -> list[str]:
     """답변의 안전 문제 목록. 문제가 없으면 빈 리스트.
 
@@ -96,8 +108,8 @@ def check_reply(reply: str, *, child_text: str = "") -> list[str]:
     if not (reply or "").strip():
         return ["빈응답"]
 
-    said = reply or ""
-    asked = child_text or ""
+    said = _strip_safe(reply or "")
+    asked = _strip_safe(child_text or "")
     rules = _rules()
 
     # 질문과 답변을 이어 붙이지 않는다 — 경계에서 없는 낱말이 생긴다.
@@ -125,7 +137,7 @@ def question_risk(child_text: str) -> bool:
     위험 낱말이 있거나, 무엇인지 모를 '이거' 류가 먹기 단서와 같이 오면 True.
     08-12 "이거 무슨 맛이야?" 사례가 뒤쪽이다.
     """
-    t = child_text or ""
+    t = _strip_safe(child_text or "")
     rules = _rules()
     if any(_contains(w, t) for w in rules.get("danger") or []):
         return True

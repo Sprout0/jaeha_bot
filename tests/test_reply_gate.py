@@ -106,3 +106,11 @@ def test_그대로_읽기_턴은_아무것도_안_본다():
 def test_설정은_모르는_키를_버린다():
     c = GuardConfig.from_dict({"hold_cap_s": 2, "없는키": 1})
     assert c.hold_cap_s == 2 and c.reconnect_tries == 3
+
+
+def test_병아리_소리_삐약은_약이_아니다():
+    # 09-22 실서버: 놀이 턴 "같이 해보자, 삐약" 이 '약'+'해보자' 로 위험행동제안에 막혔다.
+    from app.safety import check_reply
+    assert check_reply("같이 해보자, 삐약삐약!", child_text="몰라") == []
+    assert question_risk("삐약삐약") is False
+    assert "위험행동제안" in check_reply("약 같이 먹어보자", child_text="이거 뭐야")

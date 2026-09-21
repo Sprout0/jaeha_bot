@@ -117,3 +117,17 @@ def check_reply(reply: str, *, child_text: str = "") -> list[str]:
     if danger and not adult:
         flags.append("어른유도없음")
     return flags
+
+
+def question_risk(child_text: str) -> bool:
+    """아이 말에 위험 신호가 있나 — 전면 API 봇이 답을 소리 전에 붙잡을지 정한다(2026-09-21).
+
+    위험 낱말이 있거나, 무엇인지 모를 '이거' 류가 먹기 단서와 같이 오면 True.
+    08-12 "이거 무슨 맛이야?" 사례가 뒤쪽이다.
+    """
+    t = child_text or ""
+    rules = _rules()
+    if any(_contains(w, t) for w in rules.get("danger") or []):
+        return True
+    unknown = any(_contains(w, t) for w in rules.get("unknown_ref") or [])
+    return unknown and any(w in t for w in rules.get("child_ingest") or [])

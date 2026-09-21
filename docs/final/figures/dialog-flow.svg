@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 700" width="1000" height="700" font-family="'Malgun Gothic','맑은 고딕',sans-serif">
+  <!-- 보고서 그림 2 — patent-dialog.svg(설명서 도 2)와 같은 그림, 표지만 뺐다. 원래 설명: 한 턴의 대화 처리 흐름 — 놀이 턴과 자유대화 턴의 분기. 흑백, 수치 없음. -->
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#000"/>
+    </marker>
+  </defs>
+  <rect width="1000" height="700" fill="#fff"/>
+  
+
+  <g stroke="#000" stroke-width="2" fill="#fff">
+    <rect x="370" y="60" width="260" height="56" rx="28"/>
+    <polygon points="500,150 640,205 500,260 360,205"/>
+    <!-- 놀이 턴 -->
+    <rect x="60"  y="300" width="340" height="64" fill="#e6e6e6" stroke-width="2.5"/>
+    <rect x="60"  y="394" width="340" height="64"/>
+    <rect x="60"  y="488" width="340" height="64"/>
+    <!-- 자유대화 턴 -->
+    <rect x="600" y="300" width="340" height="64"/>
+    <rect x="600" y="394" width="340" height="64" fill="#e6e6e6" stroke-width="2.5"/>
+    <rect x="600" y="488" width="340" height="64"/>
+    <!-- 합류 -->
+    <rect x="330" y="600" width="340" height="60"/>
+  </g>
+
+  <g text-anchor="middle">
+    <text x="500" y="95" font-size="20" font-weight="700">아이의 말 (인식 결과)</text>
+    <text x="500" y="212" font-size="20" font-weight="700">놀이 중인가?</text>
+
+    <text x="230" y="330" font-size="19" font-weight="700">놀이 진행 — 코드가 판정</text>
+    <text x="230" y="353" font-size="15" fill="#333">흉내 · 따라 말하기 (정해진 순서)</text>
+    <text x="230" y="424" font-size="19" font-weight="700">말했으면 성공으로 처리</text>
+    <text x="230" y="447" font-size="15" fill="#333">소리가 비슷하면 칭찬을 더한다</text>
+    <text x="230" y="518" font-size="19" font-weight="700">칭찬 문장만 언어모델로</text>
+    <text x="230" y="541" font-size="15" fill="#333">실패하면 정해 둔 문장</text>
+
+    <text x="770" y="330" font-size="19" font-weight="700">맞장구를 먼저 들려준다</text>
+    <text x="770" y="353" font-size="15" fill="#333">침묵에 아이가 다시 말하는 것을 막는다</text>
+    <text x="770" y="424" font-size="19" font-weight="700">언어모델 응답</text>
+    <text x="770" y="447" font-size="15" fill="#333">원격 · 끊기면 로컬 모델</text>
+    <text x="770" y="518" font-size="19" font-weight="700">안전 규칙 · 기호 제거</text>
+    <text x="770" y="541" font-size="15" fill="#333">위험한 소재는 어른에게 보낸다</text>
+
+    <text x="500" y="637" font-size="19" font-weight="700">음성 합성 → 스피커</text>
+  </g>
+
+  <g stroke="#000" stroke-width="2" fill="none" marker-end="url(#a)">
+    <line x1="500" y1="116" x2="500" y2="147"/>
+    <polyline points="360,205 230,205 230,297"/>
+    <polyline points="640,205 770,205 770,297"/>
+    <line x1="230" y1="364" x2="230" y2="391"/>
+    <line x1="230" y1="458" x2="230" y2="485"/>
+    <line x1="770" y1="364" x2="770" y2="391"/>
+    <line x1="770" y1="458" x2="770" y2="485"/>
+    <polyline points="230,552 230,630 327,630"/>
+    <polyline points="770,552 770,630 673,630"/>
+  </g>
+  <text x="300" y="195" font-size="17" text-anchor="middle">예</text>
+  <text x="700" y="195" font-size="17" text-anchor="middle">아니오</text>
+
+  <!-- 다음 턴 -->
+  <g stroke="#000" stroke-width="1.5" stroke-dasharray="6 5" fill="none">
+    <polyline points="670,645 975,645 975,88 633,88" marker-end="url(#a)"/>
+  </g>
+  <text x="800" y="80" font-size="16" text-anchor="middle" fill="#333">다음 턴</text>
+</svg>

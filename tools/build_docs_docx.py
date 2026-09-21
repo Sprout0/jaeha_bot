@@ -49,6 +49,7 @@ FIGURES = {
     "wake-two-stage.svg": (1000, 600),
     "patent-system.svg": (1000, 600),     # 발명신고용 도 1·2 (흑백, 수치 없음)
     "patent-dialog.svg": (1000, 700),
+    "dialog-flow.svg": (1000, 700),       # 보고서 그림 2 = 도 2 에서 표지만 뺀 것
 }
 
 # (원본 md, 결과 docx, 목차 생성 여부)
@@ -67,6 +68,8 @@ DOCS = [
      "06_핵심청구항_호출어검증시점.docx", False),
     (os.path.join("patent", "wake-two-stage-verification.md"),
      "07_근거_호출어2단계검증_선행기술대비.docx", True),
+    # 별도 보고서 — 로컬 기준 시점(09-12) 이후 API 경로로 추가 개발한 것만.
+    ("api-개발보고서.md", "08_전면API경로_개발보고서.docx", True),
 ]
 
 

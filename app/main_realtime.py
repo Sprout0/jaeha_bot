@@ -134,6 +134,11 @@ async def _bridge(mic: _MicThread, aq: asyncio.Queue, rate: int) -> None:
             await aq.put((frame, rate))
 
 
+def reconnect_delays(tries: int) -> tuple[float, ...]:
+    """끊겼을 때 다시 붙기 간격 — 0.5 → 1 → 2초(spec 2026-09-21 §6)."""
+    return tuple(0.5 * 2 ** i for i in range(max(0, int(tries))))
+
+
 async def _awake_period(*, mic: _MicThread, rate: int, **conv_kwargs) -> str:
     from .realtime_conversation import Conversation
 
@@ -200,7 +205,21 @@ def main(argv=None) -> None:
                          embed_window=float(vcfg.get("embed_window_s", 3.0))).open()
     detector = make_detector(wcfg, None, source) if wake_on else None
     metrics.after_load()
+    # 🔴 2026-09-21 안전 막기·정정·끊김 복구(spec 2026-09-21-realtime-guard-design.md)
+    from .config import BASE_DIR
+    from .guardian_log import GuardianLog
+    from .reply_gate import GuardConfig, ReplyGate
+    gcfg = GuardConfig.from_dict((models.get("realtime") or {}).get("guard"))
+    log.info("안전 가드 — 위험 신호 턴 붙잡기 %s(한도 %.1fs) / 다시 붙기 %d번",
+             "켬" if gcfg.hold_on_risk else "끔", gcfg.hold_cap_s, gcfg.reconnect_tries)
+
+    def make_session():
+        return RealtimeSession(cfg, api_key)
+
     common = dict(speaker=speaker, cache=cache, cfg=cfg, music=music,
+                  gate=ReplyGate(gcfg), guardian=GuardianLog(BASE_DIR / "logs"),
+                  make_session=make_session,
+                  reconnect_delays=reconnect_delays(gcfg.reconnect_tries),
                   games=GameManager(render=None), sleep_words=wcfg.get("sleep_words"),
                   instructions=build_instructions(music_on), history=[], metrics=metrics,
                   sleep_timeout=float(wcfg.get("sleep_timeout", 30)),
@@ -231,7 +250,7 @@ def main(argv=None) -> None:
             mic = _MicThread(source)
             try:
                 reason = asyncio.run(_awake_period(
-                    mic=mic, rate=source.samplerate, session=RealtimeSession(cfg, api_key),
+                    mic=mic, rate=source.samplerate, session=make_session(),
                     preroll=preroll, greet=greet, woke_during_music=woke_during_music,
                     **common))
             finally:

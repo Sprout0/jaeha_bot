@@ -41,3 +41,8 @@ def test_로컬_STT_TTS_를_싣지_않는다():
             "print(bad); sys.exit(1 if bad else 0)")
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_다시_붙기_간격은_두_배씩():
+    from app.main_realtime import reconnect_delays
+    assert reconnect_delays(3) == (0.5, 1.0, 2.0) and reconnect_delays(0) == ()

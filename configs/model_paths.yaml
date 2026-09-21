@@ -731,7 +731,7 @@ realtime:
   voice: marin                      # 09-07 블라인드
   speed: 1.05                       # 09-19 젯슨 라이브에서 marin 1.05 선택. API 허용 0.25~1.5
   transcribe_model: gpt-4o-transcribe   # whisper-1 은 아동 발화 39% 빈 문자열
-  silence_ms: 1200
+  silence_ms: 900                   # 09-22 아이 153발화 실측: 1200 1.44s·잘림2% → 900 1.16s·3%(reports/turn/realtime_turn_end.md)
   mic_pad_s: 0.15
   history_turns: 6
   filler_after_s: 0.7

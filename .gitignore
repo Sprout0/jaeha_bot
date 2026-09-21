@@ -37,6 +37,7 @@ output/
 reports/turn/*
 # 요약 표만 통과시킨다 — 보고서가 인용할 곳이 필요하다(2026-09-12).
 !reports/turn/README.md
+!reports/turn/realtime_turn_end.md
 # 벤치 탐침의 --sink 중간 산출물. 같은 실행의 *.json 이 메타데이터까지 담은
 # 상위집합이라(2026-09-09 확인: 행 수·내용 동일) 둘 다 넣으면 근거가 두 벌이 된다.
 # ⚠️ reports/jetson/*.jsonl 은 다르다 — 봇 런타임 계측이고 대응하는 json 이 없다.

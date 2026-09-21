@@ -52,7 +52,8 @@ class Conversation:
     def __init__(self, *, session, mic: asyncio.Queue, speaker, cache, cfg, music, games,
                  sleep_words, instructions: str, history: list, metrics=None,
                  sleep_timeout: float = 30.0, filler_phrases=(), clock=time.monotonic,
-                 tick_s: float = 0.05, gate=None, guardian=None) -> None:
+                 tick_s: float = 0.05, gate=None, guardian=None, make_session=None,
+                 reconnect_delays=(0.5, 1.0, 2.0)) -> None:
         self.session, self.mic, self.speaker, self.cache = session, mic, speaker, cache
         self.cfg, self.music, self.games = cfg, music, games
         self.sleep_words, self.instructions = sleep_words, instructions
@@ -63,6 +64,12 @@ class Conversation:
         self.mic_gate = MicGate(cfg.mic_pad_s)
         self.gate = gate or ReplyGate()                 # 답을 소리 전에 붙잡을지·막을지
         self.guardian = guardian                        # 부모 기록(없으면 안 남긴다)
+        # 끊기면 말없이 다시 붙는다(spec 2026-09-21 §6). 없으면 옛 동작(바로 lost).
+        self.make_session = make_session
+        self.reconnect_delays = tuple(reconnect_delays)
+        self.reconnects = 0
+        self._reconnecting = False
+        self._tasks: list = []
         self._pending: _Pending | None = None
         self._stopped_at: float | None = None
         self._speech_end_at: float | None = None
@@ -82,11 +89,9 @@ class Conversation:
         self._done = asyncio.get_running_loop().create_future()
         self._woke_during_music = woke_during_music
         self._started = self._last_active = self.clock()
-        try:
-            await self.session.open(self.instructions, self.history)
-        except ConnectionLost as e:
-            log.warning("Realtime 연결 실패: %s", e)
+        if not await self._open():
             self._say_cached("lost")
+            self._guardian_record("connection_lost", child="", tries=len(self._delays()))
             await self._wait_quiet()
             return "lost"
         if preroll is not None and np.asarray(preroll[0]).size:
@@ -94,12 +99,13 @@ class Conversation:
             log.info("호출 직후 이어진 말 %.2fs 를 먼저 보냄", np.asarray(preroll[0]).size / preroll[1])
         elif greet:
             self._say_cached("wake")
-        tasks = [asyncio.create_task(self._pump_mic()),
-                 asyncio.create_task(self._read_events()),
-                 asyncio.create_task(self._tick())]
+        self._tasks = [asyncio.create_task(self._pump_mic()),
+                       asyncio.create_task(self._read_events()),
+                       asyncio.create_task(self._tick())]
         try:
             reason = await self._done
         finally:
+            tasks = list(self._tasks)
             for t in tasks:
                 t.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
@@ -114,18 +120,86 @@ class Conversation:
             self._done.set_result(reason)
 
     async def _send(self, msg: dict) -> None:
+        if self._reconnecting:
+            return                                      # 보낼 곳이 없다 — 다시 붙은 뒤 다시 묻는다
         try:
             await self.session.send(msg)
         except ConnectionLost as e:
             self._lost(e)
 
     def _lost(self, e) -> None:
-        if self._done is not None and self._done.done():
+        if (self._done is not None and self._done.done()) or self._reconnecting:
             return
-        log.warning("Realtime 끊김: %s", e)
+        if self.make_session is None:
+            log.warning("Realtime 끊김: %s", e)
+            self._pending = None
+            self._say_cached("lost")
+            self._finish("lost")
+            return
+        log.warning("Realtime 끊김: %s → 말없이 다시 붙는다", e)
+        self._reconnecting = True
+        self._tasks.append(asyncio.create_task(self._reconnect()))
+
+    # ── 끊김 복구 ────────────────────────────────────────────────────────
+    def _delays(self) -> tuple:
+        return self.reconnect_delays if self.make_session is not None else ()
+
+    async def _open(self) -> bool:
+        try:
+            await self.session.open(self.instructions, self.history)
+            return True
+        except ConnectionLost as e:
+            log.warning("Realtime 연결 실패: %s", e)
+        return await self._reopen()
+
+    async def _reopen(self) -> bool:
+        delays = self._delays()
+        for i, delay in enumerate(delays):
+            await asyncio.sleep(delay)
+            s = self.make_session()
+            try:
+                await s.open(self.instructions, self.history)
+            except ConnectionLost as e:
+                log.warning("다시 붙기 %d/%d 실패: %s", i + 1, len(delays), e)
+                continue
+            self.session = s
+            self.reconnects += 1
+            log.info("다시 붙었다 (%d번째 시도)", i + 1)
+            return True
+        return False
+
+    async def _reconnect(self) -> None:
+        try:
+            await self.session.close()
+        except Exception:                               # noqa: BLE001
+            pass
+        p = self._pending
+        if await self._reopen():
+            self._reconnecting = False
+            if p is not None and p is self._pending and not p.blocked:
+                await self._retry_turn(p)
+            # 새 읽기는 다시 묻기를 **보낸 뒤** — 먼저 열면 새 이벤트가 초기화 전 턴에 섞인다
+            self._tasks.append(asyncio.create_task(self._read_events()))
+            return
+        self._reconnecting = False
         self._pending = None
         self._say_cached("lost")
+        self._guardian_record("connection_lost", child=p.child if p else "",
+                              tries=len(self._delays()))
         self._finish("lost")
+
+    async def _retry_turn(self, p: _Pending) -> None:
+        """답하던 중에 끊겼다 — 반쯤 나간 소리를 비우고 같은 말을 글자로 다시 묻는다."""
+        self.speaker.clear()
+        now = self.clock()
+        verbatim = p.guard is not None and p.guard.mode == "off"
+        p.said, p.acc, p.held = "", PcmAccumulator(), []
+        p.first_audio_at = p.first_delta_at = p.hold_s = None
+        p.requested_at, p.reconnects = now, p.reconnects + 1
+        p.guard = self.gate.begin(p.child, verbatim=verbatim, now=now)
+        log.info("[다시 붙기] 답하던 말을 다시 묻는다: %s", p.child)
+        await self._send(user_text(p.child))
+        await self._send(p.msg)
 
     def _guardian_record(self, kind: str, **fields) -> None:
         if self.guardian is not None:
@@ -165,7 +239,7 @@ class Conversation:
             frame, rate = await self.mic.get()
             now = self.clock()
             self.mic_gate.sync(self.speaker.busy, now)
-            if self.mic_gate.should_send(now):
+            if not self._reconnecting and self.mic_gate.should_send(now):
                 await self._send_audio(frame, rate)
 
     async def _read_events(self) -> None:

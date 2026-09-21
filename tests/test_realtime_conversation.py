@@ -402,3 +402,66 @@ def test_계측에_붙잡기와_막기가_남는다():
 
     asyncio.run(go())
     assert Rec.kw["held"] is True and Rec.kw["blocked"] is True and Rec.kw["reconnects"] == 0
+
+
+class DeadSession(FakeSession):
+    async def open(self, instructions, history):
+        raise ConnectionLost("안 붙는다")
+
+
+def test_끊기면_말없이_다시_붙고_답하던_말을_다시_묻는다():
+    s1, s2 = FakeSession(), FakeSession()
+    made = iter([s2])
+
+    async def go():
+        history = [("전", "후")]
+        c = _conv(s1, history=history, sleep_timeout=0.4)
+        c.make_session, c.reconnect_delays = (lambda: next(made)), (0.01,)
+        asyncio.create_task(_feed(s1, [_transcript("공룡 좋아해?"), None]))
+        asyncio.create_task(_feed(s2, [_audio_delta(), _text("응 좋아!"), _done()], gap=0.1))
+        reason = await c.run(greet=False)
+        return c, history, reason
+
+    c, history, reason = asyncio.run(go())
+    assert c.reconnects == 1 and reason == "idle"
+    assert s2.opened[1][0] == ("전", "후")                      # 기록을 다시 넣었다
+    items = [m for m in s2.sent if m["type"] == "conversation.item.create"]
+    assert items[0]["item"]["content"][0]["text"] == "공룡 좋아해?"
+    assert s2.requests() == [{"type": "response.create"}]
+    assert history[-1] == ("공룡 좋아해?", "응 좋아!")
+    assert PHRASES["lost"] not in c.cache.asked
+
+
+def test_다시_붙기가_다_실패하면_lost_와_부모_기록():
+    g = FakeGuardian()
+
+    async def go():
+        c = _conv(FakeSession())
+        c.guardian, c.make_session, c.reconnect_delays = g, DeadSession, (0.01, 0.01, 0.01)
+        asyncio.create_task(_feed(c.session, [None]))
+        return await c.run(greet=False), c
+
+    reason, c = asyncio.run(go())
+    assert reason == "lost" and PHRASES["lost"] in c.cache.asked
+    assert g.records[-1][0] == "connection_lost" and g.records[-1][1]["tries"] == 3
+
+
+def test_첫_연결이_실패해도_다시_시도한다():
+    s2 = FakeSession()
+
+    async def go():
+        c = _conv(DeadSession(), sleep_timeout=0.1)
+        c.make_session, c.reconnect_delays = (lambda: s2), (0.01,)
+        return await c.run(greet=False), c
+
+    reason, c = asyncio.run(go())
+    assert reason == "idle" and s2.opened is not None
+
+
+def test_연결_함수가_없으면_옛_동작():
+    async def go():
+        c = _conv(FakeSession())
+        asyncio.create_task(_feed(c.session, [None]))
+        return await c.run(greet=False)
+
+    assert asyncio.run(go()) == "lost"

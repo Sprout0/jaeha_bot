@@ -7,7 +7,7 @@
 사용
   python tools/make_invention_hwp.py "<양식 폴더>"
   python tools/make_invention_hwp.py "<양식 폴더>" --hwpml <신고서.xml> <설명서.xml>
-  python tools/make_invention_hwp.py "<양식 폴더>" --api     # 전면 API 판 설명서만 (2026-09-22)
+  python tools/make_invention_hwp.py "<양식 폴더>" --api     # 전면 API 판 신고서·설명서 (2026-09-22)
 
 도면 두 장은 docs/final/figures 의 SVG 를 크롬으로 구워 넣는다(FIGS).
 
@@ -61,6 +61,7 @@ SRC_DESC = "[양식] 2. 발명의내용설명서 (3).hwp"
 OUT_SINKO = "발명신고서_재하봇_초안.hwp"
 OUT_DESC = "발명의내용설명서_재하봇_초안.hwp"
 OUT_DESC_API = "발명의내용설명서_재하봇_전면API.hwp"
+OUT_SINKO_API = "발명신고서_재하봇_전면API.hwp"
 
 # 도면: (SVG, 원본 크기 px, 넣을 크기 mm). 발명신고용으로 흑백·수치 없이 따로 그린 것이다
 # (보고서용 그림은 수치와 주석이 많아 칸 폭으로 줄이면 읽히지 않았다). 칸 안쪽 폭 130mm 남짓.
@@ -98,11 +99,15 @@ ETC = [
 # 🔴 구역번호가 큰 칸부터 쓴다. 칸을 고치면 그 뒤 구역번호가 밀린다 —
 # 기타(B46)를 고치면 거기 붙어 있던 메모가 사라져 양도증 칸의 번호가 하나 당겨졌다.
 # 내림차순으로 쓰면 아직 안 쓴 칸의 번호가 흔들리지 않는다.
-PLAN_SINKO = [
-    (168, "B2", "", [TITLE_KO]),          # 양도증의 발명의 명칭
-    (160, "B46", "특허출원이 시급하거나", ETC),
-    (11, "B2", "", [TITLE_KO]),           # 발명신고서의 발명의 명칭
-]
+def plan_sinko(title=TITLE_KO):
+    return [
+        (168, "B2", "", [title]),          # 양도증의 발명의 명칭
+        (160, "B46", "특허출원이 시급하거나", ETC),
+        (11, "B2", "", [title]),           # 발명신고서의 발명의 명칭
+    ]
+
+
+PLAN_SINKO = plan_sinko()
 
 
 def plan_desc(content="invention_desc_content"):
@@ -120,6 +125,7 @@ def plan_desc(content="invention_desc_content"):
 
 # (칸 계획, 글꼴). 신고서 칸은 양식 글꼴이 그대로 따라와서 건드리지 않는다.
 PLANS = {"sinko": (lambda: PLAN_SINKO, None), "desc": (plan_desc, BODY_FONT),
+         "sinko_api": (lambda: plan_sinko(load_content("invention_desc_content_api").TITLE_KO), None),
          "desc_api": (lambda: plan_desc("invention_desc_content_api"), BODY_FONT)}
 FIGS_OF = {"desc": FIGS, "desc_api": FIGS_API}
 
@@ -262,15 +268,21 @@ def build(xml, plan_name, out, figs=(), fig_list=0):
     print("  → %s" % os.path.basename(out))
 
 
-def main_api(folder, xml_desc):
-    """전면 API 판 설명서만 새 파일로 낸다. 로컬 판 초안은 건드리지 않는다."""
-    if xml_desc:
-        xml = open(xml_desc, encoding="utf-8").read()
-    else:
+def main_api(folder, xml_sinko, xml_desc):
+    """전면 API 판 신고서·설명서를 새 파일로 낸다. 로컬 판 초안은 건드리지 않는다.
+    신고서는 발명의 명칭(신고서·양도증 두 칸)만 로컬 판과 다르다."""
+    def hwpml(given, template):
+        if given:
+            return open(given, encoding="utf-8").read()
         work = tempfile.mkdtemp(prefix="hwpdump-")
         p = os.path.join(work, "t.xml")
-        run("dump", os.path.join(folder, SRC_DESC), p)
-        xml = open(p, encoding="utf-8").read()
+        run("dump", os.path.join(folder, template), p)
+        return open(p, encoding="utf-8").read()
+
+    print("발명신고서 (전면 API)")
+    build(check_boxes(hwpml(xml_sinko, SRC_SINKO)), "sinko_api",
+          os.path.join(folder, OUT_SINKO_API))
+    xml = hwpml(xml_desc, SRC_DESC)
     print("발명의 내용 설명서 (전면 API)")
     figs = render_figs(tempfile.mkdtemp(prefix="hwpfig-"), FIGS_API)
     build(xml, "desc_api", os.path.join(folder, OUT_DESC_API), figs=figs, fig_list=6)
@@ -325,6 +337,6 @@ if __name__ == "__main__":
     if not args:
         sys.exit(__doc__)
     if api:
-        main_api(args[0], xd or xs)
+        main_api(args[0], xs, xd)
     else:
         main(args[0], xs, xd)

@@ -52,4 +52,4 @@ reports/stt/young/audio_index.json
 # 다시 만들 때마다 바이트가 통째로 바뀌어 이력만 부풀리므로 넣지 않는다.
 #   python tools/build_docs_docx.py && powershell tools/update_docx_fields.ps1
 docs/final/docx/
-docs/submission-api/docx/
+docs/submission-api/제출본/

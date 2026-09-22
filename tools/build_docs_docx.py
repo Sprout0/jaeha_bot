@@ -202,9 +202,12 @@ def check_internal_links(docx):
 
 
 def build(pandoc, reference):
-    if os.path.isdir(OUTDIR):
-        shutil.rmtree(OUTDIR)
-    os.makedirs(OUTDIR)
+    # 폴더를 통째로 지우지 않는다 — 제출본 폴더에는 한글 양식 파일(별첨 2)도 같이 있다.
+    os.makedirs(OUTDIR, exist_ok=True)
+    for _, out, _ in DOCS:
+        for f in (out, out[:-5] + ".pdf"):
+            if os.path.exists(os.path.join(OUTDIR, f)):
+                os.remove(os.path.join(OUTDIR, f))
 
     workdir = tempfile.mkdtemp(prefix="docx-build-")
     try:
@@ -262,7 +265,8 @@ if __name__ == "__main__":
                     help="final = docs/final, api = docs/submission-api")
     a = ap.parse_args()
     FINAL, DOCS, FIGURES = BUNDLES[a.bundle]
-    OUTDIR = os.path.join(FINAL, "docx")
+    # 전면 API 제출본은 결과물을 한 폴더(제출본/)에 모은다 — 별첨 2 한글 파일과 나란히.
+    OUTDIR = os.path.join(FINAL, "제출본" if a.bundle == "api" else "docx")
     pandoc = a.pandoc or find_pandoc()
 
     tmp = None

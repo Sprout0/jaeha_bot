@@ -180,7 +180,8 @@ python -m app.main_realtime --no-wake  # 전면 API, 호출어 없이 바로 대
   합성해 `~/.cache/jaeha_voice` 에 둔다. **첫 기동만 4~5분** 걸린다.
 - 로그: `logs/jaeha_날짜.log`(대화), `logs/metrics_날짜.jsonl`(턴별 지연·비용),
   `logs/guardian_날짜.jsonl`(막거나 정정한 일, 글자만).
-- 시험: `python -m pytest -q` — 1,204개, 마이크·모델·젯슨·네트워크 없이 30초 안에 돈다.
+- 시험: `pip install pytest` 후 `python -m pytest -q` — 1,204개, 마이크·모델·젯슨·네트워크 없이 30초 안에 돈다
+  (`requirements-realtime.txt` 만 깐 새 환경에서도 전부 통과한다, 09-22 확인).
 
 ### 젯슨으로 배포
 

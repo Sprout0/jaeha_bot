@@ -77,15 +77,18 @@ wake:
 
 ## 3. 저장소에 없는 것 (따로 받아야 한다)
 
+호출어 모델과 동요는 **Google Drive 공유 폴더**의 `jaeha_bot_share_YYYYMMDD.zip` 으로 받는다(링크는 인계자에게
+요청). 저장소 루트에 풀면 제자리에 들어가고, 폴더 안 `README - 받는 법.txt` 에 같은 내용이 있다.
+
 | 무엇 | 어디에 | 누가 쓰나 | 구하는 법 |
 |---|---|---|---|
 | `.env` | 루트 | 둘 다 | `cp .env.example .env` 후 키 입력 (5절) |
 | `configs/local.yaml` | `configs/` | 둘 다 | 젯슨: `cp configs/local.jetson.example.yaml configs/local.yaml` / PC: `local.example.yaml` 에서 필요한 블록만 |
-| 호출어 모델 5개 | `models/wake/v6/` — `jaehabot_v6.onnx`, `embedding_model.onnx`, `melspectrogram.onnx`, `jaeha_v6.yaml`, `jaehabot_v6.pt`(학습 원본, 실행엔 불필요) | 둘 다 | 인계 압축본 `jaeha_bot_wake_v6.tar.gz`(3.5MB, 본보기 포함 — 루트에서 `tar -xzf`). 다시 만들려면 `tools/colab_wake_train_v6.ipynb`(Colab, HF_TOKEN 은 Colab 비밀값) |
+| 호출어 모델 5개 | `models/wake/v6/` — `jaehabot_v6.onnx`, `embedding_model.onnx`, `melspectrogram.onnx`, `jaeha_v6.yaml`, `jaehabot_v6.pt`(학습 원본, 실행엔 불필요) | 둘 다 | Drive 공유 압축본. 다시 만들려면 `tools/colab_wake_train_v6.ipynb`(Colab, HF_TOKEN 은 Colab 비밀값) |
 | 호출어 본보기 `templates_haitid.npy` | `models/wake/v6/` | 전면 API 필수, 로컬은 embed 모드일 때 | **쓸 사람 목소리로 새로 만든다**: `python tools/enroll_wake.py --record 10` (지금 것은 개발자 가족 한 명의 목소리) |
 | EXAONE 3.5 2.4B Q4 GGUF (1.6GB) | `models/exaone-3.5-2.4b-q4.gguf` | 로컬 경로의 폴백 | Hugging Face `LGAI-EXAONE/EXAONE-3.5-2.4B-Instruct-GGUF`. ⚠️ 비상업 라이선스 |
 | faster-whisper medium, Supertonic | 캐시(`~/.cache/huggingface`) | 로컬 경로 | 첫 실행 때 자동으로 받는다 |
-| 동요 mp3 | `assets/songs/` | 노래 | `assets/README.md`. 목록은 `configs/audio_assets.yaml` |
+| 동요 mp3 | `assets/songs/` | 노래 | 1곡은 Drive 공유 압축본(공유마당 자유이용). 더 넣는 법은 `assets/README.md` |
 
 젯슨으로 모델을 보낼 때는 `JETSON=사용자@주소 bash push_model.sh <파일>`.
 

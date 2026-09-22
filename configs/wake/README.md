@@ -5,6 +5,10 @@
 
 # 호출어(KWS) 학습 설정
 
+> 2026-09-22 정리: v1~v4 설정 파일과 v4·v5 Colab 노트북은 지웠다. 필요하면 태그에서 꺼낸다 —
+> `git show doc-baseline-2026-09-12:configs/wake/jaeha_v4.yaml`. 지금 쓰는 v6 은
+> `tools/colab_wake_train_v6.ipynb` 와 `negatives_v6.txt` 로 만든다.
+
 여기 있는 건 **학습 설정**이지 실행 설정이 아니다. 봇은 이 파일들을 읽지 않는다 —
 런타임이 쓰는 건 ONNX 3종이고, 그 경로·임계값은
 `configs/model_paths.yaml` 의 `wake:` 섹션에 있다.

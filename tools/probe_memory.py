@@ -74,7 +74,6 @@ def main() -> int:
 
     from app.stt_module import STTModule  # noqa: E402
     from app.tts_module import TTSModule  # noqa: E402
-    from app.vision_module import VisionDetector  # noqa: E402
     s.mark("모듈 import")
 
     stt_cfg = dict(settings.models.get("stt", {}))

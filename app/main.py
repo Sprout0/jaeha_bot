@@ -12,7 +12,6 @@ import time
 from .config import settings
 from .stt_module import STTModule
 from .tts_module import TTSModule
-from .vision_module import VisionDetector
 from .agent import LLMAgent
 from .education_modes import GameManager
 from .metrics import MetricsLogger
@@ -211,7 +210,7 @@ def _to_standby(detector, source) -> None:
 def build_pipeline(music_on: bool = False):
     stt = STTModule(**settings.models.get("stt", {}))
     tts = TTSModule(**settings.models.get("tts", {}))
-    vision = VisionDetector(**settings.models.get("vision", {}))
+    vision = None   # 비전(STEP 9)은 구현하지 않았다 — 빈 껍데기 모듈은 2026-09-22 삭제
     llm_cfg = dict(settings.models["llm"])
     model_path = llm_cfg.pop("model_path")
     system_prompt = settings.prompts["system"]

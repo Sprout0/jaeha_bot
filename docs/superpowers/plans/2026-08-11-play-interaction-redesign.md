@@ -887,7 +887,7 @@ bash push_code.sh
 
 Run:
 ```bash
-ssh -t jaeha_bot@100.65.22.17 "cd ~/jaeha_bot && source ~/miniforge3/etc/profile.d/conda.sh && conda activate jaeha_bot && python -m app.education_modes"
+ssh -t $JETSON "cd ~/jaeha_bot && source ~/miniforge3/etc/profile.d/conda.sh && conda activate jaeha_bot && python -m app.education_modes"
 ```
 
 `_repl()` 이 마이크·LLM 없이 상태머신만 돌린다(템플릿 모드). 확인할 것:
@@ -900,7 +900,7 @@ ssh -t jaeha_bot@100.65.22.17 "cd ~/jaeha_bot && source ~/miniforge3/etc/profile
 
 Run:
 ```bash
-ssh -t jaeha_bot@100.65.22.17 "cd ~/jaeha_bot && source ~/miniforge3/etc/profile.d/conda.sh && conda activate jaeha_bot && python -m app.main"
+ssh -t $JETSON "cd ~/jaeha_bot && source ~/miniforge3/etc/profile.d/conda.sh && conda activate jaeha_bot && python -m app.main"
 ```
 
 ⚠️ 마이크·스피커가 붙은 젯슨에서 직접 돌리는 편이 낫다. 확인할 것:

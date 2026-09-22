@@ -1482,13 +1482,13 @@ cd "C:/Users/Moon/Desktop/jaeha_bot" && bash push_code.sh
 `scripts/` 는 `push_code.sh` 대상이 아니므로 따로 보낸다:
 
 ```bash
-scp -r "C:/Users/Moon/Desktop/jaeha_bot/scripts" jaeha_bot@100.65.22.17:~/jaeha_bot/
+scp -r "C:/Users/Moon/Desktop/jaeha_bot/scripts" $JETSON:~/jaeha_bot/
 ```
 
 - [ ] **Step 3: 젯슨에서 ONNX 로드 확인**
 
 ```bash
-ssh jaeha_bot@100.65.22.17 'source ~/miniforge3/etc/profile.d/conda.sh && conda activate jaeha_bot && cd ~/jaeha_bot && python -c "
+ssh $JETSON 'source ~/miniforge3/etc/profile.d/conda.sh && conda activate jaeha_bot && cd ~/jaeha_bot && python -c "
 from app.config import settings
 from app.wake import make_detector
 d = make_detector(settings.models[\"wake\"], stt=None, source=object())
@@ -1502,7 +1502,7 @@ Expected: `감지기: OnnxWakeDetector`, `OK`. `SttWakeDetector` 가 나오면 �
 - [ ] **Step 4: 점수 분포 측정 → 임계값 확정**
 
 ```bash
-ssh -t jaeha_bot@100.65.22.17 'source ~/miniforge3/etc/profile.d/conda.sh && conda activate jaeha_bot && cd ~/jaeha_bot && python scripts/wake_score_probe.py'
+ssh -t $JETSON 'source ~/miniforge3/etc/profile.d/conda.sh && conda activate jaeha_bot && cd ~/jaeha_bot && python scripts/wake_score_probe.py'
 ```
 
 각 조건을 **최소 5회씩** 말하고 점수를 기록한다:
@@ -1520,7 +1520,7 @@ ssh -t jaeha_bot@100.65.22.17 'source ~/miniforge3/etc/profile.d/conda.sh && con
 - [ ] **Step 5: 전체 시나리오 실기 검증**
 
 ```bash
-ssh -t jaeha_bot@100.65.22.17 'source ~/miniforge3/etc/profile.d/conda.sh && conda activate jaeha_bot && cd ~/jaeha_bot && python -m app.main'
+ssh -t $JETSON 'source ~/miniforge3/etc/profile.d/conda.sh && conda activate jaeha_bot && cd ~/jaeha_bot && python -m app.main'
 ```
 
 확인할 것:

@@ -1073,8 +1073,8 @@ Expected: 전부 PASS
 git add app/main_realtime.py tests/test_main_realtime.py
 git commit -m "feat(guard): 진입점에 가드·부모 기록·다시 붙기 연결"
 git push
-for f in app/reply_gate.py app/guardian_log.py app/safety.py app/realtime_turn.py app/realtime_protocol.py app/metrics.py app/realtime_conversation.py app/main_realtime.py configs/model_paths.yaml configs/safety_rules.yaml; do tr -d '\r' < $f | ssh jaeha_bot@100.65.22.17 "cat > ~/jaeha_bot/$f"; done
-ssh jaeha_bot@100.65.22.17 'cd ~/jaeha_bot && ./run.sh check 2>&1 | grep -E "기동 검사|pipeline"'
+for f in app/reply_gate.py app/guardian_log.py app/safety.py app/realtime_turn.py app/realtime_protocol.py app/metrics.py app/realtime_conversation.py app/main_realtime.py configs/model_paths.yaml configs/safety_rules.yaml; do tr -d '\r' < $f | ssh $JETSON "cat > ~/jaeha_bot/$f"; done
+ssh $JETSON 'cd ~/jaeha_bot && ./run.sh check 2>&1 | grep -E "기동 검사|pipeline"'
 ```
 Expected: `기동 검사: 통과`. 봇이 켜져 있지 않을 때만 반영한다(`ps aux | grep "[a]pp.main"` 로 먼저 확인).
 

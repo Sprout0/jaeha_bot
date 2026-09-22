@@ -2040,18 +2040,18 @@ git commit -m "spec(realtime): 노트북 실기 — 체감·받아적기 지연�
 
 - [ ] **Step 1: websockets 설치**
 ```bash
-ssh jaeha_bot@100.65.22.17 'source ~/miniforge3/etc/profile.d/conda.sh && conda activate jaeha_bot && pip install websockets==16.1.1'
+ssh $JETSON 'source ~/miniforge3/etc/profile.d/conda.sh && conda activate jaeha_bot && pip install websockets==16.1.1'
 ```
 
 - [ ] **Step 2: 바뀐 파일만 LF 로 보낸다**
 ```bash
-for f in app/realtime_audio.py app/realtime_protocol.py app/realtime_turn.py app/realtime_session.py app/voice_cache.py app/realtime_conversation.py app/main_realtime.py app/education_modes.py app/metrics.py configs/model_paths.yaml run.sh requirements.txt tools/realtime_live.py tools/realtime_probe.py; do tr -d '\r' < "$f" > /tmp/rt_push && scp -q /tmp/rt_push "jaeha_bot@100.65.22.17:~/jaeha_bot/$f"; done
-ssh jaeha_bot@100.65.22.17 'chmod +x ~/jaeha_bot/run.sh'
+for f in app/realtime_audio.py app/realtime_protocol.py app/realtime_turn.py app/realtime_session.py app/voice_cache.py app/realtime_conversation.py app/main_realtime.py app/education_modes.py app/metrics.py configs/model_paths.yaml run.sh requirements.txt tools/realtime_live.py tools/realtime_probe.py; do tr -d '\r' < "$f" > /tmp/rt_push && scp -q /tmp/rt_push "$JETSON:~/jaeha_bot/$f"; done
+ssh $JETSON 'chmod +x ~/jaeha_bot/run.sh'
 ```
 
 - [ ] **Step 3: 젯슨 `configs/local.yaml` 에 추가(백업 먼저) 후 점검**
 ```bash
-ssh jaeha_bot@100.65.22.17 'cp ~/jaeha_bot/configs/local.yaml ~/local.yaml.bak_20260916_realtime && printf "\n# 2026-09-16 전면 API 대화 경로. 되돌리기: 이 줄 삭제.\npipeline: realtime\n" >> ~/jaeha_bot/configs/local.yaml && cd ~/jaeha_bot && ./run.sh check'
+ssh $JETSON 'cp ~/jaeha_bot/configs/local.yaml ~/local.yaml.bak_20260916_realtime && printf "\n# 2026-09-16 전면 API 대화 경로. 되돌리기: 이 줄 삭제.\npipeline: realtime\n" >> ~/jaeha_bot/configs/local.yaml && cd ~/jaeha_bot && ./run.sh check'
 ```
 Expected: `대화 경로: realtime`, `websockets: 있음`, `기동 검사: 통과`
 
@@ -2059,7 +2059,7 @@ Expected: `대화 경로: realtime`, `websockets: 있음`, `기동 검사: 통�
   1. 자유대화 5턴 2. "상어가족 틀어줘" → 노래 → "하이 티드" → 한마디 → 노래 이어짐 3. "동물 소리 놀이 하자" 한 판 4. "바이바이" 5. 다시 불러서 30초 가만히
   - 끝나면 요약:
 ```bash
-ssh jaeha_bot@100.65.22.17 'cd ~/jaeha_bot && source ~/miniforge3/etc/profile.d/conda.sh && conda activate jaeha_bot && python - <<EOF
+ssh $JETSON 'cd ~/jaeha_bot && source ~/miniforge3/etc/profile.d/conda.sh && conda activate jaeha_bot && python - <<EOF
 import json, statistics as st, glob
 f = sorted(glob.glob("logs/metrics_*.jsonl"))[-1]
 rt = [json.loads(l) for l in open(f, encoding="utf-8") if "rt_turn" in l]
@@ -2075,7 +2075,7 @@ EOF'
 
 - [ ] **Step 5: 원자료를 가져와 spec 9절에 기록·커밋**
 ```bash
-D=$(date +%Y%m%d); scp jaeha_bot@100.65.22.17:~/jaeha_bot/logs/metrics_$D.jsonl reports/jetson/metrics_${D}_realtime.jsonl
+D=$(date +%Y%m%d); scp $JETSON:~/jaeha_bot/logs/metrics_$D.jsonl reports/jetson/metrics_${D}_realtime.jsonl
 git add reports/jetson/metrics_${D}_realtime.jsonl docs/superpowers/specs/2026-09-16-realtime-pipeline-design.md
 git commit -m "reports(realtime): 젯슨 전면 API 첫 실기 — 체감·받아적기·메모리를 로컬 4.14s·85% 와 비교"
 ```

@@ -15,7 +15,7 @@
 # ============================================================
 set -e
 
-JETSON=jaeha_bot@100.65.22.17
+JETSON="${JETSON:?젯슨 주소를 지정할 것 — 예: JETSON=사용자@주소 bash push_model.sh <모델경로>}"   # 계정@주소(개인 주소는 저장소에 두지 않는다)
 REMOTE='~/jaeha_bot'
 
 cd "$(dirname "$0")"

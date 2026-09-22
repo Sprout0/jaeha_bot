@@ -59,7 +59,7 @@ B 는 곡(만료)과 녹음(CC BY) **두 층이 다 풀린** 드문 음원이지
 음원을 바꿨을 때만 따로 보낸다:
 
 ```bash
-scp -r assets jaeha_bot@100.65.22.17:~/jaeha_bot/
+scp -r assets $JETSON:~/jaeha_bot/
 ```
 
 ## 형식 권장

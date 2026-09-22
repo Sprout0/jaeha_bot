@@ -70,7 +70,7 @@ wake:
 | 안전 | 프롬프트 규칙 | 프롬프트 규칙 + 위험 신호 턴만 소리를 붙잡아 검사, 막으면 안전 문장 + `logs/guardian_*.jsonl` | API 가드는 젯슨 실기 전 |
 | 명령(잠들기·노래·놀이) | 글자 규칙 | 글자 규칙 + 모델 도구 호출 | API 도구 11/13 맞음 |
 | 노래 틀기(유튜브 아동용 영상만) | 🔶 기본 꺼짐 | 🔶 기본 꺼짐 | 젯슨만 켬. 크롬·Xvfb·PulseAudio 필요(`./run.sh setup-youtube`) |
-| 부모 알림 전송 · 비전 · 비용 상한 | 🚧 | 🚧 | `vision_module.py`·`daily_briefing.py` 는 빈 껍데기 |
+| 부모 알림 전송 · 비전 · 비용 상한 | 🚧 | 🚧 | 구현 안 함(빈 껍데기 모듈은 09-22 삭제) |
 
 ---
 
@@ -86,7 +86,7 @@ wake:
 | faster-whisper medium, Supertonic | 캐시(`~/.cache/huggingface`) | 로컬 경로 | 첫 실행 때 자동으로 받는다 |
 | 동요 mp3 | `assets/songs/` | 노래 | `assets/README.md`. 목록은 `configs/audio_assets.yaml` |
 
-젯슨으로 모델을 보낼 때는 `bash push_model.sh <파일>`.
+젯슨으로 모델을 보낼 때는 `JETSON=사용자@주소 bash push_model.sh <파일>`.
 
 ---
 
@@ -183,10 +183,10 @@ python -m app.main_realtime --no-wake  # 전면 API, 호출어 없이 바로 대
 젯슨의 `~/jaeha_bot` 은 git 저장소가 아니다. 노트북에서 코드만 밀어 넣는다.
 
 ```bash
-bash push_code.sh         # app/ configs/ scenarios/ data/ tools/ — configs/local.yaml 은 안 보낸다
+JETSON=사용자@주소 bash push_code.sh   # app/ configs/ scenarios/ data/ tools/ — configs/local.yaml 은 안 보낸다
 ```
 
-`push_code.sh` 첫 줄의 `JETSON=` 이 개발자 Tailscale 주소다 — 인계받으면 바꾼다.
+젯슨 주소는 저장소에 두지 않는다 — `JETSON=사용자@주소 bash push_code.sh` 처럼 넘긴다.
 `run.sh`·`requirements*.txt` 는 이 스크립트가 보내지 않으니 바뀌면 `scp` 로 따로 보낸다.
 
 ---

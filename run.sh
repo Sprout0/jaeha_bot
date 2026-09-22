@@ -11,7 +11,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-MODE="${1:-local}"                  # local | docker | dev | check | setup-youtube
+MODE="${1:-local}"                  # local | check | setup-youtube | docker
 ENV_NAME="${JAEHA_ENV:-jaeha_bot}"  # 다른 이름을 쓰면 JAEHA_ENV=... ./run.sh
 
 # 이 환경의 python 을 찾는다.
@@ -117,11 +117,8 @@ PYEOF
     PY="$(resolve_or_die)"; add_env_libs "$PY"
     "$PY" -c "import sounddevice as sd; n=[d['name'] for d in sd.query_devices()]; print('✅ 공유 출력 respk 보임' if 'respk' in n else '❌ respk 가 장치 목록에 없다')" 2>/dev/null
     echo "켜기: 이 기계의 configs/local.yaml 에  youtube: {enabled: true}" ;;
-  docker)  # Jetson 컨테이너
+  docker)  # 전면 API 경로 컨테이너(README 4절 B)
     docker compose up --build ;;
-  dev)     # PC 개발용 컨테이너
-    docker build -f Dockerfile.dev -t jaeha_bot:dev .
-    docker run --rm -it --device /dev/snd jaeha_bot:dev ;;
   *)
-    echo "usage: ./run.sh [local|check|setup-youtube|docker|dev]"; exit 1 ;;
+    echo "usage: ./run.sh [local|check|setup-youtube|docker]"; exit 1 ;;
 esac

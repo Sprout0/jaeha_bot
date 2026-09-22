@@ -45,11 +45,12 @@ CHROME_CANDIDATES = [
 
 # SVG 원본 → 내보낼 픽셀 크기. viewBox 와 같게 두고 2배로 굽는다.
 FIGURES = {
-    "pipeline-block.svg": (1000, 620),
+    "pipeline-realtime.svg": (1000, 640),  # 보고서 그림 1 = 전면 API 구성(운영)
+    "pipeline-block.svg": (1000, 620),     # 보고서 그림 2 = 로컬 구성
     "wake-two-stage.svg": (1000, 600),
     "patent-system.svg": (1000, 600),     # 발명신고용 도 1·2 (흑백, 수치 없음)
     "patent-dialog.svg": (1000, 700),
-    "dialog-flow.svg": (1000, 700),       # 보고서 그림 2 = 도 2 에서 표지만 뺀 것
+    "dialog-flow.svg": (1000, 700),       # 보고서 그림 3 = 도 2 에서 표지만 뺀 것
 }
 
 # (원본 md, 결과 docx, 목차 생성 여부)

@@ -7,6 +7,7 @@
 사용
   python tools/make_invention_hwp.py "<양식 폴더>"
   python tools/make_invention_hwp.py "<양식 폴더>" --hwpml <신고서.xml> <설명서.xml>
+  python tools/make_invention_hwp.py "<양식 폴더>" --api     # 전면 API 판 설명서만 (2026-09-22)
 
 도면 두 장은 docs/final/figures 의 SVG 를 크롬으로 구워 넣는다(FIGS).
 
@@ -45,9 +46,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 
-def load_content():
+def load_content(name="invention_desc_content"):
     spec = importlib.util.spec_from_file_location(
-        "desc_content", os.path.join(ROOT, "tools", "invention_desc_content.py"))
+        "desc_content", os.path.join(ROOT, "tools", name + ".py"))
     C = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(C)
     return C
@@ -59,12 +60,19 @@ SRC_SINKO = "[양식] 01.발명신고서 등_2023 (1).hwp"
 SRC_DESC = "[양식] 2. 발명의내용설명서 (3).hwp"
 OUT_SINKO = "발명신고서_재하봇_초안.hwp"
 OUT_DESC = "발명의내용설명서_재하봇_초안.hwp"
+OUT_DESC_API = "발명의내용설명서_재하봇_전면API.hwp"
 
 # 도면: (SVG, 원본 크기 px, 넣을 크기 mm). 발명신고용으로 흑백·수치 없이 따로 그린 것이다
 # (보고서용 그림은 수치와 주석이 많아 칸 폭으로 줄이면 읽히지 않았다). 칸 안쪽 폭 130mm 남짓.
 FIGS = [
     ("patent-system.svg", (1000, 600), (124, 74)),
     ("patent-dialog.svg", (1000, 700), (124, 87)),
+]
+# 전면 API 판(invention_desc_content_api.py) — 도 1 구성, 도 2 턴 판단·응답 관문, 도 3 놀이 바로잡기
+FIGS_API = [
+    ("patent-api-system.svg", (1000, 560), (124, 69)),
+    ("patent-api-flow.svg", (1000, 760), (124, 94)),
+    ("patent-api-repair.svg", (1000, 560), (124, 69)),
 ]
 
 # 양식 본문의 글꼴. 양식 안내글(3.1~3.4 제목 포함)이 한컴바탕 10pt 이고, 그냥 쓰면
@@ -97,8 +105,8 @@ PLAN_SINKO = [
 ]
 
 
-def plan_desc():
-    C = load_content()
+def plan_desc(content="invention_desc_content"):
+    C = load_content(content)
     return [   # 위와 같은 이유로 내림차순
         (13, "B8", "반드시 작성하지 않아도", C.CHUNGGU),
         (11, "B7", "3.4 발명의 구성 및 작용", C.SANGSE_4),
@@ -111,15 +119,17 @@ def plan_desc():
 
 
 # (칸 계획, 글꼴). 신고서 칸은 양식 글꼴이 그대로 따라와서 건드리지 않는다.
-PLANS = {"sinko": (lambda: PLAN_SINKO, None), "desc": (plan_desc, BODY_FONT)}
+PLANS = {"sinko": (lambda: PLAN_SINKO, None), "desc": (plan_desc, BODY_FONT),
+         "desc_api": (lambda: plan_desc("invention_desc_content_api"), BODY_FONT)}
+FIGS_OF = {"desc": FIGS, "desc_api": FIGS_API}
 
 
-def render_figs(work):
+def render_figs(work, figs=FIGS):
     """도면 SVG 를 2배 해상도 PNG 로 굽는다. 경로 목록을 돌려준다."""
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     from build_docs_docx import find_chrome
     chrome, out = find_chrome(), []
-    for svg, (w, h), _ in FIGS:
+    for svg, (w, h), _ in figs:
         src = os.path.join(ROOT, "docs", "final", "figures", svg)
         png = os.path.join(work, svg[:-4] + ".png")
         subprocess.run(
@@ -202,7 +212,7 @@ def phase_fill(in_xml, out_xml, plan_name, figs, fig_list):
     if figs:
         hwp.set_pos(fig_list, 0, 0)
         hwp.MoveListEnd()
-        for png, (*_, (w, h)) in zip(figs, FIGS):
+        for png, (*_, (w, h)) in zip(figs, FIGS_OF[plan_name]):
             hwp.BreakPara()
             # sizeoption=1 이 지정 크기다(0 은 원래 크기라 width 를 무시한다).
             hwp.insert_picture(png, embedded=True, sizeoption=1, width=w, height=h)
@@ -252,6 +262,20 @@ def build(xml, plan_name, out, figs=(), fig_list=0):
     print("  → %s" % os.path.basename(out))
 
 
+def main_api(folder, xml_desc):
+    """전면 API 판 설명서만 새 파일로 낸다. 로컬 판 초안은 건드리지 않는다."""
+    if xml_desc:
+        xml = open(xml_desc, encoding="utf-8").read()
+    else:
+        work = tempfile.mkdtemp(prefix="hwpdump-")
+        p = os.path.join(work, "t.xml")
+        run("dump", os.path.join(folder, SRC_DESC), p)
+        xml = open(p, encoding="utf-8").read()
+    print("발명의 내용 설명서 (전면 API)")
+    figs = render_figs(tempfile.mkdtemp(prefix="hwpfig-"), FIGS_API)
+    build(xml, "desc_api", os.path.join(folder, OUT_DESC_API), figs=figs, fig_list=6)
+
+
 def main(folder, xml_sinko, xml_desc):
     def hwpml(given, template):
         if given:
@@ -291,6 +315,8 @@ if __name__ == "__main__":
         sys.stdout.flush()
         os._exit(0)
 
+    api = "--api" in args
+    args = [a for a in args if a != "--api"]
     xs = xd = None
     if "--hwpml" in args:
         i = args.index("--hwpml")
@@ -298,4 +324,7 @@ if __name__ == "__main__":
         args = args[:i]
     if not args:
         sys.exit(__doc__)
-    main(args[0], xs, xd)
+    if api:
+        main_api(args[0], xd or xs)
+    else:
+        main(args[0], xs, xd)

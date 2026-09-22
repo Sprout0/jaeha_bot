@@ -50,7 +50,6 @@ from pathlib import Path
 
 import numpy as np
 import soundfile as sf
-from scipy.signal import resample_poly
 
 BASE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE))
@@ -148,6 +147,7 @@ def load_pcm(path: Path, trim: str) -> bytes:
     mono = data.mean(axis=1)
     if sr != SR:
         from math import gcd
+        from scipy.signal import resample_poly   # 파일 읽을 때만 — 젯슨엔 scipy 가 없다(realtime_live 는 안 쓴다)
         g = gcd(sr, SR)
         mono = resample_poly(mono, SR // g, sr // g)
     return (np.clip(TRIMS[trim](mono), -1.0, 1.0) * 32767).astype("<i2").tobytes()

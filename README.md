@@ -183,11 +183,12 @@ python -m app.main_realtime --no-wake  # 전면 API, 호출어 없이 바로 대
 젯슨의 `~/jaeha_bot` 은 git 저장소가 아니다. 노트북에서 코드만 밀어 넣는다.
 
 ```bash
-JETSON=사용자@주소 bash push_code.sh   # app/ configs/ scenarios/ data/ tools/ — configs/local.yaml 은 안 보낸다
+JETSON=사용자@주소 bash push_code.sh   # app/ configs/ scenarios/ + 실행 파일·젯슨용 도구 — configs/local.yaml 은 안 보낸다
 ```
 
 젯슨 주소는 저장소에 두지 않는다 — `JETSON=사용자@주소 bash push_code.sh` 처럼 넘긴다.
-`run.sh`·`requirements*.txt` 는 이 스크립트가 보내지 않으니 바뀌면 `scp` 로 따로 보낸다.
+평가·학습·비교 도구와 평가셋은 노트북 전용이라 보내지 않는다. 젯슨에서 쓰는 도구는 `push_code.sh` 의
+`FILES` 목록이다(호출어 본보기 등록 `enroll_wake.py`, 소음 녹음, 헛깨움 측정, 출력 진단, 라이브 확인 등).
 
 ---
 

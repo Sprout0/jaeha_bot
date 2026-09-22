@@ -1,0 +1,41 @@
+# ============================================================================
+# 젯슨 운영 설정 원본 — 2026-09-22 젯슨 ~/jaeha_bot/configs/local.yaml 을 그대로 옮겼다.
+# 비밀 값은 없다(키는 .env). 새 젯슨을 세울 때:
+#   cp configs/local.jetson.example.yaml configs/local.yaml
+# 노트북·PC 에서 쓸 예시는 configs/local.example.yaml.
+# ============================================================================
+
+# 이 기계(젯슨) 전용 덮어쓰기.
+#
+# 2026-08-10 — LLM 만 API. TTS 는 실기 청취 후 Supertonic 으로 되돌림.
+#   로컬 EXAONE + Supertonic   2.619s
+#   gpt-4o-mini + Supertonic   1.735s  ← 지금 이 설정
+# ⚠️ TTS 를 openai 로 바꾸면 첫 소리는 더 빠르다(스트리밍 0.694s vs 1.071s).
+#    되돌린 이유는 속도가 아니라 음질이다 — 실기에서 Supertonic 보다 나쁘게 들렸다.
+#    원인 후보: ReSpeaker 가 16kHz 전용이라 8kHz 위가 전부 잘린다. coral 을
+#    부드럽게 들리게 하던 고역이 거기 있다. (샘플은 24kHz 로 들려드렸던 것이라 비교가 불공정했다.)
+#    다시 판단하려면 tools/tts_audition.py 를 젯슨 스피커로 돌려 볼 것(노트북에서 scp).
+llm:
+  backend: openai
+
+tts:
+  backend: supertonic
+
+# 2026-09-11 호출어 2단계를 임베딩으로 — 젯슨 실기 판정용(계획 Task 4).
+#   근거: reports/wake/ab_verify_20260911.md (호출 25/35·헛깨움 1회 vs whisper 23/35·2회)
+#   합격선: 헛깨움 시간당 1회 이하, 부른 것 18/20 이상.
+#   되돌리기: 아래 wake: 블록을 지우면 저장소 기본(whisper)으로 돌아간다.
+wake:
+  onnx:
+    verify:
+      mode: embed
+      embed_rescue:
+        enabled: true
+        min_similarity: 0.85
+
+# 2026-09-11 노래 틀기(유튜브) 켬. 끄려면 false. 준비물 점검: ./run.sh setup-youtube
+youtube:
+  enabled: true
+
+# 2026-09-16 전면 API 대화 경로(app.main_realtime). 되돌리기: 이 줄 삭제.
+pipeline: realtime

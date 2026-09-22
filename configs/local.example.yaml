@@ -4,7 +4,7 @@
 # model_paths.yaml 은 젯슨 로컬 경로 기준값이고 한 벌뿐이다(push_code.sh 가 configs/ 를
 # 통째로 보낸다). 기계마다 달라야 하는 값과 **어느 경로로 돌지**는 여기에 적는다.
 #
-# 사용법: `configs/local.yaml` 로 복사하고 필요한 블록만 남긴다.
+# 사용법: `configs/local.yaml` 로 복사하고 필요한 블록만 남긴다. 젯슨 운영값 전체는 local.jetson.example.yaml.
 #   - git 미추적이고 push_code.sh 전송에서도 빠진다. 키 단위로 덮어쓴다(deep merge).
 #   - 🔴 이 파일이 지워지면 경고 없이 저장소 기본값(로컬 경로, 로컬 EXAONE)으로 돈다.
 #     젯슨의 운영 설정도 여기 있다.

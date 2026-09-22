@@ -42,7 +42,8 @@
 
 ### 경로 바꾸기
 
-`configs/local.yaml`(기계별 덮어쓰기, git 미추적)에 적는다. 예시는 `configs/local.example.yaml` 의 A 블록.
+`configs/local.yaml`(기계별 덮어쓰기, git 미추적)에 적는다. 예시는 `configs/local.example.yaml` 의 A 블록이고,
+지금 젯슨이 쓰는 설정 전체는 `configs/local.jetson.example.yaml` 이다(전면 API + 노래 켬 + 로컬 경로일 때 LLM 은 API).
 
 ```yaml
 pipeline: realtime
@@ -79,8 +80,8 @@ wake:
 | 무엇 | 어디에 | 누가 쓰나 | 구하는 법 |
 |---|---|---|---|
 | `.env` | 루트 | 둘 다 | `cp .env.example .env` 후 키 입력 (5절) |
-| `configs/local.yaml` | `configs/` | 둘 다 | `cp configs/local.example.yaml configs/local.yaml` 후 필요한 블록만 |
-| 호출어 모델 5개 | `models/wake/v6/` — `jaehabot_v6.onnx`, `embedding_model.onnx`, `melspectrogram.onnx`, `jaeha_v6.yaml`, `jaehabot_v6.pt`(학습 원본, 실행엔 불필요) | 둘 다 | 인계 받은 압축본. 다시 만들려면 `tools/colab_wake_train_v6.ipynb`(Colab, HF_TOKEN 은 Colab 비밀값) |
+| `configs/local.yaml` | `configs/` | 둘 다 | 젯슨: `cp configs/local.jetson.example.yaml configs/local.yaml` / PC: `local.example.yaml` 에서 필요한 블록만 |
+| 호출어 모델 5개 | `models/wake/v6/` — `jaehabot_v6.onnx`, `embedding_model.onnx`, `melspectrogram.onnx`, `jaeha_v6.yaml`, `jaehabot_v6.pt`(학습 원본, 실행엔 불필요) | 둘 다 | 인계 압축본 `jaeha_bot_wake_v6.tar.gz`(3.5MB, 본보기 포함 — 루트에서 `tar -xzf`). 다시 만들려면 `tools/colab_wake_train_v6.ipynb`(Colab, HF_TOKEN 은 Colab 비밀값) |
 | 호출어 본보기 `templates_haitid.npy` | `models/wake/v6/` | 전면 API 필수, 로컬은 embed 모드일 때 | **쓸 사람 목소리로 새로 만든다**: `python tools/enroll_wake.py --record 10` (지금 것은 개발자 가족 한 명의 목소리) |
 | EXAONE 3.5 2.4B Q4 GGUF (1.6GB) | `models/exaone-3.5-2.4b-q4.gguf` | 로컬 경로의 폴백 | Hugging Face `LGAI-EXAONE/EXAONE-3.5-2.4B-Instruct-GGUF`. ⚠️ 비상업 라이선스 |
 | faster-whisper medium, Supertonic | 캐시(`~/.cache/huggingface`) | 로컬 경로 | 첫 실행 때 자동으로 받는다 |
@@ -176,19 +177,18 @@ python -m app.main_realtime --no-wake  # 전면 API, 호출어 없이 바로 대
   합성해 `~/.cache/jaeha_voice` 에 둔다. **첫 기동만 4~5분** 걸린다.
 - 로그: `logs/jaeha_날짜.log`(대화), `logs/metrics_날짜.jsonl`(턴별 지연·비용),
   `logs/guardian_날짜.jsonl`(막거나 정정한 일, 글자만).
-- 시험: `python -m pytest -q` — 마이크·모델·젯슨·네트워크 없이 전부 돈다.
+- 시험: `python -m pytest -q` — 1,204개, 마이크·모델·젯슨·네트워크 없이 30초 안에 돈다.
 
 ### 젯슨으로 배포
 
 젯슨의 `~/jaeha_bot` 은 git 저장소가 아니다. 노트북에서 코드만 밀어 넣는다.
 
 ```bash
-JETSON=사용자@주소 bash push_code.sh   # app/ configs/ scenarios/ + 실행 파일·젯슨용 도구 — configs/local.yaml 은 안 보낸다
+JETSON=사용자@주소 bash push_code.sh   # 젯슨 주소는 저장소에 두지 않고 이렇게 넘긴다
 ```
 
-젯슨 주소는 저장소에 두지 않는다 — `JETSON=사용자@주소 bash push_code.sh` 처럼 넘긴다.
-평가·학습·비교 도구와 평가셋은 노트북 전용이라 보내지 않는다. 젯슨에서 쓰는 도구는 `push_code.sh` 의
-`FILES` 목록이다(호출어 본보기 등록 `enroll_wake.py`, 소음 녹음, 헛깨움 측정, 출력 진단, 라이브 확인 등).
+보내는 것: `app/` `configs/`(`local.yaml` 제외) `scenarios/`, 실행·환경 파일, 젯슨에서 쓰는 도구 10개
+(`tools/README.md` 1절). 평가·학습 도구와 평가셋은 노트북 전용이라 보내지 않는다.
 
 ---
 
@@ -197,12 +197,13 @@ JETSON=사용자@주소 bash push_code.sh   # app/ configs/ scenarios/ + 실행 
 | 파일 | 내용 |
 |---|---|
 | `configs/model_paths.yaml` | 모든 설정의 기준값(로컬 경로 기준). 값마다 정한 근거가 주석으로 붙어 있다 — 숫자를 바꾸기 전에 그 줄을 읽을 것. 전면 API 설정은 `realtime:` 절(모델·목소리·속도·말 끝 900ms·가드) |
-| `configs/local.yaml` | 이 기계만의 덮어쓰기(경로 선택 포함). git 미추적 |
+| `configs/local.yaml` | 이 기계만의 덮어쓰기(경로 선택 포함). git 미추적. 예시: `local.example.yaml`(PC), `local.jetson.example.yaml`(젯슨 운영값) |
 | `configs/prompt_templates.yaml` | 시스템 프롬프트 — 말투·길이·안전 규칙 |
 | `configs/safety_rules.yaml` | 위험 낱말·먹기 표현 등. `app/safety.py` 가 읽는다 |
 | `configs/audio_assets.yaml` | 로컬 음원·효과음 목록 |
 | `configs/alsa/respk.asoundrc` | 노래와 봇 목소리를 한 스피커로 섞는 ALSA 장치 |
 | `scenarios/scenario_cards.json` | 놀이 카드(동물 8, 낱말 10) |
+| `configs/wake/` | 호출어 학습 설정(Colab 용 — 봇은 읽지 않는다) |
 
 ---
 
@@ -224,10 +225,18 @@ app/
   education_modes.py      놀이 상태머신(두 경로 공용)
   music.py / youtube.py / song_names.py / loudness.py   노래 틀기
   safety.py / claims.py / text_norm.py / metrics.py / config.py
-configs/  scenarios/  data/(평가셋·few-shot)
-tests/    tools/(측정·평가·호출어 학습·문서 생성. tools/jetson/ = GPU 빌드 스크립트)
-reports/  측정 결과 요약(원자료는 git 미추적)
-docs/final/  마무리 보고서·발명신고 초안   docs/superpowers/  설계·구현 계획
+configs/             설정 (7절)
+scenarios/           놀이 카드
+data/                LLM few-shot 예시(로컬 경로가 읽는다), 평가셋, 목소리 블라인드 정답표, 호출어 녹음 메타
+tests/               시험 1,204개
+tools/               젯슨 관리 도구 · 측정/평가 · 호출어 학습 · 문서 생성 — 목록은 tools/README.md
+reports/             측정 결과 — 주제별 README 에 요약, 일부 원자료(큰 파일은 git 미추적)
+docs/submission-api/ 최종 제출본(전면 API 기준) 원고
+docs/final/          로컬 구성 시점의 보고서·발명신고 초안(09-12 기준)
+docs/superpowers/    기능별 설계(specs)·구현 계획(plans)
+assets/              동요·효과음(파일은 git 미추적)
+models/              가중치(git 미추적, 3절)
+run.sh · push_code.sh · push_model.sh · Dockerfile · docker-compose.yml · requirements*.txt
 ```
 
 ---
@@ -261,7 +270,9 @@ docs/final/  마무리 보고서·발명신고 초안   docs/superpowers/  설�
 
 ## 11. 문서
 
-- [docs/final/README.md](docs/final/README.md) — 결과보고서·기술 상세·전면 API 개발보고서·발명신고 초안 목록
+- [docs/submission-api/README.md](docs/submission-api/README.md) — **최종 제출본**(전면 API 기준): 결과보고서·기술상세보고서·발명신고
+- [docs/final/README.md](docs/final/README.md) — 로컬 구성 시점(09-12)의 보고서와 근거 문서
 - [docs/final/api-개발보고서.md](docs/final/api-개발보고서.md) — 전면 API 경로를 만든 경과와 실측
+- [tools/README.md](tools/README.md) — 도구 목록
 - `docs/superpowers/specs/` — 기능별 설계 문서(결정의 이유와 실측 기록)
 - `reports/*/README.md` — 측정 결과 요약

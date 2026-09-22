@@ -74,6 +74,17 @@ DOCS = [
 ]
 
 
+# 전면 API 확정 뒤의 제출본(2026-09-22). 결과보고서와 별첨 1만 여기서 만든다 — 별첨 2(출원
+# 서류)는 한글 양식 파일이 원본이다(tools/make_invention_hwp.py --api).
+BUNDLES = {
+    "final": (FINAL, DOCS, FIGURES),
+    "api": (os.path.join(ROOT, "docs", "submission-api"), [
+        ("결과보고서.md", "01_결과보고서.docx", True),
+        ("기술상세보고서.md", "02_별첨1_기술상세보고서.docx", True),
+    ], {"pipeline-realtime.svg": (1000, 640)}),
+}
+
+
 def find_chrome():
     for p in CHROME_CANDIDATES:
         if os.path.exists(p):
@@ -247,7 +258,11 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--pandoc")
     ap.add_argument("--reference", help="직접 만든 서식 틀. 없으면 그때그때 만든다")
+    ap.add_argument("--bundle", choices=sorted(BUNDLES), default="final",
+                    help="final = docs/final, api = docs/submission-api")
     a = ap.parse_args()
+    FINAL, DOCS, FIGURES = BUNDLES[a.bundle]
+    OUTDIR = os.path.join(FINAL, "docx")
     pandoc = a.pandoc or find_pandoc()
 
     tmp = None

@@ -1,0 +1,17 @@
+# === 재하봇 — 전면 API 경로(pipeline: realtime) 전용 의존성 ===
+# 음성 인식·합성·대화를 OpenAI Realtime 이 하므로 GPU·CUDA 빌드가 필요 없다.
+# 버전은 Jetson Orin Nano(L4T R36.5, Python 3.10.20)에서 실제로 돌고 있는 값이다(2026-09-22).
+# PC(x86_64)·Docker(python:3.10-slim) 에서도 같은 목록으로 설치된다.
+#
+# 시스템 패키지(apt): libportaudio2 libsndfile1  (sounddevice·soundfile 이 쓴다)
+# 로컬 경로(pipeline: local)까지 돌리려면 requirements.txt 를 본다.
+
+numpy==2.2.6
+PyYAML==6.0.3
+python-dotenv==1.2.2      # .env 에서 OPENAI_API_KEY 등을 읽는다
+websockets==16.1.1        # Realtime 소켓
+sounddevice==0.5.5        # 마이크·스피커
+soundfile==0.14.0         # 고정 문구 wav 캐시·음원 읽기
+soxr==1.1.0               # 16k(마이크) ↔ 24k(Realtime) 리샘플
+onnxruntime==1.23.2       # 호출어 검출(ONNX). PyPI 의 py3.10 최신. 젯슨은 onnxruntime-gpu 1.24.0(젯슨 전용 인덱스)이 이미 있으면 그대로 둔다
+psutil==7.2.2             # 계측(메모리·CPU). 없으면 그 값만 비고 봇은 돈다

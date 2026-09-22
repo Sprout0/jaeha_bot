@@ -1,30 +1,32 @@
 # =====================================================================
-# 재하봇 1 — Jetson Orin Nano (JetPack 6 / L4T r36.x) 용 이미지
-# 베이스: NVIDIA L4T PyTorch (ARM64 + CUDA 포함)
-# 태그는 보드의 JetPack 버전에 맞춰 조정하세요. (예: r36.2.0)
+# 재하봇 — 전면 API 경로(pipeline: realtime) 이미지
+#
+# GPU 가 필요 없는 경로라 일반 파이썬 이미지를 쓴다. python:3.10-slim 은 arm64(젯슨)와
+# amd64(PC)를 모두 제공하므로 같은 파일로 두 기계에서 빌드된다.
+#
+# 로컬 경로(pipeline: local — STT·TTS·LLM 을 보드 GPU 로)는 이미지로 만들지 않는다.
+# CTranslate2·llama-cpp 를 CUDA 로 소스 빌드해야 해서(tools/jetson/) 네이티브 conda 로 설치한다.
+#
+# 이미지에 넣지 않는 것: .env(키), configs/local.yaml(기계별 설정), models/(가중치)
+#   → docker-compose.yml 이 실행 때 붙인다.
 # =====================================================================
-FROM nvcr.io/nvidia/l4t-pytorch:r36.2.0-pth2.2-py3
+FROM python:3.10-slim
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# 오디오(마이크/스피커) + 영상 처리용 시스템 라이브러리
+# sounddevice → PortAudio, soundfile → libsndfile, 장치 확인용 alsa-utils(aplay -l)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ffmpeg libsndfile1 libportaudio2 portaudio19-dev \
-        libgl1 libglib2.0-0 alsa-utils \
+        libportaudio2 libsndfile1 alsa-utils \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+COPY requirements-realtime.txt .
+RUN pip install --no-cache-dir -r requirements-realtime.txt
 
-# 의존성 먼저 복사 -> 레이어 캐시 활용
-COPY requirements.txt .
-RUN pip3 install --no-cache-dir -r requirements.txt
+COPY app/ app/
+COPY configs/ configs/
+COPY scenarios/ scenarios/
 
-# 소스 복사
-COPY . .
-
-# 모델/로그는 볼륨으로 마운트 (이미지에 굽지 않음)
-VOLUME ["/app/models", "/app/logs"]
-
-CMD ["python3", "-m", "app.main"]
+CMD ["python", "-m", "app.main_realtime"]

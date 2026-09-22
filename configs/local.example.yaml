@@ -1,23 +1,40 @@
 # ============================================================================
 # configs/local.yaml 예시 — '이 기계에서만' 다른 값을 덮어쓴다.
 #
-# 왜 필요한가: model_paths.yaml 은 한 벌뿐인데(push_code.sh 가 configs/ 를 통째로
-# 젯슨에 밀어넣는다) 아래 항목들은 젯슨과 노트북이 **정반대**여야 한다.
-# 매번 손으로 고쳤다 되돌리면 실수로 cuda 인 채 push 하거나 pc 태그로 젯슨 로그를
-# 남기게 된다(실제로 겪었다).
+# model_paths.yaml 은 젯슨 로컬 경로 기준값이고 한 벌뿐이다(push_code.sh 가 configs/ 를
+# 통째로 보낸다). 기계마다 달라야 하는 값과 **어느 경로로 돌지**는 여기에 적는다.
 #
-# 사용법: 이 파일을 `configs/local.yaml` 로 복사하고 필요한 줄만 남긴다.
-#   - git 미추적(.gitignore)이고 push_code.sh 전송에서도 빠지므로 기계마다 다르게 둘 수 있다.
-#   - 섹션 단위가 아니라 '키 단위'로 덮어쓴다(deep merge) — 여기 안 적은 값은 운영값 그대로.
-#   - 젯슨에는 이 파일을 두지 않는다. model_paths.yaml 자체가 젯슨 기준값이다.
+# 사용법: `configs/local.yaml` 로 복사하고 필요한 블록만 남긴다.
+#   - git 미추적이고 push_code.sh 전송에서도 빠진다. 키 단위로 덮어쓴다(deep merge).
+#   - 🔴 이 파일이 지워지면 경고 없이 저장소 기본값(로컬 경로, 로컬 EXAONE)으로 돈다.
+#     젯슨의 운영 설정도 여기 있다.
 # ============================================================================
 
-# ── 노트북(Windows, GPU 없음)에서 돌릴 때 ────────────────────────────────────
+# ── A. 전면 API 경로로 바꾸기 (지금 젯슨의 운영 설정) ─────────────────────────
+# 필요: .env 의 OPENAI_API_KEY, models/wake/v6/templates_haitid.npy(호출어 본보기)
+# 되돌리기: 이 블록을 지우면 로컬 경로(app/main.py)다.
+# pipeline: realtime            # run.sh 가 app.main_realtime 을 띄운다
+# wake:
+#   onnx:
+#     verify:
+#       mode: embed             # 전면 API 에는 whisper 가 없다 — 없으면 기동에서 멈춘다
+#       embed_rescue:
+#         enabled: true
+#         min_similarity: 0.85  # 젯슨 운영값(09-11). 근거·조정법은 tools/enroll_wake.py 머리말
+
+# ── B. 로컬 경로에서 LLM 만 API 로 (전면 API 이전의 젯슨 운영 설정) ──────────
+# llm:
+#   backend: openai             # 없으면 로컬 EXAONE GGUF. 키가 없어도 조용히 로컬로 내려간다
+
+# ── C. 노래 틀기(유튜브) — 켜기 전에 ./run.sh setup-youtube ───────────────────
+# youtube:
+#   enabled: true               # .env 의 YOUTUBE_DATA_KEY 필요
+
+# ── D. 노트북(Windows, GPU 없음)에서 돌릴 때 ─────────────────────────────────
 stt:
   # 노트북 ctranslate2 는 CPU 전용 휠이다. cuda 로 두면 import/로드 단계에서 죽는다.
   device: cpu
   compute_type: int8    # CPU 에선 float16 이 오히려 느리다
-  # model_size: small   # 노트북 CPU 로 turbo 를 돌리면 발화당 수십 초 — 필요하면 줄일 것
 
 metrics:
   tag: pc               # 젯슨 기본값은 jetson. 안 바꾸면 노트북 실행이 젯슨 로그로 섞인다
@@ -26,6 +43,4 @@ audio:
   device: null          # ReSpeaker 는 젯슨에만 꽂혀 있다. null = 시스템 기본 장치
 
 tts:
-  # 노트북엔 CUDA 가 없어 자동으로 CPU 로 내려가므로 사실 안 적어도 된다.
-  # 경고 로그가 거슬릴 때만 켤 것.
-  providers: ["CPUExecutionProvider"]
+  providers: ["CPUExecutionProvider"]   # 노트북엔 CUDA 가 없다(안 적어도 CPU 로 내려가지만 경고가 찍힌다)

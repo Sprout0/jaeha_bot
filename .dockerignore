@@ -1,15 +1,20 @@
-.claude
+# 이미지는 Dockerfile 이 고른 폴더만 복사하지만, 비밀·기계별 설정은 여기서도 막아 둔다.
+.env
+configs/local.yaml
+.git/
+.claude/
+.superpowers/
 __pycache__/
 *.pyc
-.git/
-.venv/
-venv/
-logs/*
-!logs/.gitkeep
-models/*
-!models/.gitkeep
-*.gguf
-*.pt
+models/
+logs/
+output/
+reports/
+docs/
+data/
+assets/songs/
 *.wav
 *.mp4
+*.gguf
+*.pt
 가이드 라인.pdf

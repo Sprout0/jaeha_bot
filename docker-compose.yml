@@ -1,22 +1,29 @@
-# Jetson Orin Nano 실행용. 카메라/오디오 장치와 모델 볼륨을 연결한다.
-# 실행:  docker compose up --build
+# 재하봇 전면 API 경로를 컨테이너로 돌린다 (젯슨·리눅스 PC).
+#
+# 준비:
+#   cp .env.example .env                              # OPENAI_API_KEY 채우기
+#   cp configs/local.example.yaml configs/local.yaml  # '전면 API 로 바꾸기' 블록의 주석 풀기
+#   models/wake/v6/ 에 호출어 모델 5개 + templates_haitid.npy (README '모델' 절)
+# 실행:
+#   docker compose up --build
+#
+# 노래 틀기(유튜브)는 크롬·Xvfb·PulseAudio 가 필요해 이 컨테이너에서는 켜지 않는다.
 services:
   jaeha_bot:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: jaeha_bot:jetson
+    build: .
+    image: jaeha_bot:realtime
     container_name: jaeha_bot
-    runtime: nvidia            # nvidia-container-runtime (JetPack 기본 포함)
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=all
+    env_file: .env
     devices:
-      - /dev/snd:/dev/snd      # 마이크/스피커
-      - /dev/video0:/dev/video0  # USB/CSI 카메라
+      - /dev/snd:/dev/snd                              # ReSpeaker 마이크·스피커
+    group_add:
+      - audio
     volumes:
-      - ./models:/app/models   # 모델 가중치 (이미지와 분리)
-      - ./logs:/app/logs       # 로그/지연·메모리 측정
-      - ./reports:/app/reports
-    network_mode: host         # 로컬 우선, 외부 서버 의존 최소화
-    restart: unless-stopped    # 독립 자동 부팅 (가이드 5)
+      - ./configs/local.yaml:/app/configs/local.yaml:ro
+      - ./models:/app/models:ro
+      - ./logs:/app/logs                               # 대화 로그·계측·보호자 기록
+      - voice_cache:/root/.cache                       # 고정 문구 wav(첫 기동에 4~5분 합성)
+    restart: unless-stopped
+
+volumes:
+  voice_cache:

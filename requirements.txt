@@ -2,7 +2,7 @@
 # ⚠️ 젯슨은 이 파일로 설치하지 않는다. conda env `jaeha_bot`(py3.10) + 젯슨 전용 pip
 #    인덱스(https://pypi.jetson-ai-lab.io/jp6/cu126)를 쓰고, 일부는 소스빌드다
 #    (ctranslate2 CUDA, llama-cpp-python CUDA). 아래 목록은 **PC 개발 기준**이다.
-#    젯슨 설치 절차와 함정은 메모리 jaeha-bot-progress 참조.
+#    젯슨 설치 절차는 README 4절 C. 전면 API 경로만 쓸 거면 requirements-realtime.txt.
 
 # --- 음성 STT/TTS ---
 faster-whisper>=1.0.0

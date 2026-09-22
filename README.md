@@ -1,176 +1,266 @@
-# 재하봇 1 (jaeha_bot) — 2세 유아용 음성 놀이 AI
+# 재하봇 (jaeha_bot) — 2세 유아용 음성 대화·놀이 로봇
 
-Jetson Orin Nano(8GB)에서 **독립 구동**하는 한국어 음성 교육 놀이 로봇.
+아이가 **"하이 티드"** 라고 부르면 깨어나 대화하고, 동물 소리 흉내·따라 말하기 놀이를 하고,
+동요를 틀어 주는 한국어 음성 로봇이다. NVIDIA Jetson Orin Nano 8GB + ReSpeaker USB 마이크
+어레이에서 돈다. 30초 동안 말이 없으면 다시 호출어만 듣는 대기로 돌아간다.
+
+> 상태(2026-09-22): 개발 종료·인수인계 단계. 모든 실기 수치는 **성인(개발자) 목소리**로
+> 얻었고, 대상 아동이 실제로 쓴 적은 없다.
+
+---
+
+## 1. 대화 경로 두 가지
+
+같은 저장소에 두 경로가 있고, **설정 한 줄(`pipeline`)** 로 고른다. 호출어 검출·놀이
+상태머신·노래·안전 규칙은 두 경로가 함께 쓴다.
 
 ```
-마이크 ─▶ 호출어 KWS(ONNX) ─▶ STT(faster-whisper) ─▶ 놀이 상태머신 ─▶ TTS(Supertonic)
-                                                    └▶ LLM ─┬ gpt-4o-mini (운영 기본)
-                                                            └ EXAONE 2.4B GGUF (오프라인 폴백)
+[로컬 경로]  pipeline: local  →  app/main.py            (저장소 기본값)
+마이크 → 호출어(ONNX 2단계) → 음성 인식(faster-whisper medium, 보드 GPU)
+       → 놀이 상태머신 / LLM(gpt-4o-mini 또는 로컬 EXAONE 2.4B) → 음성 합성(Supertonic + TensorRT) → 스피커
+
+[전면 API 경로]  pipeline: realtime  →  app/main_realtime.py   (지금 젯슨 운영값)
+마이크 → 호출어(ONNX 2단계, 보드) → OpenAI Realtime(gpt-realtime-mini: 받아 적기·대답·목소리 marin)
+       → 턴 판단(잠들기·노래·놀이·대화) → 응답 관문(위험 턴 붙잡기·놀이 이탈 바로잡기) → 스피커
 ```
 
-부르기 전에는 **대기 모드**로 호출어만 듣는다(LLM·TTS 를 안 돌려 자원 절약).
-**"하이 티드"** 가 들리면 대화 모드로 깨어나고, 30초 조용하면 다시 잠든다.
-(2026-08-25 에 `재하봇` 에서 바꿨다 — whisper 가 고유명사 `재하봇` 을 힌트 없이는
-41% 밖에 못 읽어 2단계 검증이 무거웠다. `하이 티드` 는 36개 중 35개를 정확히 읽는다.)
-
-## 지금 어디까지 됐나
-
-| 부분 | 상태 | 비고 |
+| | 로컬 경로 | 전면 API 경로 |
 |---|---|---|
-| 호출어(KWS) | ✅ 동작 | ONNX 2단계. v6 배포 완료(08-26), 임계 0.05. 젯슨 실기 5턴 1패스 통과(09-07). 🔴 거실 헛깨움 시간당 1.33~2.67회로 **합격선(1회) 초과** |
-| STT | ✅ 동작 | **`medium`**, 젯슨 GPU. 3~6세 CER **31.46%**<sup>*</sup> |
-| LLM | ✅ 동작 | **하이브리드** — gpt-4o-mini 기본, 끊기면 EXAONE-3.5-2.4B Q4 폴백(지연 적재) |
-| TTS | ✅ 동작 | Supertonic ONNX + **TensorRT@24**. 합성 817→454ms, 젯슨 첫 소리 **721ms** |
-| 놀이 | 🔶 2개 | 동물소리·따라말하기. 색칠·사물찾기·감정대화는 카드만 |
-| 노래 틀기 | 🔶 기본 꺼짐 | 로컬 음원 우선 + 유튜브 IFrame. 젯슨만 켬(09-11). ⏳ 노래 중 호출어는 스피커 없어 미측정 |
-| 안전 판정기 | 🔶 평가 전용 | `app/safety.py`·`claims.py` 는 `tools/eval_llm.py` 에서만 쓴다 — **런타임 가드 미적용**. 운영 안전은 프롬프트 규칙이다 |
-| 비전 | 🚧 미구현 | STEP 9. `vision_module.py` 는 스텁. 제약은 메모리(TRT 2,887MB) |
-| 부모 브리핑 | 🚧 미구현 | `daily_briefing.py` 는 스텁(참조하는 코드 없음) |
+| 체감 응답(말 끝 → 첫 소리, 젯슨 실기) | 중앙 4.14초, 3초 이내 0/5턴 (09-07) | 중앙 **2.56초**, 3초 이내 14/18턴 (09-19)<sup>1</sup> |
+| 시스템 메모리 / GPU | 85% / 99.9% | 13~33% / 0% |
+| 아이 음성 | **기기 밖으로 안 나간다**(LLM 에는 글자만) | OpenAI 서버로 간다<sup>2</sup> |
+| 인터넷이 끊기면 | 로컬 EXAONE 으로 이어서 대답 | 3번 다시 붙고, 안 되면 안내 문구 뒤 대기 |
+| 목소리 | Supertonic F2 (블라인드 평가로 고름) | Realtime `marin`, 속도 1.05 |
+| 비용 | LLM 만 — 무시할 수준 | 턴당 중앙 $0.003 |
+| 설치 | CUDA 소스 빌드 필요(4절 C) | pip 9개(4절 A) 또는 Docker(4절 B) |
 
-<sup>*</sup> 운영값은 `medium`(`configs/model_paths.yaml`)이다. **3~6세 153발화·화자 114명
-실측 CER 31.46%** (`reports/stt/README.md`). 실제 대상인 **2세는 공개 데이터가 없어 여전히
-미측정**이고, 이 프로젝트에서 가장 큰 미검증 영역이다. (예전에 여기 적혀 있던
-`large-v3-turbo` · CER 2.96% 는 9세 음성 기준의 다른 모델 값이다.)
+<sup>1</sup> 말 끝 기다리기 1,200ms 시점의 값이다. 지금은 900ms 이고(아이 녹음 153개로 −0.28초·잘림
+2→3% 측정, `reports/turn/realtime_turn_end.md`), 젯슨에서 다시 재지 않았다.
+<sup>2</sup> OpenAI 는 만 13세 미만 개인정보에 데이터 무보관(ZDR) 적용을 요구하고, Realtime 의 ZDR
+은 **기관 명의 사전 승인**이 필요하다. 승인은 받지 않았다. **실제 아동에게 쓰려면 이게 먼저다.**
+받기 전에는 로컬 경로를 쓴다.
 
-📄 **마무리 문서는 [`docs/final/`](docs/final/README.md) 에 있다** — 보고서 본문
-([report.md](docs/final/report.md)), 특허 정리, 그림. 서술 대상은 태그
-`doc-baseline-2026-09-12` 다.
+### 경로 바꾸기
 
-## 폴더 구조
+`configs/local.yaml`(기계별 덮어쓰기, git 미추적)에 적는다. 예시는 `configs/local.example.yaml` 의 A 블록.
 
-```
-jaeha_bot/
-├── app/
-│   ├── main.py            # 엔트리포인트 (대기↔대화 루프)
-│   ├── config.py          # configs/*.yaml 로더 (+ local.yaml 오버레이)
-│   ├── audio_source.py    # 마이크 단일 스트림 소유 (감지기·STT 가 공유)
-│   ├── wake.py            # 호출어 판정 + 감지기 선택(ONNX / STT 폴백)
-│   ├── wake_onnx.py       # ONNX KWS 감지기
-│   ├── stt_module.py      # faster-whisper STT + 에너지 VAD + 환각 가드
-│   ├── tts_module.py      # Supertonic TTS
-│   ├── agent.py           # LLM 대화·놀이 대사 렌더 (API/로컬 공통 후처리)
-│   ├── education_modes.py # 놀이 상태머신
-│   ├── safety.py          # 답변 안전 판정 (평가 지표용. 런타임 가드는 미적용)
-│   ├── claims.py          # 날조 판정 (없는 놀이·음원을 약속하는지)
-│   ├── text_norm.py       # 자모 거리, 오인식 교정, 반복 제거
-│   ├── metrics.py         # 턴별 지연·메모리 계측
-│   ├── vision_module.py   # 🚧 스텁
-│   └── daily_briefing.py  # 🚧 스텁
-├── configs/               # 런타임 설정 (아래 '설정' 참조)
-│   └── wake/              # 호출어 학습 설정 (Colab 용, 런타임 아님)
-├── scenarios/             # 놀이 카드(JSON)
-├── data/                  # few-shot 예시(= QLoRA 씨앗) + 평가셋 3종
-├── tests/                 # 1,028건. 마이크·모델·젯슨·네트워크 없이 전부 돈다
-├── tools/                 # 런타임 아님 — 호출어 데이터 생성·검수, LLM 평가, 벤치
-├── reports/eval/          # 평가 원본 로그(답변 전문). 판정 규칙이 바뀌면 재채점한다
-├── models/                # 가중치 (git 미추적, push_model.sh 로 별도 배포)
-├── logs/                  # 계측·녹음 (git 미추적)
-└── docs/superpowers/      # 설계·계획 문서 (호출어 감지기 / 놀이 상호작용)
+```yaml
+pipeline: realtime
+wake:
+  onnx:
+    verify:
+      mode: embed            # 전면 API 에는 whisper 가 없어 임베딩 대조만 쓴다
+      embed_rescue: {enabled: true, min_similarity: 0.85}
 ```
 
-## 실행
+되돌리려면 이 블록을 지운다. `./run.sh` 가 `pipeline` 을 읽어 진입점을 고르고,
+`./run.sh check` 가 지금 어느 경로인지와 준비 상태를 보여 준다.
+🔴 `local.yaml` 이 지워지면 **경고 없이** 저장소 기본값(로컬 경로 + 로컬 EXAONE)으로 돈다.
 
-노트북·젯슨 모두 conda env `jaeha_bot` 을 쓴다.
+---
+
+## 2. 무엇이 되고 무엇이 안 되나
+
+| 기능 | 로컬 | 전면 API | 비고 |
+|---|---|---|---|
+| 호출어 "하이 티드" | ✅ | ✅ | 임베딩 대조 호출 25/35(성인). 거실 45분 녹음에 헛깨움 1~2회 — 합격선(시간당 1회) 근처 |
+| 자유 대화 | ✅ | ✅ | |
+| 놀이 2종 (동물 소리·따라 말하기) | ✅ | ✅ | 놀이 진행·정답 판정은 코드(상태머신)가 한다. 색칠·사물찾기·감정은 카드만 있음 |
+| 놀이 이탈 바로잡기 | 틀린 문장을 합성 전에 템플릿으로 교체 | 글자를 보고 틀린 이름이 들리기 전에 잘라 미리 녹음한 문장으로 이음 | API: 실서버 24턴 중 8턴 바로잡음, 샘 0 |
+| 안전 | 프롬프트 규칙 | 프롬프트 규칙 + 위험 신호 턴만 소리를 붙잡아 검사, 막으면 안전 문장 + `logs/guardian_*.jsonl` | API 가드는 젯슨 실기 전 |
+| 명령(잠들기·노래·놀이) | 글자 규칙 | 글자 규칙 + 모델 도구 호출 | API 도구 11/13 맞음 |
+| 노래 틀기(유튜브 아동용 영상만) | 🔶 기본 꺼짐 | 🔶 기본 꺼짐 | 젯슨만 켬. 크롬·Xvfb·PulseAudio 필요(`./run.sh setup-youtube`) |
+| 부모 알림 전송 · 비전 · 비용 상한 | 🚧 | 🚧 | `vision_module.py`·`daily_briefing.py` 는 빈 껍데기 |
+
+---
+
+## 3. 저장소에 없는 것 (따로 받아야 한다)
+
+| 무엇 | 어디에 | 누가 쓰나 | 구하는 법 |
+|---|---|---|---|
+| `.env` | 루트 | 둘 다 | `cp .env.example .env` 후 키 입력 (5절) |
+| `configs/local.yaml` | `configs/` | 둘 다 | `cp configs/local.example.yaml configs/local.yaml` 후 필요한 블록만 |
+| 호출어 모델 5개 | `models/wake/v6/` — `jaehabot_v6.onnx`, `embedding_model.onnx`, `melspectrogram.onnx`, `jaeha_v6.yaml`, `jaehabot_v6.pt`(학습 원본, 실행엔 불필요) | 둘 다 | 인계 받은 압축본. 다시 만들려면 `tools/colab_wake_train_v6.ipynb`(Colab, HF_TOKEN 은 Colab 비밀값) |
+| 호출어 본보기 `templates_haitid.npy` | `models/wake/v6/` | 전면 API 필수, 로컬은 embed 모드일 때 | **쓸 사람 목소리로 새로 만든다**: `python tools/enroll_wake.py --record 10` (지금 것은 개발자 가족 한 명의 목소리) |
+| EXAONE 3.5 2.4B Q4 GGUF (1.6GB) | `models/exaone-3.5-2.4b-q4.gguf` | 로컬 경로의 폴백 | Hugging Face `LGAI-EXAONE/EXAONE-3.5-2.4B-Instruct-GGUF`. ⚠️ 비상업 라이선스 |
+| faster-whisper medium, Supertonic | 캐시(`~/.cache/huggingface`) | 로컬 경로 | 첫 실행 때 자동으로 받는다 |
+| 동요 mp3 | `assets/songs/` | 노래 | `assets/README.md`. 목록은 `configs/audio_assets.yaml` |
+
+젯슨으로 모델을 보낼 때는 `bash push_model.sh <파일>`.
+
+---
+
+## 4. 환경 만들기
+
+검증된 조합: **Jetson Orin Nano 8GB, L4T R36.5(JetPack 6 계열), CUDA 12.6, Python 3.10.20**
+(miniforge conda env `jaeha_bot`). 개발 PC 는 Windows 11 + Anaconda(Python 3.12).
+
+### A. 전면 API 경로 — 어느 기계든 (권장)
+
+GPU 가 필요 없다.
 
 ```bash
-conda activate jaeha_bot && python -m app.main
+sudo apt install libportaudio2 libsndfile1          # 리눅스
+conda create -n jaeha_bot python=3.10 -y && conda activate jaeha_bot
+pip install -r requirements-realtime.txt            # 젯슨 실사용 버전으로 고정
 ```
 
-마이크·TTS 없이 대화와 놀이만 확인하려면:
+### B. 전면 API 경로 — Docker
+
+`python:3.10-slim` 기반이라 젯슨(arm64)과 리눅스 PC(amd64)에서 같은 파일로 빌드된다.
+키·기계별 설정·모델은 이미지에 굽지 않고 실행 때 붙인다(`docker-compose.yml` 머리말).
 
 ```bash
-python -m app.main --text
+docker compose up --build
 ```
 
-모듈별 단독 테스트: `python -m app.stt_module` (마이크), `python -m app.agent` (LLM),
-`python -m app.wake` (문자열 판정, 마이크 불필요).
+⚠️ 이 Dockerfile 은 2026-09-22 에 새로 썼고 **이미지 빌드는 아직 못 해 봤다**(설치 파일이
+arm64·amd64 로 모두 받아지는 것까지만 확인). 노래 틀기는 컨테이너에서 켜지 않는다. 젯슨에는
+Docker 가 깔려 있지 않다.
 
-## 설정 — ⚠️ 이 부분을 먼저 읽을 것
+### C. 로컬 경로 — 젯슨 네이티브 (GPU)
 
-`configs/model_paths.yaml` 은 **젯슨(운영) 기준값**이다. 값마다 그렇게 정한 실측 근거가
-주석으로 붙어 있으니, 숫자를 바꾸기 전에 그 줄을 읽는 편이 빠르다.
+`requirements.txt` 를 그냥 설치하면 GPU 가 안 잡힌다. 순서대로:
 
-`push_code.sh` 가 `configs/` 를 통째로 젯슨에 밀어넣기 때문에 **두 기계가 이 파일 한 벌을
-공유한다.** 그런데 `stt.device` 는 젯슨=`cuda` / 노트북=`cpu` 로 정반대여야 한다(노트북
-ctranslate2 는 CPU 전용 휠이라 `cuda` 면 죽는다). `metrics.tag` 도 마찬가지.
+1. miniforge 설치 → `conda create -n jaeha_bot python=3.10`
+2. 젯슨 전용 pip 인덱스에서 `onnxruntime-gpu==1.24.0` (TensorRT 포함):
+   `pip install onnxruntime-gpu==1.24.0 --index-url https://pypi.jetson-ai-lab.io/jp6/cu126`
+3. `pip install -r requirements.txt` — 단 `onnxruntime`·`llama-cpp-python` 줄은 빼고,
+   `faster-whisper` 는 `--no-deps` 로
+4. CTranslate2 CUDA 소스 빌드: `bash tools/jetson/build_ct2_cuda.sh` (sm_87, 1시간 남짓,
+   `~/.local/ct2` 에 설치. 인덱스 휠은 CPU 전용이라 STT 가 발화당 3.6초 걸린다)
+5. llama-cpp-python CUDA 소스 빌드: `bash tools/jetson/build_llama.sh` (0.3.34. 인덱스의
+   0.3.14 는 생성 때 죽는다)
+6. conda 활성화 훅에 라이브러리 경로 추가 —
+   `$CONDA_PREFIX/etc/conda/activate.d/zz_ld.sh`:
+   `export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:/usr/local/cuda/lib64:$HOME/.local/ct2/lib:${LD_LIBRARY_PATH:-}"`
+   (`./run.sh` 는 훅 없이도 같은 경로를 붙인다)
 
-→ **기계마다 다른 값은 `model_paths.yaml` 을 고치지 말고 `configs/local.yaml` 에 적는다.**
-git 미추적이고 push 전송에서도 빠진다. 키 단위 deep merge 라 거기 안 적은 값은 운영값 그대로.
+젯슨에서 돌고 있는 버전: faster-whisper 1.2.1, ctranslate2 4.8.0(소스), llama_cpp_python 0.3.34(소스),
+supertonic 1.3.1, openai 2.53.0, 나머지는 `requirements-realtime.txt` 와 같다.
+
+### D. 개발 PC (Windows)
+
+`pip install -r requirements.txt` (llama-cpp 는 파일 안 설명대로 CPU 휠 0.3.2).
+`configs/local.yaml` 에 D 블록(`stt.device: cpu` 등)을 둔다. 마이크 없이 확인할 때:
 
 ```bash
-cp configs/local.example.yaml configs/local.yaml   # 필요한 줄만 남기면 됨
+python -m app.main --text              # 로컬 경로, 글자로 대화
+python -m app.main_realtime --no-wake  # 전면 API, 호출어 없이 바로 대화
 ```
+
+---
+
+## 5. 비밀 값 (`.env`)
+
+| 키 | 필요할 때 | 없으면 |
+|---|---|---|
+| `OPENAI_API_KEY` | 전면 API 경로(필수), 로컬 경로에서 `llm.backend: openai` | 전면 API 는 기동에서 멈춘다. 로컬은 **조용히** EXAONE 으로 내려간다 |
+| `YOUTUBE_DATA_KEY` | 노래 틀기(`youtube.enabled: true`) | 검색 못 하고 `assets/songs` 만 튼다 |
+| `CLOVA_STUDIO_KEY` | 비교 평가(`tools/eval_llm.py`), `llm.api_model` 이 HCX 일 때 | 해당 기능만 안 된다 |
+| `GEMINI_API_KEY` | 비교 평가 전용 | — (Gemini 약관은 18세 미만 대상 앱 금지) |
+
+키는 인계할 때 **새로 발급**해서 넘긴다. 개발 중 쓰던 키는 폐기할 것.
+
+---
+
+## 6. 실행
+
+```bash
+./run.sh check            # 봇을 띄우지 않고 준비 상태만: 모듈, 경로, 키, 호출어 설정, 오디오 장치
+./run.sh                  # pipeline 을 보고 app.main 또는 app.main_realtime 을 띄운다
+./run.sh setup-youtube    # 노래 틀기 준비물 점검 + ~/.asoundrc(공유 출력 respk) 설치
+```
+
+- 전면 API 는 첫 기동 때 고정 문구(안내·안전 문장, 놀이 바로잡기 문장 약 70개)를 `marin` 목소리로
+  합성해 `~/.cache/jaeha_voice` 에 둔다. **첫 기동만 4~5분** 걸린다.
+- 로그: `logs/jaeha_날짜.log`(대화), `logs/metrics_날짜.jsonl`(턴별 지연·비용),
+  `logs/guardian_날짜.jsonl`(막거나 정정한 일, 글자만).
+- 시험: `python -m pytest -q` — 마이크·모델·젯슨·네트워크 없이 전부 돈다.
+
+### 젯슨으로 배포
+
+젯슨의 `~/jaeha_bot` 은 git 저장소가 아니다. 노트북에서 코드만 밀어 넣는다.
+
+```bash
+bash push_code.sh         # app/ configs/ scenarios/ data/ tools/ — configs/local.yaml 은 안 보낸다
+```
+
+`push_code.sh` 첫 줄의 `JETSON=` 이 개발자 Tailscale 주소다 — 인계받으면 바꾼다.
+`run.sh`·`requirements*.txt` 는 이 스크립트가 보내지 않으니 바뀌면 `scp` 로 따로 보낸다.
+
+---
+
+## 7. 설정 파일
 
 | 파일 | 내용 |
 |---|---|
-| `model_paths.yaml` | 모델 선택·디코딩·VAD·호출어 임계 등 전부 (젯슨 기준) |
-| `local.yaml` | 이 기계 전용 덮어쓰기 (git 미추적) |
-| `prompt_templates.yaml` | system 프롬프트. 말투·길이·안전 규칙 |
-| `safety_rules.yaml` | `reply_check` 는 ✅ `app/safety.py` 가 읽는다. 나머지 항목은 🚧 소비처 없음 |
-| `object_labels.json` | 비전 라벨 매핑. 🚧 미사용 |
-| `wake/*.yaml` | 호출어 학습 설정(Colab). 런타임이 읽지 않음 |
+| `configs/model_paths.yaml` | 모든 설정의 기준값(로컬 경로 기준). 값마다 정한 근거가 주석으로 붙어 있다 — 숫자를 바꾸기 전에 그 줄을 읽을 것. 전면 API 설정은 `realtime:` 절(모델·목소리·속도·말 끝 900ms·가드) |
+| `configs/local.yaml` | 이 기계만의 덮어쓰기(경로 선택 포함). git 미추적 |
+| `configs/prompt_templates.yaml` | 시스템 프롬프트 — 말투·길이·안전 규칙 |
+| `configs/safety_rules.yaml` | 위험 낱말·먹기 표현 등. `app/safety.py` 가 읽는다 |
+| `configs/audio_assets.yaml` | 로컬 음원·효과음 목록 |
+| `configs/alsa/respk.asoundrc` | 노래와 봇 목소리를 한 스피커로 섞는 ALSA 장치 |
+| `scenarios/scenario_cards.json` | 놀이 카드(동물 8, 낱말 10) |
 
-🔴 **운영 LLM 백엔드는 `model_paths.yaml` 이 아니라 젯슨의 `local.yaml` 에 있다.**
-기본값은 `llm.backend: local`(EXAONE)이고, 젯슨만 `openai` 로 덮어쓴다. 그 파일은
-git 미추적 + push 제외라 **젯슨에서 지워지면 아무 경고 없이 로컬 EXAONE 으로 되돌아간다.**
-백엔드를 확인하려면 젯슨에서 `grep -A1 '^llm:' configs/local.yaml`.
+---
 
-## 젯슨 배포
+## 8. 폴더 구조
 
-Docker 가 아니라 **SSH 로 코드만 밀어넣는다**(젯슨은 실행 전용).
-
-```bash
-bash push_code.sh                          # app/ configs/ scenarios/ data/
-bash push_model.sh models/새모델.gguf       # 모델은 새로 만들었을 때만
+```
+app/
+  main.py                 로컬 경로 진입점 (대기 ↔ 대화 루프)
+  main_realtime.py        전면 API 진입점 (기동 검사, 바깥 루프)
+  realtime_conversation.py  깨어 있는 한 구간 — 턴 판단·노래·놀이·가드·끊김 복구
+  realtime_session.py / realtime_protocol.py / realtime_audio.py / realtime_turn.py
+  reply_gate.py           응답 관문(위험 턴 붙잡기·도중 검사)
+  game_repair.py          놀이 이탈을 글자로 찾아 소리 자를 곳 계산
+  guardian_log.py         보호자 기록
+  voice_cache.py          고정 문구 wav 캐시
+  wake.py / wake_onnx.py / wake_embed.py   호출어 2단계
+  audio_source.py / audio_device.py / audio_player.py   마이크 공유·장치 선택·재생
+  stt_module.py / tts_module.py / agent.py / filler.py  로컬 경로 전용
+  education_modes.py      놀이 상태머신(두 경로 공용)
+  music.py / youtube.py / song_names.py / loudness.py   노래 틀기
+  safety.py / claims.py / text_norm.py / metrics.py / config.py
+configs/  scenarios/  data/(평가셋·few-shot)
+tests/    tools/(측정·평가·호출어 학습·문서 생성. tools/jetson/ = GPU 빌드 스크립트)
+reports/  측정 결과 요약(원자료는 git 미추적)
+docs/final/  마무리 보고서·발명신고 초안   docs/superpowers/  설계·구현 계획
 ```
 
-젯슨에서:
+---
 
-```bash
-conda activate jaeha_bot && cd ~/jaeha_bot && python -m app.main
-```
+## 9. 알아둘 설계
 
-젯슨 환경은 노트북과 다르다 — py3.10, 전용 pip 인덱스, ctranslate2·llama-cpp 는 CUDA
-소스빌드다. `requirements.txt` 로 그냥 설치하면 GPU 가 안 잡힌다. 절차와 함정은
-`push_model.sh` 주석과 프로젝트 메모리를 참조.
+- **놀이의 순서와 정답은 코드가 쥔다.** 모델은 문장만 만든다. 모델이 문제를 바꿔 말하면
+  로컬은 합성 전에 템플릿으로 바꾸고, 전면 API 는 글자가 소리보다 먼저 오는 틈(중앙 0.98초)에
+  잘라 미리 녹음한 문장으로 잇는다.
+- **전면 API 에서도 턴은 우리가 쥔다.** 서버의 자동 응답을 끄고(`create_response: false`),
+  받아 적은 글자로 잠들기·노래·놀이를 먼저 가로챈 뒤 응답을 요청한다.
+- **위험 신호가 있는 턴만 붙잡는다.** 아이 말에 위험 낱말이 있거나 '이거'+먹기 표현이면 소리를
+  모아 글자를 끝까지 검사한다(약 +0.3초). 나머지는 흘려보내며 검사한다.
+- **마이크 스트림은 하나를 닫지 않고 나눠 쓴다**(`AudioSource`). 다시 열면 0.7초짜리 '귀 먹은
+  구간'이 아이가 말을 시작하는 순간에 생긴다.
+- **ReSpeaker 는 16kHz 전용이고 장치가 하나다.** 봇이 도는 동안 다른 도구가 마이크를 못 연다.
+- 🔴 **`unsafe=0` 은 "안전하다"가 아니라 "규칙에 걸린 게 없다"다.** 안전 결함은 매번 사람이
+  답변을 읽어서 찾았다. 안전 관련 변경 뒤에는 `reports/eval/` 의 답변 전문을 읽을 것.
 
-> Dockerfile·docker-compose 는 **일상 배포용이 아니다.** 실제 운용은 위 SSH 경로다.
-> 남겨 두는 이유는 **환경 공유용** — 다른 사람(교수님·팀원)에게 "이 환경 그대로 돌려보세요"를
-> 한 줄로 전달해야 할 때 쓴다. 그때는 베이스 이미지 태그를 보드 JetPack 버전에 맞추고
-> (`dpkg-query --show nvidia-l4t-core`), Jetson 이미지는 **반드시 ARM64** 로 빌드해야 한다
-> (PC 에서 만들려면 `docker buildx build --platform linux/arm64`, 가급적 보드에서 직접 빌드).
-> ⚠️ 젯슨의 실제 구성(ctranslate2·llama-cpp CUDA 소스빌드)은 이 Dockerfile 에 반영돼 있지 않다 —
-> 공유 전에 갱신이 필요하다.
+---
 
-## 설계에서 알아둘 것
+## 10. 넘겨받는 사람이 할 일
 
-- **놀이의 흐름·정답판정은 코드(상태머신)가 갖고, LLM 은 칭찬·질문 '문장'만 렌더한다.**
-  2.4B 에 상태를 맡기면 깨지므로 function-calling 은 쓰지 않는다. 렌더가 실패하거나
-  설명으로 새면 템플릿으로 폴백해 놀이가 멈추지 않는다.
-- **마이크 스트림을 닫지 않는다.** 닫고 STT 가 새로 열면 ALSA 재오픈 + 소음 재측정 +
-  에코 쿨다운으로 0.7초짜리 '귀 먹은 구간'이 아이가 말을 시작하는 순간에 생긴다.
-  `AudioSource` 하나가 스트림을 소유하고 감지기와 STT 가 나눠 쓴다.
-- **호출어 감지 실패는 봇을 죽이지 않는다.** ONNX 로드가 안 되면 옛 STT 자모 매칭으로
-  자동 폴백한다(`wake.detector: onnx | stt`).
-- **TTS 응답이 길면 그만큼 아이가 기다린다.** `speak()` 는 재생이 끝날 때까지 블로킹한다.
-  답변을 짧게 만드는 프롬프트·`max_sentences` 가 곧 지연 단축이다.
-- 🔴 **`unsafe=0` 은 "안전하다"가 아니라 "규칙에 걸린 게 없다"는 뜻이다.** `app/safety.py`
-  는 규칙 기반이라 반드시 놓친다. 실제로 안전 결함은 매번 **답변을 사람이 읽어서** 나왔고
-  자동 판정기는 그때마다 통과시켰다. 안전 관련 변경 뒤에는 `reports/eval/` 의 답변 전문을
-  읽을 것. 판정기를 고치면 `JUDGE_VER` 을 올리고 옛 수치와 직접 비교하지 않는다.
-- **놀이의 템플릿 폴백은 예외 경로가 아니라 평상시 경로다.** LLM 렌더가 `require` 검증에
-  걸리면 템플릿으로 내려오는데, 그 일이 자주 일어난다. 폴백 문구를 '비상용'으로 여기고
-  대충 쓰면 그게 아이가 듣는 말이 된다.
+1. **아동 음성 국외 전송 해결** — OpenAI ZDR(기관 명의 사전 승인). 없으면 아동에게는 로컬 경로.
+   아동 대상 시험 자체는 IRB 와 법정대리인 동의가 먼저다.
+2. **젯슨 실기 확인** — 응답 관문, 놀이 바로잡기, 명령 도구("인형이 잘 자래"를 잠들기로 오판),
+   말 끝 900ms, 공유기 뽑았다 꽂기(재연결).
+3. **스피커 확보** — 지금까지 이어폰으로만 들었다. 노래 중 호출어·재생 여유(`PLAY_PAD_S`) 미측정.
+4. **호출어 본보기를 실제 사용자 목소리로 다시 등록**, 헛깨움을 시간당 1회 아래로.
+5. Docker 이미지 빌드 검증, 부모 알림 전송(텔레그램 계획만), 비용 상한, 놀이 추가.
 
-## 남은 일
+## 11. 문서
 
-1. **대상 아동 실사용 시험** — 모든 실기 수치가 **성인 발화**로 얻은 것이다. 2세에서의
-   동작은 미확인이고, 하려면 IRB 심의와 법정대리인 동의가 먼저다
-2. **스피커 확보** — `PLAY_PAD_S=0.15` 는 도입 이래 미계측이고, 노래 중 호출어도 못 잰다.
-   이어폰으로는 음향 누설이 없어 8회 중 0회 검출이라 대체가 안 된다
-3. **헛깨움을 합격선 안으로** — 거실 시간당 1.33~2.67회(합격선 1회 이하). 수 시간 연속
-   측정과 임계값 재조정이 필요하다
-4. **안전 판정기를 런타임에 붙이기** — 지금은 평가 지표로만 돈다. 프롬프트로 안전을
-   확보하는 방식이 용량 한계다(세 줄 더하면 다른 문항이 깨진다)
-5. **실음성 녹음** — 호출어 학습 데이터에 실제 사람 목소리가 **한 건도 없다**
-6. 놀이 카드 확대 + 껍데기 놀이 3개 구현, 비전(STEP 9)
+- [docs/final/README.md](docs/final/README.md) — 결과보고서·기술 상세·전면 API 개발보고서·발명신고 초안 목록
+- [docs/final/api-개발보고서.md](docs/final/api-개발보고서.md) — 전면 API 경로를 만든 경과와 실측
+- `docs/superpowers/specs/` — 기능별 설계 문서(결정의 이유와 실측 기록)
+- `reports/*/README.md` — 측정 결과 요약

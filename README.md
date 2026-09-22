@@ -86,7 +86,7 @@ wake:
 | `configs/local.yaml` | `configs/` | 둘 다 | 젯슨: `cp configs/local.jetson.example.yaml configs/local.yaml` / PC: `local.example.yaml` 에서 필요한 블록만 |
 | 호출어 모델 5개 | `models/wake/v6/` — `jaehabot_v6.onnx`, `embedding_model.onnx`, `melspectrogram.onnx`, `jaeha_v6.yaml`, `jaehabot_v6.pt`(학습 원본, 실행엔 불필요) | 둘 다 | Drive 공유 압축본. 다시 만들려면 `tools/colab_wake_train_v6.ipynb`(Colab, HF_TOKEN 은 Colab 비밀값) |
 | 호출어 본보기 `templates_haitid.npy` | `models/wake/v6/` | 전면 API 필수, 로컬은 embed 모드일 때 | **쓸 사람 목소리로 새로 만든다**: `python tools/enroll_wake.py --record 10` (지금 것은 개발자 가족 한 명의 목소리) |
-| EXAONE 3.5 2.4B Q4 GGUF (1.6GB) | `models/exaone-3.5-2.4b-q4.gguf` | 로컬 경로의 폴백 | Hugging Face `LGAI-EXAONE/EXAONE-3.5-2.4B-Instruct-GGUF`. ⚠️ 비상업 라이선스 |
+| EXAONE 3.5 2.4B Q4 GGUF (1.6GB) | `models/exaone-3.5-2.4b-q4.gguf` | 로컬 경로의 폴백 | Hugging Face `LGAI-EXAONE/EXAONE-3.5-2.4B-Instruct-GGUF` 의 `…-Q4_K_M.gguf`(로그인 불필요)를 이 이름으로 저장. ⚠️ 비상업 라이선스. 개발 때 쓴 파일은 같은 모델·같은 Q4 이지만 공식 파일과 544바이트 다른 빌드다(출처 미상) — 로컬 EXAONE 실측은 그 파일 기준 |
 | faster-whisper medium, Supertonic | 캐시(`~/.cache/huggingface`) | 로컬 경로 | 첫 실행 때 자동으로 받는다 |
 | 동요 mp3 | `assets/songs/` | 노래 | 1곡은 Drive 공유 압축본(공유마당 자유이용). 더 넣는 법은 `assets/README.md` |
 

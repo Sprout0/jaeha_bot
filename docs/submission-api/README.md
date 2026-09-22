@@ -7,10 +7,9 @@
 |---|---|---|
 | `01_결과보고서.docx` / `.pdf` | 결과보고서 | `결과보고서.md` |
 | `02_별첨1_기술상세보고서.docx` / `.pdf` | 별첨 1. 기술 상세 보고서 | `기술상세보고서.md` |
-| `03_별첨2_발명신고서_전면API.hwp` | 별첨 2. 발명신고서 (세종대 산학협력단 양식) | `tools/make_invention_hwp.py --api` |
-| `04_별첨2_발명의내용설명서_전면API.hwp` | 별첨 2. 발명의 내용 설명서 (청구항 10, 도면 3) | `tools/invention_desc_content_api.py` |
+| 별첨 2 | 발명신고서 · 발명의 내용 설명서 (전면 API 판) | 저장소 밖 한글 파일 |
 
-발명신고서에서 성명·주민등록번호·주소·지분·동의 체크는 비워 두었다. 본인이 직접 채운다.
+발명신고서·발명의 내용 설명서는 개인정보가 들어가는 출원 서류라 저장소에 두지 않는다(2026-09-22 삭제).
 
 ## 다시 만들기
 
@@ -19,5 +18,3 @@ python tools/build_docs_docx.py --bundle api
 powershell tools/update_docx_fields.ps1 -Dir docs/submission-api/제출본 -Pdf
 ```
 
-한글 파일은 한글이 설치된 PC에서 `tools/make_invention_hwp.py "<폴더>" --api`로 만든다
-(`발명신고서_재하봇_전면API.hwp`, `발명의내용설명서_재하봇_전면API.hwp`로 나오므로 번호를 붙여 넣는다).

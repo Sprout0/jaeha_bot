@@ -232,7 +232,7 @@ tests/               시험 1,204개
 tools/               젯슨 관리 도구 · 측정/평가 · 호출어 학습 · 문서 생성 — 목록은 tools/README.md
 reports/             측정 결과 — 주제별 README 에 요약, 일부 원자료(큰 파일은 git 미추적)
 docs/submission-api/ 최종 제출본(전면 API 기준) 원고
-docs/final/          로컬 구성 시점의 보고서·발명신고 초안(09-12 기준)
+docs/final/          로컬 구성 시점의 보고서와 특허 선행조사(09-12 기준)
 docs/superpowers/    기능별 설계(specs)·구현 계획(plans)
 assets/              동요·효과음(파일은 git 미추적)
 models/              가중치(git 미추적, 3절)
@@ -270,7 +270,7 @@ run.sh · push_code.sh · push_model.sh · Dockerfile · docker-compose.yml · r
 
 ## 11. 문서
 
-- [docs/submission-api/README.md](docs/submission-api/README.md) — **최종 제출본**(전면 API 기준): 결과보고서·기술상세보고서·발명신고
+- [docs/submission-api/README.md](docs/submission-api/README.md) — **최종 제출본**(전면 API 기준): 결과보고서·기술상세보고서. 발명신고 서류는 개인정보 때문에 저장소에 두지 않는다
 - [docs/final/README.md](docs/final/README.md) — 로컬 구성 시점(09-12)의 보고서와 근거 문서
 - [docs/final/api-개발보고서.md](docs/final/api-개발보고서.md) — 전면 API 경로를 만든 경과와 실측
 - [tools/README.md](tools/README.md) — 도구 목록

@@ -41,4 +41,3 @@
 | 도구 | 하는 일 |
 |---|---|
 | `build_docs_docx.py`, `docx_reference.py`, `update_docx_fields.ps1` | markdown 보고서 → docx/pdf (`docs/final/README.md`, `docs/submission-api/README.md`) |
-| `make_invention_hwp.py` + `invention_desc_content.py`(로컬 판) / `invention_desc_content_api.py`(전면 API 판) | 산학협력단 발명신고 양식(HWP) 채우기. 한글이 설치된 Windows 에서만 |

@@ -48,8 +48,6 @@ FIGURES = {
     "pipeline-realtime.svg": (1000, 640),  # 보고서 그림 1 = 전면 API 구성(운영)
     "pipeline-block.svg": (1000, 620),     # 보고서 그림 2 = 로컬 구성
     "wake-two-stage.svg": (1000, 600),
-    "patent-system.svg": (1000, 600),     # 발명신고용 도 1·2 (흑백, 수치 없음)
-    "patent-dialog.svg": (1000, 700),
     "dialog-flow.svg": (1000, 700),       # 보고서 그림 3 = 도 2 에서 표지만 뺀 것
 }
 
@@ -58,11 +56,7 @@ FIGURES = {
 DOCS = [
     ("결과보고서.md", "01_결과보고서.docx", True),
     ("report.md", "02_별첨1_기술상세보고서.docx", True),
-    # 별첨 2 = 출원 서류 초안 두 장. 한글 양식에 옮겨 붙일 내용이라 목차는 없다.
-    (os.path.join("patent", "발명신고서-초안.md"),
-     "03_별첨2_발명신고서_초안.docx", False),
-    (os.path.join("patent", "발명의내용설명서-초안.md"),
-     "04_별첨2_발명의내용설명서_초안.docx", False),
+    # 별첨 2(출원 서류)는 만들지 않는다 — 발명신고서·발명의 내용 설명서는 개인정보가 들어가는 출원 서류라 저장소에 두지 않는다(2026-09-22 삭제).
     ("api-전환안.md", "05_별첨3_전면API구성검토.docx", False),
     # 별첨이 아니다. 재하봇 밖에서도 쓸 수 있는 청구항 하나의 정리본과 그 근거 전문.
     (os.path.join("patent", "호출어검증-핵심청구항.md"),
@@ -75,7 +69,7 @@ DOCS = [
 
 
 # 전면 API 확정 뒤의 제출본(2026-09-22). 결과보고서와 별첨 1만 여기서 만든다 — 별첨 2(출원
-# 서류)는 한글 양식 파일이 원본이다(tools/make_invention_hwp.py --api).
+# 서류)는 저장소 밖 한글 양식 파일이다.
 BUNDLES = {
     "final": (FINAL, DOCS, FIGURES),
     "api": (os.path.join(ROOT, "docs", "submission-api"), [

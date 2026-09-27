@@ -92,3 +92,16 @@ def quiet_cut(audio: np.ndarray, near: int, sr: int, *, before_s: float = 0.5,
     energy = [float(np.mean(seg[i * win:(i + 1) * win] ** 2)) for i in range(n)]
     best = int(np.argmin(energy))
     return lo + best * win + win // 2
+
+
+def final_cut(audio: np.ndarray, rep: Repair, text: str, sr: int) -> int:
+    """글자가 다 온 뒤 자를 샘플. 글자 위치를 길이 비율로 소리 위치에 옮긴다.
+
+    첫 문장 안의 틀린 이름이면 그 이름 **앞**에서만 쉼을 찾는다 — 앞뒤를 찾으면 이름이
+    시작된 뒤를 자를 수 있다(2026-09-27). 문장 사이를 자를 때는 쉼이 어느 쪽에 있을지
+    모르니 앞뒤를 본다.
+    """
+    a = np.asarray(audio).reshape(-1)
+    near = int(a.size * rep.cut_char / len(text)) if text else 0
+    after = 0.0 if rep.reason == "wrong_name" and rep.in_first else 0.5
+    return quiet_cut(a, near, sr, before_s=0.5, after_s=after)

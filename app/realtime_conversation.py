@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from .game_repair import check_done, check_stream, quiet_cut
+from .game_repair import check_done, check_stream, final_cut
 from .realtime_audio import SR as _SR
 from .realtime_audio import MicGate, PcmAccumulator, to_pcm16
 from .realtime_protocol import (append_audio, cached_tokens, cancel, cost_usd, event_kind,
@@ -367,8 +367,7 @@ class Conversation:
         text = p.said
         played = self.speaker.played()
         if final and text:
-            near = int(audio.size * rep.cut_char / len(text))
-            cut = quiet_cut(audio, near, _SR, before_s=0.5, after_s=0.5)
+            cut = final_cut(audio, rep, text, _SR)
         else:
             cut = played
         p.fix_leaked = cut < played

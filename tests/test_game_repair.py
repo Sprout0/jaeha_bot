@@ -1,6 +1,7 @@
 import numpy as np
 
-from app.game_repair import check_done, check_stream, find_name, first_sentence_end, quiet_cut
+from app.game_repair import (Repair, check_done, check_stream, final_cut, find_name,
+                             first_sentence_end, quiet_cut)
 
 BEAT = {"fix_react": "강아지는 멍멍 하고 울어!", "fix_next": "그럼 고양이는 어떻게 울어?",
         "next_need": ["고양이", "울어"], "allow": ["강아지", "고양이"],
@@ -71,3 +72,20 @@ def test_글자가_덜_와서_끝에_걸린_이름은_다음_글자까지_기다
     assert check_stream("좋아, 동물 소", beat) is None
     assert check_stream("좋아, 동물 소리", beat) is None
     assert check_stream("소는", beat) is not None
+
+
+def test_끝에서_틀린_이름을_자를_땐_이름_앞에서만_쉼을_찾는다():
+    # 이름 바로 뒤에 더 조용한 틈이 있어도 거기서 자르면 이름이 들린다(2026-09-27).
+    sr = 24000
+    talk = (np.sin(np.arange(2 * sr) * 0.3) * 0.5).astype(np.float32)
+    sec = lambda x: int(x * sr)                                    # noqa: E731
+    audio = np.concatenate([talk[:sec(1.2)], talk[:sec(0.1)] * 0.2,   # 1.2~1.3s 작은 쉼
+                            talk[:sec(0.3)], np.zeros(sec(0.2), np.float32),  # 1.6~1.8s 무음
+                            talk[:sec(1.2)]])                      # 모두 3.0s
+    text = "가" * 15 + "소" + "나" * 14                           # 이름 '소' = 1.5s
+    rep = Repair(cut_char=15, lines=["x"], reason="wrong_name", in_first=True)
+    cut = final_cut(audio, rep, text, sr)
+    assert sec(1.2) <= cut <= sec(1.3)
+    # 문장 사이를 자를 때는 앞뒤를 본다 — 뒤쪽 무음을 고른다
+    rep2 = Repair(cut_char=15, lines=["x"], reason="missing_next")
+    assert sec(1.6) <= final_cut(audio, rep2, text, sr) <= sec(1.8)

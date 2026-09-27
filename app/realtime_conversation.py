@@ -372,6 +372,7 @@ class Conversation:
             cut = played
         p.fix_leaked = cut < played
         self.speaker.truncate(max(cut, played))
+        p.held.clear()          # 위험 신호로 붙잡은 놀이 턴 — 모아 둔 소리에 틀린 이름이 있다
         if not final:
             await self._send(cancel())
             p.blocked_at = self.clock()
@@ -381,6 +382,8 @@ class Conversation:
                 log.warning("[놀이] 조각 문장 캐시가 없다: %s", line)
                 continue
             self.speaker.push(a)
+            if p.first_audio_at is None:
+                p.first_audio_at = self.clock()     # 조각 문장이 첫 소리 — 응답 제한에 안 걸린다
         p.fixed = rep.reason
         p.fix_said = (text[:rep.cut_char].rstrip() + " " + " ".join(rep.lines)).strip()
         log.warning("[놀이] 대본 이탈(%s) — %d자에서 자르고 잇는다: %s ← %s",

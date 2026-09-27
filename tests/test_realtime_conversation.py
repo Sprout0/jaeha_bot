@@ -583,3 +583,45 @@ def test_모델이_노래를_부르면_노래_경로():
         return await c.run(greet=False)
 
     assert asyncio.run(go()) == "music" and played == ["티니핑 틀어줘"]
+
+
+
+async def _held_game_turn_fixed(c):
+    """놀이 턴인데 아이 말에 위험 신호가 있어 붙잡았고, 첫 문장에 틀린 이름이 왔다."""
+    await _start_game(c)
+    p = c._pending
+    beat = p.route.beat
+    p.guard = c.gate.begin("이거 먹어도 돼?", verbatim=False, now=c.clock())
+    assert p.guard.held
+    wrong = next(n for n in beat["names"] if n not in beat["allow"])
+    await c._on_event(_audio_delta())
+    await c._on_event(_text(f"{wrong}는 "))
+    assert p.fixed
+
+
+def test_붙잡은_놀이_턴을_바로잡으면_모아_둔_소리는_버린다():
+    # 2026-09-27: 모아 둔 소리(틀린 이름 포함)가 조각 문장 뒤에 그대로 나갔다.
+    async def go():
+        s, sp = FakeSession(), FakeSpeaker()
+        c = _game_conv(s, sp)
+        await _held_game_turn_fixed(c)
+        await c._on_event(_done())
+        return sp
+
+    sp = asyncio.run(go())
+    assert sp.pushed and all(float(a.max()) < 0.15 for a in sp.pushed)  # 0.2=모델 소리, 0.1=조각
+
+
+def test_붙잡은_놀이_턴을_바로잡으면_조각_문장이_첫_소리다():
+    # 첫 소리가 없는 것으로 보여 응답 제한에 걸려 되묻기 문장까지 틀었다.
+    async def go():
+        s, sp = FakeSession(), FakeSpeaker()
+        c = _game_conv(s, sp)
+        await _held_game_turn_fixed(c)
+        task = asyncio.create_task(c._tick())
+        await asyncio.sleep(0.5)                # 응답 제한 0.3s 를 지나도록
+        task.cancel()
+        return c
+
+    c = asyncio.run(go())
+    assert PHRASES["recovery"] not in c.cache.asked

@@ -76,6 +76,10 @@ BUNDLES = {
         ("결과보고서.md", "01_결과보고서.docx", True),
         ("기술상세보고서.md", "02_별첨1_기술상세보고서.docx", True),
     ], {"pipeline-realtime.svg": (1000, 640)}),
+    # 발명의 내용 설명서와 함께 내는 참고 문서(결과보고서의 별첨이 아닌 단독판, 2026-09-28)
+    "patent": (os.path.join(ROOT, "docs", "submission-api"), [
+        ("기술상세보고서_특허참고.md", "기술상세보고서_특허참고.docx", True),
+    ], {"pipeline-realtime.svg": (1000, 640)}),
 }
 
 
@@ -256,11 +260,11 @@ if __name__ == "__main__":
     ap.add_argument("--pandoc")
     ap.add_argument("--reference", help="직접 만든 서식 틀. 없으면 그때그때 만든다")
     ap.add_argument("--bundle", choices=sorted(BUNDLES), default="final",
-                    help="final = docs/final, api = docs/submission-api")
+                    help="final = docs/final, api = docs/submission-api, patent = 설명서 참고용 기술상세 단독판")
     a = ap.parse_args()
     FINAL, DOCS, FIGURES = BUNDLES[a.bundle]
     # 전면 API 제출본은 결과물을 한 폴더(제출본/)에 모은다 — 별첨 2 한글 파일과 나란히.
-    OUTDIR = os.path.join(FINAL, "제출본" if a.bundle == "api" else "docx")
+    OUTDIR = os.path.join(FINAL, "제출본" if a.bundle in ("api", "patent") else "docx")
     pandoc = a.pandoc or find_pandoc()
 
     tmp = None
